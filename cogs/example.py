@@ -2,7 +2,11 @@ import discord
 from discord.ext import commands
 import os
 
+import json
+import os
 import platform
+import random
+import sys
 
 class Example(commands.Cog):
     def __init__(self, client):
@@ -39,6 +43,37 @@ class Example(commands.Cog):
         )
         embed.set_footer(
             text=f"Requested by {ctx.message.author}"
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(name="serverinfo")
+    async def serverinfo(self, ctx):
+        server = ctx.message.guild
+        roles = [x.name for x in server.roles]
+        role_length = len(roles)
+        if role_length > 50:
+            roles = roles[:50]
+            roles.append(f">>>> Displaying[50/{len(roles)}] Roles")
+        roles = ", ".join(roles)
+        channels = len(server.channels)
+        time = str(server.created_at)
+        time = time.split(" ")
+        time = time[0]
+
+        embed = discord.Embed(
+            title="Name:",
+            description=server,
+            color=0x00FF00
+        )
+        embed.set_thumbnail(
+            url=server.icon_url
+        )
+        embed.add_field(
+            name=f"Roles ({role_length})\n",
+            value=roles
+        )
+        embed.set_footer(
+            text=f"Created at: {time}"
         )
         await ctx.send(embed=embed)
 
