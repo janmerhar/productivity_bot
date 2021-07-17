@@ -7,6 +7,7 @@ import os
 import platform
 import random
 import sys
+import aiohttp
 
 class Example(commands.Cog):
     def __init__(self, client):
@@ -76,6 +77,21 @@ class Example(commands.Cog):
             text=f"Created at: {time}"
         )
         await ctx.send(embed=embed)
+    
+    @commands.command(aliases=["btc"])
+    async def bitcoin(self, ctx):
+        url = "https://api.coindesk.com/v1/bpi/currentprice/BTC.json"
+
+        async with aiohttp.ClientSession() as session:
+            raw_response = await session.get(url)
+            response = await raw_response.text()
+            response = json.loads(response)
+            embed = discord.Embed(
+                title="Bitcoin price:",
+                description=f"{response['bpi']['USD']['rate']} $",
+                color=0xf2a900
+            )
+            await ctx.send(embed=embed)
 
 def setup(client):
     client.add_cog(Example(client))
