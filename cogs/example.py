@@ -102,17 +102,31 @@ class Example(commands.Cog):
         embed = discord.Embed(
             title=":calendar: Google Calendar",
             description="Embed discription",
-            color=0x00FF00
+            color=0x4086f4
         )
         embed.set_thumbnail(
             url="https://ssl.gstatic.com/calendar/images/dynamiclogo_2020q4/calendar_17_2x.png"
         )
 
+        # non inline field
+        embed.add_field(name="non inline name", value="non inline value", inline=False)
+        # inline field values
+        embed.add_field(name="INLINE NAME1", value="INLINE VALUE1", inline=True)
+        embed.add_field(name="INLINE NAME2", value="INLINE VALUE2", inline=True)
+        embed.add_field(name="INLINE NAME3", value="INLINE VALUE3", inline=True)
+
         embed.set_footer(
             text=f"Footer"
         )
 
-        await ctx.send(embed=embed)
+        # adding reactions on message
+        msg = await ctx.send(embed=embed)
+        await msg.add_reaction("💖")
+        await msg.add_reaction("🇦")
+        await msg.add_reaction("🇧")
+        await msg.add_reaction("🇨")
+        await msg.add_reaction("🇩")
+        await msg.add_reaction("🇪")
 
 def setup(client):
     client.add_cog(Example(client))
