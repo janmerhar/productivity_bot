@@ -92,6 +92,27 @@ class Example(commands.Cog):
                 color=0xf2a900
             )
             await ctx.send(embed=embed)
+    @commands.command()
+    async def cal(self, ctx):
+        server = ctx.message.guild
+        time = str(server.created_at)
+        time = time.split(" ")
+        time = time[0]
+
+        embed = discord.Embed(
+            title=":calendar: Google Calendar",
+            description="Embed discription",
+            color=0x00FF00
+        )
+        embed.set_thumbnail(
+            url="https://ssl.gstatic.com/calendar/images/dynamiclogo_2020q4/calendar_17_2x.png"
+        )
+
+        embed.set_footer(
+            text=f"Footer"
+        )
+
+        await ctx.send(embed=embed)
 
 def setup(client):
     client.add_cog(Example(client))
