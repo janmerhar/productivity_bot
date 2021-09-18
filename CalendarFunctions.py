@@ -1,4 +1,4 @@
-from EventParser import event_parser
+from cli_args.EventParser import event_parser
 
 class CalendarFunctions:
     def __init__(self, calendar):
