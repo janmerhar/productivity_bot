@@ -55,6 +55,8 @@ event_parser.add_argument("-r",
 event_parser.add_argument("-r",
                           "--reminders",
                           dest="reminders",
+                          action="append",  # i can pass multiple values to thihs flag
+                          nargs="*",        # 0 or more argumets
                           help="Reminders of the event")
 
 # https://stackoverflow.com/questions/8878478/how-can-i-use-pythons-argparse-with-a-predefined-argument-string
@@ -63,4 +65,5 @@ event_parser.add_argument("-r",
 
 if __name__ == "__main__":
     args = event_parser.parse_args("-n ime -s zacetek -e konec -c 69".split())
+    args = vars(args)
     print(args)

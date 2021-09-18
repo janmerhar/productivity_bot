@@ -93,7 +93,7 @@ class Example(commands.Cog):
             )
             await ctx.send(embed=embed)
     @commands.command()
-    async def cal(self, ctx):
+    async def calendar(self, ctx):
         server = ctx.message.guild
         time = str(server.created_at)
         time = time.split(" ")
@@ -111,9 +111,11 @@ class Example(commands.Cog):
         # non inline field
         embed.add_field(name="non inline name", value="non inline value", inline=False)
         # inline field values
+        # maximum 3 inline fields per row
         embed.add_field(name="INLINE NAME1", value="INLINE VALUE1", inline=True)
         embed.add_field(name="INLINE NAME2", value="INLINE VALUE2", inline=True)
         embed.add_field(name="INLINE NAME3", value="INLINE VALUE3", inline=True)
+        embed.add_field(name="INLINE NAME4", value="INLINE VALUE4", inline=True)
 
         embed.set_footer(
             text=f"Footer"
