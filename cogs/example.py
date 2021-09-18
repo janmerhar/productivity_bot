@@ -1,7 +1,5 @@
 import discord
 from discord.ext import commands
-import os
-
 import json
 import os
 import platform

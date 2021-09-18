@@ -7,7 +7,7 @@ import random
 import sys
 import aiohttp
 
-class Example(commands.Cog):
+class Calendar(commands.Cog):
     def __init__(self, client):
         self.client = client
     
@@ -23,7 +23,7 @@ class Example(commands.Cog):
         time = time[0]
 
         embed = discord.Embed(
-            title=":calendar: Google Calendar",
+            title=":date: Google Calendar",
             description="Embed discription",
             color=0x4086f4
         )
@@ -52,4 +52,4 @@ class Example(commands.Cog):
         await self.send_reactions(msg, ["💖", "🇦", "🇧", "🇨", "🇩", "🇪"])
 
 def setup(client):
-    client.add_cog(Example(client))
+    client.add_cog(Calendar(client))
