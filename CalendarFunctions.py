@@ -10,9 +10,10 @@ class CalendarFunctions:
     def __init__(self, calendar):
         self.calendar = calendar
     
+    # eventi so object, ki ga lahko prikazem na razlicne nacine
     def printAllEvents(self):
         for event in self.calendar:
-            print(event)
+            print(type(event.start))
 
     # def parseArgumets(self, string):
     def createRemindersObject(self, minutes):

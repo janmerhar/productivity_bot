@@ -50,6 +50,24 @@ class Calendar(commands.Cog):
 
         # sending reactions to the message
         await self.send_reactions(msg, ["💖", "🇦", "🇧", "🇨", "🇩", "🇪"])
+    
+    @commands.command()
+    async def colors(self):
+        # prikazem vse barve, ki so na voljo
+        # pri izbiri za vnos na koledar
+        return
+    
+    @commands.command()
+    async def all_events(self):
+        embed = discord.Embed(
+            title=":date: Google Calendar",
+            description="Embed discription",
+            color=0x4086f4
+        )
+        embed.set_thumbnail(
+            url="https://ssl.gstatic.com/calendar/images/dynamiclogo_2020q4/calendar_17_2x.png"
+        )
+
 
 def setup(client):
     client.add_cog(Calendar(client))
