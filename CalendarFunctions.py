@@ -1,4 +1,4 @@
-from cli_args.CalendarParser import calendar_parser
+from cli_args.EventCreateParser import calendar_parser
 from gCalExample import calendar
 from gcsa.event import Event
 from gcsa.google_calendar import GoogleCalendar
@@ -22,22 +22,31 @@ class CalendarFunctions:
         
         return reminders
     
-    def createDatetimeObject(self, dates):
+    def createDatetimeObject(self, date):
         pdtCal = pdt.Calendar()
         now = datetime.now()
-        datetimes = []
-        for date in dates:
-            datetimes.append(pdtCal.parseDT(date, now)[0])
         
-        return datetimes
+        return pdtCal.parseDT(date, now)
 
+    def eventToObject(self, parsedString):
+        eventOptions = parsedString
+        eventOptions["reminders"] = self.createRemindersObject(parsedString["reminders"][0]) if parsedString["reminders"] else None
+        eventOptions["start"] = self.createDatetimeObject(" ".join(parsedString["start"][0]))[0]
+        eventOptions["end"] = self.createDatetimeObject(" ".join(parsedString["end"][0]))[0]
+        eventOptions["description"] = " ".join(parsedString["description"][0]) if parsedString["description"] else None
+
+        print(eventOptions)
+        event = Event(**eventOptions)
+        self.calendar.add_event(event)
+        return eventOptions
 
 if __name__ == "__main__":
     calendar_functions = CalendarFunctions(calendar)
     # calendar_functions.printAllEvents()
     # calendar_functions.createRemindersObject([15, 60, 360])
     # print(calendar.list_event_colors())
-
-    # example of natural language processing
-    # cal = pdt.Calendar()
-    # print(cal.parseDT("tomorrow evening", datetime.now())[0])
+    args = calendar_parser.parse_args("-n ime -s thursday 7.00 -e thursday 8.00 -c 3".split())
+    args = vars(args)
+    # print(**calendar_functions.eventToObject(args))
+    # print(" ".join(args["start"][0]))
+    calendar_functions.eventToObject(args)

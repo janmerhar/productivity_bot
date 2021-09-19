@@ -21,11 +21,8 @@ event = Event(
     ],
     minutes_before_email_reminder=50
 )
-
 calendar.add_event(event)
 """
-
-
 """
 Print all events fetched
 """

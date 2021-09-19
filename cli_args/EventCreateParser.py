@@ -36,6 +36,8 @@ calendar_parser.add_argument("-c",
 # event description [optional]
 calendar_parser.add_argument("-d", 
                           "--description",
+                          action="append",  # i can pass multiple values to thihs flag
+                          nargs="+",        # 1 or more argumets
                           help="Description of the event in optional HTML")
 # event location [optional]
 calendar_parser.add_argument("-l",
