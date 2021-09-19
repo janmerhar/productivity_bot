@@ -35,18 +35,19 @@ class CalendarFunctions:
         eventOptions["end"] = self.createDatetimeObject(" ".join(parsedString["end"][0]))[0]
         eventOptions["description"] = " ".join(parsedString["description"][0]) if parsedString["description"] else None
 
-        print(eventOptions)
+        # potrebujem nekje handlanje exceptionov v primeru nepravilnih vnesenih podatkov o eventu
         event = Event(**eventOptions)
-        self.calendar.add_event(event)
-        return eventOptions
+        created_event = self.calendar.add_event(event)
+        print(created_event)
+        return created_event
 
 if __name__ == "__main__":
     calendar_functions = CalendarFunctions(calendar)
     # calendar_functions.printAllEvents()
     # calendar_functions.createRemindersObject([15, 60, 360])
     # print(calendar.list_event_colors())
-    args = calendar_parser.parse_args("-n ime -s thursday 7.00 -e thursday 8.00 -c 3".split())
+    args = calendar_parser.parse_args("-n ime -s thursday 7 am -e thursday 7 am -c 3".split())
     args = vars(args)
     # print(**calendar_functions.eventToObject(args))
     # print(" ".join(args["start"][0]))
-    calendar_functions.eventToObject(args)
+    # calendar_functions.eventToObject(args)
