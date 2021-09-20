@@ -15,20 +15,6 @@ class CalendarFunctions:
         for event in self.calendar:
             print(type(event.start))
 
-    # def parseArgumets(self, string):
-    def createRemindersObject(self, minutes):
-        reminders = []
-        for i in range(len(minutes)):
-            reminders.append(PopupReminder(minutes_before_start=minutes[i]))
-        
-        return reminders
-    
-    def createDatetimeObject(self, date):
-        pdtCal = pdt.Calendar()
-        now = datetime.now()
-        
-        return pdtCal.parseDT(date, now)
-
     def createRemindersObject2(self, parsedString):
         if  parsedString["reminders"] is None:
             return None
@@ -65,10 +51,7 @@ class CalendarFunctions:
 if __name__ == "__main__":
     calendar_functions = CalendarFunctions(calendar)
     # calendar_functions.printAllEvents()
-    # calendar_functions.createRemindersObject([15, 60, 360])
     # print(calendar.list_event_colors())
     args = calendar_parser.parse_args("-n ime -s thursday 7 am -e thursday 8 am -c 3 -r 1 2 3 -d 123<br/>".split())
     args = vars(args)
-    # print(**calendar_functions.eventToObject(args))
-    # print(" ".join(args["start"][0]))
     calendar_functions.eventToObject(args)
