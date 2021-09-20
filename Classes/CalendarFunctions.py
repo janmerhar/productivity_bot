@@ -38,6 +38,7 @@ class CalendarFunctions:
     
     def eventToObject(self, parsedString):
         eventOptions = parsedString
+        eventOptions["summary"] = " ".join(parsedString["summary"][0])
         eventOptions["reminders"] = self.createRemindersObject2(parsedString)
         eventOptions["start"], eventOptions["end"] = self.createDatetimeObject2(parsedString)
         # tale ne deluje pravilno za vec besedne stringe

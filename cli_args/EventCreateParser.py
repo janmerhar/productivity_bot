@@ -8,6 +8,8 @@ event_create.add_argument("-n",
                           "--name",
                           dest="summary",
                           type=str, 
+                          action="append",  # i can pass multiple values to thihs flag
+                          nargs="+",        # 1 or more argumets
                           required=True, 
                           help="Summary or event name")
 # start of event date/datetime
