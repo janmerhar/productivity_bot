@@ -1,11 +1,22 @@
 import discord
 from discord.ext import commands
+import datetime
 import json
 import os
 import platform
 import random
 import sys
 import aiohttp
+# import Google Calendar library
+from gcsa.event import Event
+from gcsa.google_calendar import GoogleCalendar
+from gcsa.recurrence import Recurrence, DAILY, SU, SA
+from beautiful_date import *
+# importing Classes folder
+from Classes.CalendarFunctions import CalendarFunctions 
+# importing cli_args folder
+from cli_args.EventCreateParser import event_create
+from cli_args.EventGetParser import event_get
 
 class Calendar(commands.Cog):
     def __init__(self, client):
@@ -67,7 +78,10 @@ class Calendar(commands.Cog):
         embed.set_thumbnail(
             url="https://ssl.gstatic.com/calendar/images/dynamiclogo_2020q4/calendar_17_2x.png"
         )
-
+    @commands.command(aliases=["cal-event"])
+    async def cal_event(self, ctx, *received_message):
+        message = " ".join(received_message)
+        print(message)
 
 def setup(client):
     client.add_cog(Calendar(client))

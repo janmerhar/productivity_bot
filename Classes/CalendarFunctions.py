@@ -1,4 +1,4 @@
-from cli_args.EventCreateParser import calendar_parser
+from cli_args.EventCreateParser import event_create
 from gCalExample import calendar
 from gcsa.event import Event
 from gcsa.google_calendar import GoogleCalendar
@@ -52,6 +52,6 @@ if __name__ == "__main__":
     calendar_functions = CalendarFunctions(calendar)
     # calendar_functions.printAllEvents()
     # print(calendar.list_event_colors())
-    args = calendar_parser.parse_args("-n ime -s thursday 7 am -e thursday 8 am -c 3 -r 1 2 3 -d 123<br/>".split())
+    args = event_create.parse_args("-n ime -s thursday 7 am -e thursday 8 am -c 3 -r 1 2 3 -d 123<br/>".split())
     args = vars(args)
     calendar_functions.eventToObject(args)

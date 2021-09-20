@@ -1,31 +1,31 @@
 # https://realpython.com/command-line-interfaces-python-argparse/
 import argparse
 
-calendar_parser = argparse.ArgumentParser()
+event_create = argparse.ArgumentParser()
 
 # summary == event name
-calendar_parser.add_argument("-n",
+event_create.add_argument("-n",
                           "--name",
                           dest="summary",
                           type=str, 
                           required=True, 
                           help="Summary or event name")
 # start of event date/datetime
-calendar_parser.add_argument("-s",
+event_create.add_argument("-s",
                           "--start",
                           action="append",  # i can pass multiple values to thihs flag
                           nargs="+",        # 1 or more argumets
                           required=True, 
                           help="Start of the event in date/datetime")
 # end of event date/datetime
-calendar_parser.add_argument("-e",
+event_create.add_argument("-e",
                           "--end",
                           action="append",  # i can pass multiple values to thihs flag
                           nargs="+",        # 1 or more argumets
                           required=True, 
                           help="End of the event in date/datetime")
 # color_id of the event color
-calendar_parser.add_argument("-c",
+event_create.add_argument("-c",
                           "--color",
                           dest="color_id",
                           required=True,
@@ -34,13 +34,13 @@ calendar_parser.add_argument("-c",
                           )
 
 # event description [optional]
-calendar_parser.add_argument("-d", 
+event_create.add_argument("-d", 
                           "--description",
                           action="append",  # i can pass multiple values to thihs flag
                           nargs="+",        # 1 or more argumets
                           help="Description of the event in optional HTML")
 # event location [optional]
-calendar_parser.add_argument("-l",
+event_create.add_argument("-l",
                           "--location",
                           help="Location of the event")
 # event recurrance [optional]: RRULE|RDATE|EXRULE|EXDATE
@@ -58,7 +58,7 @@ event_parser.add_argument("-r",
 # event reminders [optional]
 # see https://google-calendar-simple-api.readthedocs.io/en/latest/code/reminders.html#module-gcsa.reminders
 # TODO tukaj bom moral nekako narediti ukaz za kreiranje remimnderjev
-calendar_parser.add_argument("-r",
+event_create.add_argument("-r",
                           "--reminders",
                           dest="reminders",
                           action="append",  # i can pass multiple values to thihs flag
@@ -70,6 +70,6 @@ calendar_parser.add_argument("-r",
 # args = event_parser.parse_args(discordString.split())
 
 if __name__ == "__main__":
-    args = calendar_parser.parse_args("-n ime -s zacetek enkrat ze -e konec -c 69".split())
+    args = event_create.parse_args("-n ime -s zacetek enkrat ze -e konec -c 69".split())
     args = vars(args)
     print(args)
