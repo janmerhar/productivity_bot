@@ -18,6 +18,9 @@ from Classes.CalendarFunctions import CalendarFunctions
 from cli_args.EventCreateParser import event_create
 from cli_args.EventGetParser import event_get
 
+calendar = GoogleCalendar('myspdy@gmail.com')
+cfunctions = CalendarFunctions(calendar)
+
 class Calendar(commands.Cog):
     def __init__(self, client):
         self.client = client
@@ -82,6 +85,10 @@ class Calendar(commands.Cog):
     async def cal_event(self, ctx, *received_message):
         message = " ".join(received_message)
         print(message)
+
+        args = vars(event_create.parse_args(message.split()))
+        created_event = cfunctions.eventToObject(args)
+        await ctx.send(created_event.summary)
 
 def setup(client):
     client.add_cog(Calendar(client))

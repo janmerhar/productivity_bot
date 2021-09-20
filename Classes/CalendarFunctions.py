@@ -1,4 +1,5 @@
 from cli_args.EventCreateParser import event_create
+from cli_args.EventGetParser import event_get
 from gCalExample import calendar
 from gcsa.event import Event
 from gcsa.google_calendar import GoogleCalendar
@@ -39,13 +40,13 @@ class CalendarFunctions:
         eventOptions = parsedString
         eventOptions["reminders"] = self.createRemindersObject2(parsedString)
         eventOptions["start"], eventOptions["end"] = self.createDatetimeObject2(parsedString)
+        # tale ne deluje pravilno za vec besedne stringe
         eventOptions["description"] = self.createDescriptionObject2(parsedString)
 
         # potrebujem nekje handlanje exceptionov v primeru nepravilnih vnesenih podatkov o eventu
         event = Event(**eventOptions)
-        print(eventOptions)
+        # print(eventOptions)
         created_event = self.calendar.add_event(event)
-        print(created_event)
         return created_event
 
 if __name__ == "__main__":
