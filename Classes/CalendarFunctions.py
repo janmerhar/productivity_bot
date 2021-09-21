@@ -36,6 +36,9 @@ class CalendarFunctions:
     def createDescriptionObject2(self, parsedString):
         return " ".join(parsedString["description"][0]) if parsedString["description"] else None
     
+    def prettyDatetime(self, datetimeObject):
+        return datetimeObject.strftime("%d. %m. %Y %H:%M")
+
     def eventToObject(self, parsedString):
         eventOptions = parsedString
         eventOptions["summary"] = " ".join(parsedString["summary"][0])
@@ -58,4 +61,5 @@ if __name__ == "__main__":
     # print(calendar.list_event_colors())
     args = event_create.parse_args("-n ime -s thursday 7 am -e thursday 8 am -c 3 -r 1 2 3 -d 123<br/>".split())
     args = vars(args)
-    calendar_functions.eventToObject(args)
+    # calendar_functions.eventToObject(args)
+    print(calendar_functions.prettyDatetime(datetime.now()))

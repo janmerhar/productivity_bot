@@ -84,40 +84,28 @@ class Calendar(commands.Cog):
     @commands.command(aliases=["cal-event"])
     async def cal_event(self, ctx, *received_message):
         message = " ".join(received_message)
-        print(message)
 
         args = vars(event_create.parse_args(message.split()))
         created_event = cfunctions.eventToObject(args)
         
-        embed = discord.Embed(
-            title=":white_check_mark: Event added",
-            description="",
-            color=0x4086f4
-        ).set_thumbnail(
-            url="https://ssl.gstatic.com/calendar/images/dynamiclogo_2020q4/calendar_17_2x.png"
-        ).set_footer(text="Google Calendar Event")
+        embed = discord.Embed(title=":white_check_mark: Event added", description="", color=0x4086f4)
+        embed.set_thumbnail(url="https://ssl.gstatic.com/calendar/images/dynamiclogo_2020q4/calendar_17_2x.png")
+        embed.set_footer(text="Google Calendar Event")
+        # adding fields about event
+        embed.add_field(name="Event name", value=created_event.summary, inline=False)
+        embed.add_field(name="Start", value=cfunctions.prettyDatetime(created_event.start), inline=True)
+        embed.add_field(name="End", value=cfunctions.prettyDatetime(created_event.end), inline=True)
+        embed.add_field(name="Description", value=created_event.description if created_event.description else "[no description]", inline=False)
+        # reminders
+        if len(created_event.reminders) == 0:
+            embed.add_field(name=" -- Reminders -- ", value="[no reminders]", inline=False)
+        else:
+            embed.add_field(name=" -- Reminders -- ", value=f"{len(created_event.reminders)} reminders", inline=False)
+            # loop behaves strange
+            for i in range(0, len(created_event.reminders)):
+                index = i + 1
+                embed.add_field(name=f"reminder {index}", value=str(created_event.reminders[i].minutes_before_start) + " min", inline=True)
 
-        embed.add_field(
-            name="Event name",
-            value=created_event.summary,
-            inline=False,
-        )
-        # mogoce naredim converter za lepsi izpis datuma
-        embed.add_field(
-            name="Start",
-            value=created_event.start,
-            inline=True,
-        )
-        embed.add_field(
-            name="End",
-            value=created_event.end,
-            inline=True,
-        )
-        embed.add_field(
-            name="Description",
-            value=created_event.description if created_event.description else "[no description]",
-            inline=False
-        )
         await ctx.send(embed=embed)
 
 def setup(client):
