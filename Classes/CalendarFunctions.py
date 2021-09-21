@@ -54,12 +54,3 @@ class CalendarFunctions:
         return created_event
 
     # def 
-
-if __name__ == "__main__":
-    calendar_functions = CalendarFunctions(calendar)
-    # calendar_functions.printAllEvents()
-    # print(calendar.list_event_colors())
-    args = event_create.parse_args("-n ime -s thursday 7 am -e thursday 8 am -c 3 -r 1 2 3 -d 123<br/>".split())
-    args = vars(args)
-    # calendar_functions.eventToObject(args)
-    print(calendar_functions.prettyDatetime(datetime.now()))

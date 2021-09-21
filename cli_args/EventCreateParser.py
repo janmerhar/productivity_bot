@@ -47,7 +47,7 @@ event_create.add_argument("-l",
                           help="Location of the event")
 # event recurrance [optional]: RRULE|RDATE|EXRULE|EXDATE
 # see https://google-calendar-simple-api.readthedocs.io/en/latest/code/recurrence.html#module-gcsa.recurrence
-""""
+"""
 will have to rename the flags
 event_parser.add_argument("-r",
                           "--recurrance",
