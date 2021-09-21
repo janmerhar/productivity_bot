@@ -29,7 +29,7 @@ class Calendar(commands.Cog):
         for i in range(len(reactions)):
             await msg.add_reaction(reactions[i])
 
-    @commands.command()
+    @commands.command(aliases=["embed"])
     async def cal(self, ctx):
         server = ctx.message.guild
         time = str(server.created_at)
@@ -57,7 +57,7 @@ class Calendar(commands.Cog):
         embed.set_footer(
             text=f"Footer"
         )
-        # print(embed.to_dict())
+        print(embed.to_dict())
 
         # adding reactions on message
         msg = await ctx.send(embed=embed)
@@ -88,7 +88,37 @@ class Calendar(commands.Cog):
 
         args = vars(event_create.parse_args(message.split()))
         created_event = cfunctions.eventToObject(args)
-        await ctx.send(created_event.summary)
+        
+        embed = discord.Embed(
+            title=":white_check_mark: Event added",
+            description="",
+            color=0x4086f4
+        ).set_thumbnail(
+            url="https://ssl.gstatic.com/calendar/images/dynamiclogo_2020q4/calendar_17_2x.png"
+        ).set_footer(text="Google Calendar Event")
+
+        embed.add_field(
+            name="Event name",
+            value=created_event.summary,
+            inline=False,
+        )
+        # mogoce naredim converter za lepsi izpis datuma
+        embed.add_field(
+            name="Start",
+            value=created_event.start,
+            inline=True,
+        )
+        embed.add_field(
+            name="End",
+            value=created_event.end,
+            inline=True,
+        )
+        embed.add_field(
+            name="Description",
+            value=created_event.description if created_event.description else "[no description]",
+            inline=False
+        )
+        await ctx.send(embed=embed)
 
 def setup(client):
     client.add_cog(Calendar(client))
