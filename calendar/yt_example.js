@@ -44,11 +44,11 @@ const event = {
 
 calendar.events.insert({ calendarId: "primary", resource: event }, (err) => {
   // Check for errors and log them if they exist.
-  if (err) return console.error("Error Creating Calender Event:", err)
+  if (err) console.error("Error Creating Calender Event:", err)
   // Else log that the event was created.
-  return console.log("Calendar event successfully created.")
+  else console.log("Calendar event successfully created.")
 })
-exit()
+/*
 // Check if we a busy and have an event on our calendar for the same time.
 calendar.freebusy.query(
   {
@@ -82,3 +82,5 @@ calendar.freebusy.query(
     return console.log(`Sorry I'm busy...`)
   }
 )
+
+*/
