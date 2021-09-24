@@ -23,5 +23,8 @@
     "discord.js": "^13.1.0",
     "dotenv": "^10.0.0",
     "nodemon": "^2.0.12"
+  },
+  "dependencies": {
+    "googleapis": "^39.2.0"
   }
 }
