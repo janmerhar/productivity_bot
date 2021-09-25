@@ -1,10 +1,7 @@
 const { google } = require("googleapis")
 const { calendar } = require("./cal_connect")
 
-// Create a new event start date instance for temp uses in our calendar.
 const eventStartTime = new Date()
-
-// Create a new event end date instance for temp uses in our calendar.
 const eventEndTime = new Date()
 eventEndTime.setMinutes(eventEndTime.getMinutes() + 45)
 
