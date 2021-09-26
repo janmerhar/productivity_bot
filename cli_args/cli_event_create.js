@@ -1,12 +1,12 @@
 const { Command } = require("commander")
 const { CommandFunctions } = require("./CommandFunctions")
 
-const manipulatorManCommander = new Command()
+const eventCreate = new Command()
 
 /*
  * REQUIRED OPTIONS
  */
-manipulatorManCommander
+eventCreate
   .requiredOption(
     "-n, --summary, --name <strings...>",
     "Summary or event name",
@@ -31,7 +31,7 @@ manipulatorManCommander
 /*
  * OPTIONAL OPTIONS
  */
-manipulatorManCommander
+eventCreate
   .option(
     "-d, --description <strings...>",
     "Description of the event in optional HTML",
@@ -48,6 +48,9 @@ manipulatorManCommander
     CommandFunctions.joinThings
   ).choices(["RRULE", "RDATE", "EXRULE", "EXDATE"])
   */ .option(
+    // I might need different -re and -rp for
+    // email and popup reminders
+    // that will solve colaltion with --recurrance flag -r
     "-r, --reminders <strings...>",
     "Reminders of the event",
     CommandFunctions.joinThings
@@ -55,11 +58,7 @@ manipulatorManCommander
 
 const args =
   "-n Ime eventat -s tomorrow morning -e tomorrow evening -d tvoja mama ima ??? tako kot ga ima tale description"
-manipulatorManCommander.parse([
-  process.argv[0],
-  process.argv[1],
-  ...args.split(" "),
-])
-console.log(manipulatorManCommander.opts())
+eventCreate.parse([process.argv[0], process.argv[1], ...args.split(" ")])
+console.log(eventCreate.opts())
 
-module.exports = { manipulatorManCommander }
+module.exports = { eventCreate: eventCreate }
