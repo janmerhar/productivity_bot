@@ -25,7 +25,7 @@ eventQuery
  */
 eventQuery
   // preferably I want events from ALL calendars
-  .option("-cid, --calendarId <string>", "Calendar identifier")
+  .option("-cid, --calendarId <string>", "Calendar identifier", "primary")
   .option(
     "-r, --maxResults <number>",
     "Maximum number of events returned on one result page",

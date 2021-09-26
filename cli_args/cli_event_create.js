@@ -23,7 +23,7 @@ eventCreate
     CommandFunctions.joinThings
   )
   .requiredOption(
-    "-c, --color_id, --color_id <number>",
+    "-c, --colorId, --color_id <number>",
     "Color id of the event",
     1
   )
@@ -32,6 +32,7 @@ eventCreate
  * OPTIONAL OPTIONS
  */
 eventCreate
+  .option("-cid, --calendarId <string>", "Calendar identifier", "primary")
   .option(
     "-d, --description <strings...>",
     "Description of the event in optional HTML",

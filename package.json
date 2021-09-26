@@ -25,6 +25,7 @@
     "nodemon": "^2.0.12"
   },
   "dependencies": {
+    "chrono-node": "^2.3.2",
     "commander": "^8.2.0",
     "googleapis": "^39.2.0"
   }
