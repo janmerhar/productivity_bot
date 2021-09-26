@@ -46,10 +46,6 @@ class CalendarClasses {
   postEvent(argString) {
     let commanderArgs = this.returnCommanderOptions(eventCreate, argString)
 
-    const eventStartTime = new Date()
-    const eventEndTime = new Date()
-    eventEndTime.setMinutes(eventEndTime.getMinutes() + 45)
-
     commanderArgs.start = {
       dateTime: this.stringToDatetime(commanderArgs.start),
     }
@@ -57,7 +53,6 @@ class CalendarClasses {
       dateTime: this.stringToDatetime(commanderArgs.end),
     }
     // manjkajo reminderji
-    // nekaj ne dela pri insertu
     this.eventInsert({
       calendarId: commanderArgs.calendarId,
       resource: commanderArgs,
@@ -68,33 +63,12 @@ class CalendarClasses {
 }
 
 const calClasses = new CalendarClasses(calendar)
-/*
-const eventStartTime = new Date()
-const eventEndTime = new Date()
-eventEndTime.setMinutes(eventEndTime.getMinutes() + 45)
-calClasses
-  .eventInsert({
-    calendarId: "primary",
-    resource: {
-      summary: `Meeting with David`,
-      location: `3595 California St, San Francisco, CA 94118`,
-      description: `Meet with David to talk about the new client project and how to integrate the calendar for booking.`,
-      colorId: 1,
-      start: {
-        dateTime: eventStartTime,
-      },
-      end: {
-        dateTime: eventEndTime,
-      },
-    },
-  })
-  .then(() => console.log("OK"))
-  .catch((err) => console.error(err))
-*/
 
+/*
 calClasses.postEvent(
   "-n Ime iz CalendarClasses.js -s today 22.30 -e today 23.30 -d Kr tko nekaj da preverim<br>ce dela"
 )
+*/
 /*
 calClasses
   .eventList({
