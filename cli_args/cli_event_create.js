@@ -56,9 +56,11 @@ eventCreate
     CommandFunctions.joinThings
   )
 
+/*
 const args =
   "-n Ime eventat -s tomorrow morning -e tomorrow evening -d tvoja mama ima ??? tako kot ga ima tale description"
 eventCreate.parse([process.argv[0], process.argv[1], ...args.split(" ")])
 console.log(eventCreate.opts())
+*/
 
-module.exports = { eventCreate: eventCreate }
+module.exports = { eventCreate }

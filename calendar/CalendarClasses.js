@@ -1,4 +1,6 @@
 const { calendar } = require("./cal_connect")
+const { event_create } = require("../cli_args/cli_event_create")
+const { event_query } = require("../cli_args/cli_event_query")
 
 class CalendarClasses {
   constructor(calendar) {
@@ -19,10 +21,21 @@ class CalendarClasses {
     const calendars = this.calendar.calendarList.list()
     return calendars
   }
+  returnCommanderOptions(commanderClass, inputArgs) {
+    const argsArray = [
+      process.argv[0],
+      process.argv[1],
+      ...inputArgs.split(" "),
+    ]
+    commanderClass.parse(argsArray)
+
+    const options = commanderClass.opts()
+    return options
+  }
 }
 
-const calClasses = new CalendarClasses(calendar)
 /*
+const calClasses = new CalendarClasses(calendar)
 calClasses
   .eventList({
     calendarId: "primary",
@@ -39,6 +52,4 @@ calClasses
   })
 */
 
-module.exports = {
-  CalendarClasses,
-}
+module.exports = { CalendarClasses }

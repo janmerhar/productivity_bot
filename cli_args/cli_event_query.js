@@ -44,8 +44,10 @@ eventQuery
     CommandFunctions.joinThings
   )
 
+/*
 const args = "-s tomorrow morning -e tomorrow evening -o HEHE"
 eventQuery.parse([process.argv[0], process.argv[1], ...args.split(" ")])
 console.log(eventQuery.opts())
+*/
 
-module.exports = { eventQuery: eventQuery }
+module.exports = { eventQuery }
