@@ -2,3 +2,4 @@ cogs/*/
 google/*/
 token.json
 __pycache__/
+.env
