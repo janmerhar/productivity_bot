@@ -1,24 +1,28 @@
+# https://www.youtube.com/watch?v=-D2CvmHTqbE
 import discord
+import asyncio
 from discord.ext import commands
+from discord import app_commands
 import os
 
-client = commands.Bot(command_prefix = ".")
+from dotenv import dotenv_values
+env = dotenv_values(".env")
 
-# Nalganje cogs-ov
-@client.command()
-async def load(ctx, extension):
-    client.load_extension(f"cogs.{extension}")
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix=".", intents=intents)
 
-@client.command()
-async def unload(ctx, extension):
-    client.unload_extension(f"cogs.{extension}")
+@bot.event
+async def on_ready():
+    print("Online")
 
-for filename in os.listdir("./cogs"):
-    if filename.endswith(".py"):
-        client.load_extension(f"cogs.{filename[:-3]}")
+async def load():
+    for file in os.listdir("./cogs"):
+        if file.endswith(".py"):
+            await bot.load_extension(f"cogs.{file[:-3]}")
 
-@client.command()
-async def clear(ctx, ammount=5):
-    await ctx.channel.purge(limit=ammount)
+async def main():
+    await load()
+    await bot.start(env["DISCORD_TOKEN"])
 
-client.run("ODY1NTUyMjI0ODI1MjQ1Njk3.YPFqUw.rOrPem7DDCrbTV2CPr_wind0Ec8")
+asyncio.run(main())
