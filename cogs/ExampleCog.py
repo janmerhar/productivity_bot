@@ -6,6 +6,7 @@ import platform
 import random
 import sys
 import aiohttp
+from discord import app_commands
 
 class Example(commands.Cog):
     def __init__(self, client):
@@ -14,20 +15,20 @@ class Example(commands.Cog):
     # Events
     @commands.Cog.listener()
     async def on_ready(self):
-        print("Bot is ready to rumble")
+        print("Example cog loaded")
     
     # Commands
-    @commands.command()
-    async def ping(self, ctx):
+    @app_commands.command(name="ping", description="sends a ping")
+    async def ping(self, interaction: discord.Interaction):
         embed = discord.Embed(
             title="🏓 Pong!",
             description=f"The bot latency is {round(self.client.latency * 1000)}ms.",
             color=0x42F56C
         )
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(f"PONG!!!")
 
-    @commands.command(aliases=["botinfo"])
-    async def info(self, ctx):
+    @app_commands.command(name="botinfo", description="serves bot info")
+    async def info(self, interaction: discord.Interaction):
         embed = discord.Embed(
             description="Productivity bot",
             color=0x00FF00
@@ -40,13 +41,16 @@ class Example(commands.Cog):
             value=".",
             inline=False
         )
-        embed.set_footer(
-            text=f"Requested by {ctx.message.author}"
-        )
-        await ctx.send(embed=embed)
+        # embed.set_footer(
+            # text=f"Requested by {ctx.message.author}"
+        # )
+        # await ctx.send(embed=embed)
+        await interaction.response.send_message(f"BOTINFOOOo")
 
-    @commands.command(name="serverinfo")
-    async def serverinfo(self, ctx):
+    # NOT WORKING
+    @app_commands.command(name="serverinfo", description="serves server info")
+    async def serverinfo(self, interaction: discord.Interaction):
+        """
         server = ctx.message.guild
         roles = [x.name for x in server.roles]
         role_length = len(roles)
@@ -75,9 +79,12 @@ class Example(commands.Cog):
             text=f"Created at: {time}"
         )
         await ctx.send(embed=embed)
+        """
+        await interaction.response.send_message(f"SERVERINFOOOo")
     
-    @commands.command(aliases=["btc"])
-    async def bitcoin(self, ctx):
+    @app_commands.command(name="bitcoin", description="serves bitcoin info")
+    async def bitcoin(self, interaction: discord.Interaction):
+        """
         url = "https://api.coindesk.com/v1/bpi/currentprice/BTC.json"
 
         async with aiohttp.ClientSession() as session:
@@ -90,8 +97,12 @@ class Example(commands.Cog):
                 color=0xf2a900
             )
             await ctx.send(embed=embed)
-    @commands.command()
-    async def calendar(self, ctx):
+        """
+        await interaction.response.send_message(f"BITCOININFOOOo")
+
+    @app_commands.command(name="calendar", description="shows your calendar")
+    async def calendar(self, interaction: discord.Interaction):
+        """
         server = ctx.message.guild
         time = str(server.created_at)
         time = time.split(" ")
@@ -127,6 +138,8 @@ class Example(commands.Cog):
         await msg.add_reaction("🇨")
         await msg.add_reaction("🇩")
         await msg.add_reaction("🇪")
+        """
+        await interaction.response.send_message(f"calendar!!!")
 
-def setup(client):
-    client.add_cog(Example(client))
+async def setup(client):
+    await client.add_cog(Example(client), guilds=[discord.Object(id=864242668066177044)])
