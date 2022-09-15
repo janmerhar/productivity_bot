@@ -33,42 +33,17 @@ class TogglFunctions:
         res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries/current', headers={ 'Content-Type': 'application/json' }, auth=self.auth)
         return res.json()
 
-    # 
-    # Not working for now
-    # 
     def stopCurrentTimeEntry(self):
+        currentTask = self.getCurrentTimeEntry()
+
+        if currentTask is None:
+            return
+        
         time_entry_id = self.getCurrentTimeEntry()["id"]
         workspace_id = self.getCurrentTimeEntry()["wid"]
 
-        if time_entry_id is None:
-            return
-
-        # Mogoce moram tukaj dodati end time v ISO formatu
-        json_data = self.getCurrentTimeEntry()
-
-        res = requests.put('https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}/stop', json=json_data, auth=self.auth)
-        return res
-
-    def insertTimeEntry(self, entry):
-        pass
-
-    """
-    Not working for now
-    
-    Return 405 -> method not allowed
-    """
-    def stopCurrentTimeEntry(self):
-        time_entry_id = self.getCurrentTimeEntry()["id"]
-        workspace_id = self.getCurrentTimeEntry()["wid"]
-
-        if time_entry_id is None:
-            return
-
-        # Mogoce moram tukaj dodati end time v ISO formatu
-        json_data = self.getCurrentTimeEntry()
-
-        res = requests.put('https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}/stop', json=json_data, auth=self.auth)
-        return res
+        res = requests.patch(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}/stop', headers={ 'Content-Type': 'application/json' }, auth=self.auth)
+        return res.json()
 
     def insertTimeEntry(self, entry):
         pass
@@ -99,7 +74,6 @@ class TogglFunctions:
         return res.json()
 
     def getLastNTimeEntryHistory(self, n):
-
         res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries', headers={ 'Content-Type': 'application/json' }, auth=self.auth)
         return res.json()[0:n]
 
@@ -148,6 +122,7 @@ class TogglFunctions:
 
 if __name__ == "__main__":
     toggl = TogglFunctions(env["TOGGL_TOKEN"])
+    res = toggl.getCurrentTimeEntry()
     # res = toggl.stopCurrentTimeEntry()
     # res = toggl.getTimeEntryHistory("2022-08-29", "2022-08-29")
     # res = toggl.getLastNTimeEntryHistory(5)
@@ -155,5 +130,5 @@ if __name__ == "__main__":
     # res = toggl.createProject(workspace_id=5175304, name="Testni projekt iz pythona2", is_private=True)
     # res = toggl.getAllProjects()
     # res = toggl.getProjectsByWorkspace(5175304)
-    res = toggl.getProjectById(5175304, 167988514)
+    # res = toggl.getProjectById(5175304, 167988514)
     print(res)
