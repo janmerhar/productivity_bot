@@ -13,6 +13,8 @@ class TogglFunctions:
         # save a default project/workspace id
         # and have functions to change them
 
+        # add implementation for API_KEY and email:passwd authentications
+
     # 
     # Authentication
     # https://developers.track.toggl.com/docs/authentication
@@ -28,10 +30,7 @@ class TogglFunctions:
         pass
 
     def getCurrentTimeEntry(self):
-        headers = {
-            'Content-Type': 'application/json',
-        }
-        res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries/current', headers=headers, auth=self.auth)
+        res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries/current', headers={ 'Content-Type': 'application/json' }, auth=self.auth)
         return res.json()
 
     # 
@@ -75,16 +74,12 @@ class TogglFunctions:
         pass
 
     def getTimeEntryHistory(self, start_date, end_date):
-        headers = {
-            'Content-Type': 'application/json',
-        }
-
         params = {
             'start_date': start_date,
             'end_date': end_date,
         }
 
-        res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries', params=params, headers=headers, auth=self.auth)
+        res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries', params=params, headers={ 'Content-Type': 'application/json' }, auth=self.auth)
         return res.json()
 
     def getTimeEntryHistory(self, start_date, end_date):
@@ -94,30 +89,18 @@ class TogglFunctions:
             tmp_date = parser.parse(start_date)
             tmp_date = tmp_date + datetime.timedelta(days=1)
             end_date = tmp_date.strftime("%Y-%m-%d")
-            
-        headers = {
-            'Content-Type': 'application/json',
-        }
 
         params = {
             'start_date': start_date,
             'end_date': end_date,
         }
 
-        res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries', params=params, headers=headers, auth=self.auth)
+        res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries', params=params, headers={ 'Content-Type': 'application/json' }, auth=self.auth)
         return res.json()
 
     def getLastNTimeEntryHistory(self, n):
-        headers = {
-            'Content-Type': 'application/json',
-        }
 
-        params = {
-            # 'start_date': start_date,
-            # 'end_date': end_date,
-        }
-
-        res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries', params=params, headers=headers, auth=self.auth)
+        res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries', headers={ 'Content-Type': 'application/json' }, auth=self.auth)
         return res.json()[0:n]
 
     # 
@@ -163,12 +146,6 @@ class TogglFunctions:
         res = requests.get(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects/{project_id}', headers={ 'Content-Type': 'application/json' }, auth=self.auth)
         return res.json()
 
-    def addEntryToProject(self, data):
-        pass
-
-    def addEntryToProject(self, data):
-        pass
-    
 if __name__ == "__main__":
     toggl = TogglFunctions(env["TOGGL_TOKEN"])
     # res = toggl.stopCurrentTimeEntry()
