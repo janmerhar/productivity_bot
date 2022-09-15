@@ -125,7 +125,8 @@ class TogglFunctions:
     # 
 
     def getWorkspaces(self):
-        pass
+        res = requests.get('https://api.track.toggl.com/api/v9/workspaces', headers={ 'Content-Type': 'application/json' }, auth=self.auth)
+        return res.json()
 
     # 
     # Projects
@@ -146,4 +147,5 @@ if __name__ == "__main__":
     # res = toggl.stopCurrentTimeEntry()
     # res = toggl.getTimeEntryHistory("2022-08-29", "2022-08-29")
     res = toggl.getLastNTimeEntryHistory(5)
+    res = toggl.getWorkspaces()
     print(res)
