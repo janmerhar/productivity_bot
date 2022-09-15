@@ -1,3 +1,5 @@
+# Color palette
+# https://colorswall.com/palette/72717/
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -59,6 +61,8 @@ class TogglCog(commands.Cog):
 
     """
     There are problems when field project_data['color'] doesn't have color defined
+    - add no timer availble
+    - stop current timer, if availble and start new one
     """
     @app_commands.command(name="timer", description="toggl get active timer")
     async def timer(self, interaction: discord.Interaction):
@@ -82,14 +86,44 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
+    """
+    1) Check if timer is active
+    2) Add stop comfirmation
+    """
     @app_commands.command(name="stop", description="toggl stop active time")
     async def stop(self, interaction: discord.Interaction):
-        pass
+        timer_data = self.toggl.getCurrentTimeEntry()
+
+        # Already stopped timer
+        if timer_data is None:
+            description = "No timer running"
+        # Timer to be stopped
+        else:
+            description = "Timer stopped"
+
+        embed = discord.Embed(
+            title=":stopwatch: Toggl Stop Timer",
+            color=discord.Colour.from_str("#552d4f"),
+            description=description
+        )
+
+        embed.set_thumbnail(
+            url="https://i.imgur.com/Cmjl4Kb.png"
+        )
+
+        if timer_data is not None:
+            project_data = self.toggl.getProjectById(timer_data["workspace_id"], timer_data["project_id"])
+            timer_stop = self.toggl.stopCurrentTimeEntry()
+            embed.add_field(name="Projekt", value=project_data["name"], inline=False)
+            # This field causes chrashes
+            # by passing timer_data[]
+            # embed.add_field(name="Time passed", value=timer_data["start"], inline=False)
+
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="inserttime", description="toggl insert past time")
     async def inserttimer(self, interaction: discord.Interaction):
         pass
-
 
     @app_commands.command(name="timerhistory", description="toggl get timer history")
     async def timerhistory(self, interaction: discord.Interaction):
