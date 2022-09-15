@@ -53,10 +53,11 @@ class TogglFunctions:
     def insertTimeEntry(self, entry):
         pass
 
-    # 
-    # Not working for now
-    # 
-    # Return 405 -> method not allowed
+    """
+    Not working for now
+    
+    Return 405 -> method not allowed
+    """
     def stopCurrentTimeEntry(self):
         time_entry_id = self.getCurrentTimeEntry()["id"]
         workspace_id = self.getCurrentTimeEntry()["wid"]
@@ -133,10 +134,36 @@ class TogglFunctions:
     # https://developers.track.toggl.com/docs/projects
     # 
 
-    def createProject(self, data):
-        pass
+    def createProject(self, workspace_id, name, active=True, auto_estimates=None, billable=None, 
+                      color=None, currency="EUR", estimated_hours=1, is_private=None, template=None):
+        json_data = {
+            'active': active,
+            'auto_estimates': auto_estimates,
+            'billable': billable,
+            'color': color,
+            'currency': currency,
+            'estimated_hours': estimated_hours,
+            'is_private': is_private,
+            'name': name,
+            'template': template,
+        }
 
-    def getProjects(self, id=None, workspace=None):
+        res = requests.post(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects', json=json_data, auth=self.auth)
+        return res.json()
+
+    def getAllProjects(self):
+        res = requests.get('https://api.track.toggl.com/api/v9/me/projects', headers={ 'Content-Type': 'application/json' }, auth=self.auth)
+        return res.json()
+
+    def getProjectsByWorkspace(self, workspace_id):
+        res = requests.get(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects', headers={ 'Content-Type': 'application/json' }, auth=self.auth)
+        return res.json()
+
+    def getProjectById(self, workspace_id, project_id):
+        res = requests.get(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects/{project_id}', headers={ 'Content-Type': 'application/json' }, auth=self.auth)
+        return res.json()
+
+    def addEntryToProject(self, data):
         pass
 
     def addEntryToProject(self, data):
@@ -146,6 +173,10 @@ if __name__ == "__main__":
     toggl = TogglFunctions(env["TOGGL_TOKEN"])
     # res = toggl.stopCurrentTimeEntry()
     # res = toggl.getTimeEntryHistory("2022-08-29", "2022-08-29")
-    res = toggl.getLastNTimeEntryHistory(5)
-    res = toggl.getWorkspaces()
+    # res = toggl.getLastNTimeEntryHistory(5)
+    # res = toggl.aboutMe()
+    # res = toggl.createProject(workspace_id=5175304, name="Testni projekt iz pythona2", is_private=True)
+    # res = toggl.getAllProjects()
+    # res = toggl.getProjectsByWorkspace(5175304)
+    res = toggl.getProjectById(5175304, 167988514)
     print(res)
