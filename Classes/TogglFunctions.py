@@ -37,23 +37,26 @@ class TogglFunctions:
     """
 
     def startCurrentTimeEntry(self, workspace_id, billable=None, description=None,
-                              pid=None, start=None, start_date=None, tags=[], tid=None,):
+                              pid=None, tags=[], tid=None,):
 
         start_date = datetime.datetime.utcnow().replace(
             tzinfo=datetime.timezone.utc).isoformat()
 
         json_data = {
             'created_with': 'API example code',
+            'workspace_id': workspace_id,
+            'project_id': pid,
             'pid': pid,
             'tid': tid,
             'description': description,
             'tags': tags,
             'billable': billable,
-            'duration': -1654686174,
+            'duration': -1663338980,
             'wid': workspace_id,
             'at': start_date,
+            "server_deleted_at": None,
             'start': start_date,
-            'stop': None,
+            "duronly": False,
         }
 
         res = requests.post(
@@ -192,15 +195,15 @@ class TogglFunctions:
 
 if __name__ == "__main__":
     toggl = TogglFunctions(env["TOGGL_TOKEN"])
-    # res = toggl.getCurrentTimeEntry()
+    res = toggl.getCurrentTimeEntry()
     # res = toggl.stopCurrentTimeEntry()
     # res = toggl.getTimeEntryHistory("2022-08-29", "2022-08-29")
     # res = toggl.getLastNTimeEntryHistory(5)
     # res = toggl.aboutMe()
-    # res = toggl.createProject(workspace_id=5175304, name="Testni projekt iz pythona2", is_private=True)
+    # res = toggl.createProject(workspace_id=5175304, name="Testni projekt iz pythona2 asdfds", is_private=True)
     # res = toggl.getAllProjects()
     # res = toggl.getProjectsByWorkspace(5175304)
-    res = toggl.getProjectById(5175304, 167988514)
+    # res = toggl.getProjectById(5175304, 185503661)
     # res = toggl.insertTimeEntry(5175304, description="Task iz nekje", pid=168206660, duration=1200, start="2022-09-15T12:12:12.000Z")
     # res = toggl.startCurrentTimeEntry(5175304, description="Tekoci task iz nekje69", pid=168206660,)
     print(json.dumps(res, indent=2))
