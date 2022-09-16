@@ -172,12 +172,36 @@ class TogglCog(commands.Cog):
     #
 
     @app_commands.command(name="newproject", description="toggl create new project")
-    async def newproject(self, interaction: discord.Interaction):
-        pass
+    async def newproject(self, interaction: discord.Interaction, name: str):
+        project = self.toggl.createProject(
+            self.toggl.aboutMe()["default_workspace_id"], name=name)
 
-    @app_commands.command(name="projects", description="toggl get all projects")
-    async def projects(self, interaction: discord.Interaction):
-        pass
+        if type(project) != str:
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Create Project Details",
+                description=name
+            )
+
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+            embed.add_field(name="Project ID",
+                            value=project["id"], inline=True)
+            embed.add_field(name="Workspace ID",
+                            value=project["wid"], inline=True)
+            embed.add_field(name="Creation date",
+                            value=project["at"], inline=False)
+        else:
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Create Project Details",
+                description=f"Project {name} already exists"
+            )
+
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+
+        await interaction.response.send_message(embed=embed)
 
     """
     WHEN LOOPING OVER RECEIVED PROJECTS
