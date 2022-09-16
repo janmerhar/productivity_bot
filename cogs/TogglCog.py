@@ -15,6 +15,7 @@ from Classes.TogglFunctions import TogglFunctions
 from dotenv import dotenv_values
 env = dotenv_values(".env")
 
+
 class TogglCog(commands.Cog):
     def __init__(self, client):
         self.client = client
@@ -27,9 +28,9 @@ class TogglCog(commands.Cog):
 
     # Commands
 
-    # 
+    #
     # Authentication
-    # 
+    #
     @app_commands.command(name="aboutme", description="toggl about me")
     async def aboutme(self, interaction: discord.Interaction):
         data = self.toggl.aboutMe()
@@ -47,14 +48,16 @@ class TogglCog(commands.Cog):
         embed.add_field(name="Full name", value=data["fullname"], inline=False)
 
         embed.add_field(name="Timezone", value=data["timezone"], inline=False)
-        embed.add_field(name="Registration date", value=data["created_at"], inline=False)
-        embed.add_field(name="Default workspace ID", value=data["default_workspace_id"], inline=False)
-        
+        embed.add_field(name="Registration date",
+                        value=data["created_at"], inline=False)
+        embed.add_field(name="Default workspace ID",
+                        value=data["default_workspace_id"], inline=False)
+
         await interaction.response.send_message(embed=embed)
 
-    # 
+    #
     # Tracking
-    # 
+    #
     @app_commands.command(name="start", description="toggl start timer")
     async def start(self, interaction: discord.Interaction):
         pass
@@ -67,7 +70,8 @@ class TogglCog(commands.Cog):
     @app_commands.command(name="timer", description="toggl get active timer")
     async def timer(self, interaction: discord.Interaction):
         timer_data = self.toggl.getCurrentTimeEntry()
-        project_data = self.toggl.getProjectById(timer_data["workspace_id"], timer_data["project_id"])
+        project_data = self.toggl.getProjectById(
+            timer_data["workspace_id"], timer_data["project_id"])
 
         if project_data['color'] is None:
             project_data['color'] = "#000000"
@@ -81,8 +85,10 @@ class TogglCog(commands.Cog):
             url="https://i.imgur.com/Cmjl4Kb.png"
         )
 
-        embed.add_field(name="Projekt", value=project_data["name"], inline=False)
-        embed.add_field(name="Time passed", value=timer_data["start"], inline=False)
+        embed.add_field(
+            name="Projekt", value=project_data["name"], inline=False)
+        embed.add_field(name="Time passed",
+                        value=timer_data["start"], inline=False)
 
         await interaction.response.send_message(embed=embed)
 
@@ -112,9 +118,11 @@ class TogglCog(commands.Cog):
         )
 
         if timer_data is not None:
-            project_data = self.toggl.getProjectById(timer_data["workspace_id"], timer_data["project_id"])
+            project_data = self.toggl.getProjectById(
+                timer_data["workspace_id"], timer_data["project_id"])
             timer_stop = self.toggl.stopCurrentTimeEntry()
-            embed.add_field(name="Projekt", value=project_data["name"], inline=False)
+            embed.add_field(
+                name="Projekt", value=project_data["name"], inline=False)
             # This field causes chrashes
             # by passing timer_data[]
             # embed.add_field(name="Time passed", value=timer_data["start"], inline=False)
@@ -131,7 +139,7 @@ class TogglCog(commands.Cog):
     - I suspect that Discord's servers timeout the bot, since it takes too long time
     """
     @app_commands.command(name="timerhistory", description="toggl get timer history")
-    async def timerhistory(self, interaction: discord.Interaction, n:int):
+    async def timerhistory(self, interaction: discord.Interaction, n: int):
         history = self.toggl.getLastNTimeEntryHistory(n)
 
         embed = discord.Embed(
@@ -145,31 +153,32 @@ class TogglCog(commands.Cog):
         )
 
         for timer in history:
-            project_data = self.toggl.getProjectById(timer["workspace_id"], timer["project_id"])
+            project_data = self.toggl.getProjectById(
+                timer["workspace_id"], timer["project_id"])
 
             project = project_data["name"] if project_data["name"] is not None else "<no project name>"
-            name = timer["description"] if len(timer["description"]) > 0 else "<no description>"
+            name = timer["description"] if len(
+                timer["description"]) > 0 else "<no description>"
             duration = f"{timer['duration'] // 60} minutes"
 
             embed.add_field(name="Project", value=project, inline=True)
             embed.add_field(name="Name", value=name, inline=True)
             embed.add_field(name="Duration", value=duration, inline=True)
-        
+
         await interaction.response.send_message(embed=embed)
 
-    # 
-    # Workspace
-    # 
-    # @app_commands.command(name="", description="")
-    # async def (self, interaction: discord.Interaction):
-        # pass
-
-    # 
+    #
     # Projects
-    # 
+    #
+
     # @app_commands.command(name="", description="")
     # async def (self, interaction: discord.Interaction):
-        # pass
+    #     pass
+
+    # @app_commands.command(name="", description="")
+    # async def (self, interaction: discord.Interaction):
+    #     pass
+
 
 async def setup(client):
     await client.add_cog(TogglCog(client), guilds=[discord.Object(id=864242668066177044)])
