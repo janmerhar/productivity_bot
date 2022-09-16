@@ -171,13 +171,17 @@ class TogglCog(commands.Cog):
     # Projects
     #
 
-    # @app_commands.command(name="", description="")
-    # async def (self, interaction: discord.Interaction):
-    #     pass
+    @app_commands.command(name="newproject", description="toggl create new project")
+    async def newproject(self, interaction: discord.Interaction):
+        pass
 
-    # @app_commands.command(name="", description="")
-    # async def (self, interaction: discord.Interaction):
-    #     pass
+    @app_commands.command(name="projects", description="toggl get all projects")
+    async def projects(self, interaction: discord.Interaction):
+        pass
+
+    @app_commands.command(name="getproject", description="toggl get project by id")
+    async def getproject(self, interaction: discord.Interaction, id: int):
+        pass
 
 
 async def setup(client):
