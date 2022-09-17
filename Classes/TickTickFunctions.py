@@ -1,3 +1,4 @@
+from shutil import register_unpack_format
 from ticktick.oauth2 import OAuth2        # OAuth2 Manager
 from ticktick.api import TickTickClient   # Main Interface
 
@@ -17,9 +18,7 @@ class TickTickFunctions:
 
     """
     - builder(self, ...)
-    - complete(self, task)
     - dates(self, start, due=None, tz=None)
-    - delete(self, task)
     - get_completed(self, start, end=None, full=True, tz=None)
     - get_from_project(self, project)
     - make_subtask(self, obj, parent)
@@ -28,6 +27,21 @@ class TickTickFunctions:
     - update(self, task)
     """
 
+    def completeTask(self, task_title):
+        task = self.client.get_by_fields(title=task_title, search="tasks")
+        if task == []:
+            return None
+
+        completed_task = self.client.task.complete(task)
+        return completed_task
+
+    def deleteTask(self, task_title):
+        task = self.client.get_by_fields(title=task_title, search="tasks")
+        if task == []:
+            return None
+
+        completed_task = self.client.task.delete(task)
+        return completed_task
     #
     # Projects
     # https://lazeroffmichael.github.io/ticktick-py/usage/projects/
@@ -66,5 +80,12 @@ class TickTickFunctions:
 
 
 if __name__ == '__main__':
+    from dotenv import dotenv_values
+    env = dotenv_values(".env")
+
     ticktick = TickTickFunctions(
-        email, password, client_id, client_secret, uri)
+        env["TICK_EMAIL"], env["TICK_PASSWORD"], env["TICK_ID"], env["TICK_SECRET"], env["TICK_URI"])
+
+    # res = ticktick.completeTask("test task")
+    res = ticktick.deleteTask("test task")
+    print(res)
