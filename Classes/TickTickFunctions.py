@@ -1,6 +1,6 @@
-from shutil import register_unpack_format
 from ticktick.oauth2 import OAuth2        # OAuth2 Manager
 from ticktick.api import TickTickClient   # Main Interface
+import datetime
 
 
 class TickTickFunctions:
@@ -19,11 +19,21 @@ class TickTickFunctions:
     """
     - builder(self, ...)
     - dates(self, start, due=None, tz=None)
-    - make_subtask(self, obj, parent)
     - move(self, obj, new)
     - move_all(self, old, new)
     - update(self, task)
     """
+
+    def createTask(self, title, projectId=None, content=None, desc=None, allDay=None, startDate=None, dueDate=None, timeZone=None, reminders=None, repeat=None, priority=None, sortOrder=None, items=None):
+        task = self.client.task.builder(title, projectId=projectId, content=content, desc=desc, allDay=allDay, startDate=startDate,
+                                        dueDate=dueDate, timeZone=timeZone, reminders=reminders, repeat=repeat, priority=priority, sortOrder=sortOrder, items=items)
+        newTask = self.client.task.create(task)
+        return newTask
+
+    def createSubtask(self, task, parent):
+        subtask = self.client.task.make_subtask(task, parent)
+
+        return subtask
 
     def completeTask(self, task_title):
         task = self.client.get_by_fields(title=task_title, search="tasks")
@@ -126,6 +136,7 @@ if __name__ == '__main__':
     # res = ticktick.tasksFromProject("🍔Hrana")
     # res = ticktick.createProject(name="projekt")
     # res = ticktick.getProjectByName("🚧Projekti")
-    res = ticktick.getProjectById("613930938f08ae2c444a64a7")
+    # res = ticktick.getProjectById("613930938f08ae2c444a64a7")
+    # res = ticktick.createSubtask(ticktick.createTask(title="Child task"), ticktick.createTask(title="Parent task")["id"],)
 
     print(json.dumps(res, indent=2))
