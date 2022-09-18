@@ -39,6 +39,30 @@ class TickTickCog(commands.Cog):
     # Tasks
     #
 
+    @app_commands.command(name="newtask", description="TickTick add new task")
+    async def newtask(self, interaction: discord.Interaction):
+        pass
+
+    @app_commands.command(name="newsubtask", description="TickTick add new subtask")
+    async def newsubtask(self, interaction: discord.Interaction):
+        pass
+
+    @app_commands.command(name="complete", description="TickTick complete a task")
+    async def complete(self, interaction: discord.Interaction):
+        pass
+
+    @app_commands.command(name="updatetask", description="TickTick update a task")
+    async def updatetask(self, interaction: discord.Interaction):
+        pass
+
+    @app_commands.command(name="movetask", description="TickTick move a task to other list")
+    async def movetask(self, interaction: discord.Interaction):
+        pass
+
+    @app_commands.command(name="deletetask", description="TickTick delete task")
+    async def deletetask(self, interaction: discord.Interaction):
+        pass
+
     """
     Implement:
     - Better printout for reminders
