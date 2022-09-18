@@ -58,9 +58,41 @@ class TogglCog(commands.Cog):
     #
     # Tracking
     #
+    """
+    MAYBE WOULD BE NICE TO HAVE A WAY OF TELLING USER THAT PREVIOUS TIMER HAS BEEN AUTO STOPPED
+    """
     @app_commands.command(name="start", description="toggl start timer")
-    async def start(self, interaction: discord.Interaction):
-        pass
+    async def start(self, interaction: discord.Interaction, project_id: int, description: str = None):
+        workspace_id = self.toggl.aboutMe()["default_workspace_id"]
+        curr_timer = self.toggl.getCurrentTimeEntry()
+
+        # if curr_timer is not None:
+        # await self.stop(interaction)
+
+        new_time = self.toggl.startCurrentTimeEntry(
+            workspace_id, description=description, pid=project_id,)
+
+        project = self.toggl.getProjectById(
+            workspace_id=workspace_id, project_id=project_id)
+
+        embed = discord.Embed(
+            title=":stopwatch: Toggl Start Timer",
+            color=discord.Colour.from_str(project["color"]),
+        )
+        embed.set_thumbnail(
+            url="https://i.imgur.com/Cmjl4Kb.png"
+        )
+
+        embed.add_field(
+            name="Project ID", value=project["id"], inline=False)
+        embed.add_field(
+            name="Project name", value=project["name"], inline=False)
+        embed.add_field(
+            name="Timer description", value=new_time["description"], inline=False)
+        embed.add_field(
+            name="Timer start", value=new_time["start"], inline=False)
+
+        await interaction.response.send_message(embed=embed)
 
     """
     There are problems when field project_data['color'] doesn't have color defined
@@ -170,7 +202,6 @@ class TogglCog(commands.Cog):
     #
     # Projects
     #
-
     @app_commands.command(name="newproject", description="toggl create new project")
     async def newproject(self, interaction: discord.Interaction, name: str):
         project = self.toggl.createProject(
