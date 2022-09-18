@@ -30,11 +30,6 @@ class TogglFunctions:
     # Tracking
     # https://developers.track.toggl.com/docs/tracking
     #
-    """
-    FOR NOW IT DOESN'T ALLOW US TO CREATE TIME ENTRY W/O EXPIRATION DATE
-    SAME PROBLEM HAPPENS WITH CURL COMMANDS
-    - lahko kopiram podatke iz currentTimeEntry() in potem tako naprej testiram
-    """
 
     def startCurrentTimeEntry(self, workspace_id, billable=None, description=None,
                               pid=None, tags=[], tid=None,):
@@ -205,5 +200,7 @@ if __name__ == "__main__":
     # res = toggl.getProjectsByWorkspace(5175304)
     # res = toggl.getProjectById(5175304, 185503661)
     # res = toggl.insertTimeEntry(5175304, description="Task iz nekje", pid=168206660, duration=1200, start="2022-09-15T12:12:12.000Z")
-    # res = toggl.startCurrentTimeEntry(5175304, description="Tekoci task iz nekje69", pid=168206660,)
+    # res = toggl.startCurrentTimeEntry(
+    # 5175304, description="Tekoci task iz nekje69", pid=168206660,)
     print(json.dumps(res, indent=2))
+    # print(type(res))
