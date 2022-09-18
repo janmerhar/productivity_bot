@@ -93,6 +93,18 @@ class TickTickFunctions:
             search="projects", obj_id=project_id)
         return project
 
+    def getProject(self, identifier):
+        by_name = self.getProjectByName(identifier)
+        if by_name == []:
+            by_id = self.getProjectById(identifier)
+
+            if by_id == []:
+                return None
+            else:
+                return by_id
+        else:
+            return by_name
+
     def createProject(self, name, color='random', project_type='TASK', folder_id=None):
         search = self.getProjectByName(name)
 
@@ -156,4 +168,6 @@ if __name__ == '__main__':
     # title="Child task"), ticktick.createTask(title="Parent task")["id"],)
     # res = ticktick.moveTask(ticktick.createTask(
     # title="Premakni v Projekti"), "613930938f08ae2c444a64a7")
+    res = ticktick.getProject("613930938f08ae2c444a64a7")
+    # print(res)
     print(json.dumps(res, indent=2))
