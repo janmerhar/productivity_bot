@@ -75,8 +75,6 @@ class TickTickFunctions:
     """
     - create_folder(self, name)
     - delete(self, ids)
-    - delete_folder(self, ids)
-    - update(self, obj) 
     - update_folder(self, obj) 
     """
 
@@ -105,6 +103,16 @@ class TickTickFunctions:
             name=name, color=color, project_type=project_type, folder_id=folder_id)
 
         return project
+
+    def updateProject(self, project):
+        updatedProject = self.client.project.update(project)
+
+        return updatedProject
+
+    def deleteProject(self, project_id):
+        deletedProject = self.client.project.delete(project_id)
+
+        return deletedProject
 
     #
     # Tags
