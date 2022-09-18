@@ -73,6 +73,11 @@ class TickTickFunctions:
             search="projects", name=name)
         return project
 
+    def getProjectById(self, project_id):
+        project = self.client.get_by_id(
+            search="projects", obj_id=project_id)
+        return project
+
     def createProject(self, name, color='random', project_type='TASK', folder_id=None):
         search = self.getProjectByName(name)
 
@@ -118,8 +123,9 @@ if __name__ == '__main__':
     # res = ticktick.completeTask("test task")
     # res = ticktick.deleteTask("test task")
     # res = ticktick.tasksFromProject("🍔Hrana")
-    res = ticktick.tasksFromProject("🍔Hrana")
+    # res = ticktick.tasksFromProject("🍔Hrana")
     # res = ticktick.createProject(name="projekt")
     # res = ticktick.getProjectByName("🚧Projekti")
+    res = ticktick.getProjectById("613930938f08ae2c444a64a7")
 
     print(json.dumps(res, indent=2))
