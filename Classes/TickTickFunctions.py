@@ -19,9 +19,7 @@ class TickTickFunctions:
     """
     - builder(self, ...)
     - dates(self, start, due=None, tz=None)
-    - move(self, obj, new)
     - move_all(self, old, new)
-    - update(self, task)
     """
 
     def createTask(self, title, projectId=None, content=None, desc=None, allDay=None, startDate=None, dueDate=None, timeZone=None, reminders=None, repeat=None, priority=None, sortOrder=None, items=None):
@@ -42,6 +40,15 @@ class TickTickFunctions:
 
         completed_task = self.client.task.complete(task)
         return completed_task
+
+    def updateTask(self, task):
+        updatedTask = self.client.task.update(task)
+        return updatedTask
+
+    def moveTask(self, task, new_project):
+        new_task = self.client.task.move(task, new_project)
+
+        return new_task
 
     def deleteTask(self, task_title):
         task = self.client.get_by_fields(title=task_title, search="tasks")
@@ -137,6 +144,8 @@ if __name__ == '__main__':
     # res = ticktick.createProject(name="projekt")
     # res = ticktick.getProjectByName("🚧Projekti")
     # res = ticktick.getProjectById("613930938f08ae2c444a64a7")
-    # res = ticktick.createSubtask(ticktick.createTask(title="Child task"), ticktick.createTask(title="Parent task")["id"],)
-
+    # res = ticktick.createSubtask(ticktick.createTask(
+    # title="Child task"), ticktick.createTask(title="Parent task")["id"],)
+    # res = ticktick.moveTask(ticktick.createTask(
+    # title="Premakni v Projekti"), "613930938f08ae2c444a64a7")
     print(json.dumps(res, indent=2))
