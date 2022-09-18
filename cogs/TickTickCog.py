@@ -231,6 +231,18 @@ class TickTickCog(commands.Cog):
 
             await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(name="newlist", description="TickTick create new list")
+    async def newlist(self, interaction: discord.Interaction):
+        pass
+
+    @app_commands.command(name="changelist", description="TickTick change list")
+    async def changelist(self, interaction: discord.Interaction, identifier: str):
+        pass
+
+    @app_commands.command(name="deletelist", description="TickTick delete list")
+    async def deletelist(self, interaction: discord.Interaction, identifier: str):
+        pass
+
 
 async def setup(client):
     await client.add_cog(TickTickCog(client), guilds=[discord.Object(id=864242668066177044)])
