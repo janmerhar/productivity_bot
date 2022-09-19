@@ -280,8 +280,47 @@ class TickTickCog(commands.Cog):
             await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="changelist", description="TickTick change list")
-    async def changelist(self, interaction: discord.Interaction, identifier: str):
-        pass
+    async def changelist(self, interaction: discord.Interaction, identifier: str, name: str = None, color: str = None, project_type: str = None, folder_id: str = None):
+        updatedProject = self.ticktick.updateProject(
+            identifier=identifier, name=name, color=color, project_type=project_type, folder_id=folder_id
+        )
+
+        if updatedProject is None:
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick Change List",
+                color=0xffb301,
+                description="List not found or changed"
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            await interaction.response.send_message(embed=embed)
+        else:
+            # print(updatedProject)
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick Change List",
+                color=discord.Colour.from_str(
+                    updatedProject["color"] if updatedProject["color"] is not None else "#ffb301")
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            embed.add_field(
+                name="List ID", value=updatedProject["id"], inline=False)
+            embed.add_field(
+                name="List name", value=updatedProject["name"], inline=False)
+            embed.add_field(
+                name="List color", value=updatedProject["color"], inline=False)
+            # embed.add_field(
+            #     name="List type", value=updatedProject["project_type"] if updatedProject["project_type"] is not None else "<no list type>", inline=False)
+            # embed.add_field(
+            #     name="List folder id", value=updatedProject["folder_id"] if updatedProject["folder_id"] is not None else "<no folder id>", inline=False)
+
+            await interaction.response.send_message(embed=embed)
 
     """
     Passing color does not work
