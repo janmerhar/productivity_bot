@@ -283,9 +283,46 @@ class TickTickCog(commands.Cog):
     async def changelist(self, interaction: discord.Interaction, identifier: str):
         pass
 
+    """
+    Passing color does not work
+    """
     @app_commands.command(name="deletelist", description="TickTick delete list")
     async def deletelist(self, interaction: discord.Interaction, identifier: str):
-        pass
+        project = self.ticktick.deleteProject(identifier)
+
+        if project is None:
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick Delete Project",
+                color=0xffb301,
+                description="Project does not exist"
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            await interaction.response.send_message(embed=embed)
+        else:
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick Delete Project",
+                # color=discord.Colour.from_str(
+                # project["color"] if project["color"] is not None else "#ffb301")
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            embed.add_field(
+                name="List ID", value=project["id"], inline=False)
+            embed.add_field(
+                name="List name", value=project["name"], inline=False)
+            embed.add_field(
+                name="List view mode", value=project["viewMode"], inline=False)
+            embed.add_field(
+                name="List kind", value=project["kind"], inline=False)
+
+            await interaction.response.send_message(embed=embed)
 
 
 async def setup(client):
