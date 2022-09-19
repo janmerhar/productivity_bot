@@ -121,7 +121,24 @@ class TickTickFunctions:
 
             return project
 
-    def updateProject(self, project):
+    def updateProject(self, identifier, name=None, color=None, project_type=None, folder_id=None):
+        project = self.getProject(identifier)
+
+        if project == {}:
+            return None
+
+        if name is None and color is None and project_type is None and folder_id is None:
+            return project
+
+        if name is not None:
+            project['name'] = name
+        if color is not None:
+            project['color'] = color
+        if project_type is not None:
+            project['project_type'] = project_type
+        if folder_id is not None:
+            project['folder_id'] = folder_id
+
         updatedProject = self.client.project.update(project)
 
         return updatedProject
@@ -171,8 +188,8 @@ if __name__ == '__main__':
     # res = ticktick.deleteTask("test task")
     # res = ticktick.tasksFromProject("🍔Hrana")
     # res = ticktick.tasksFromProject("🍔Hrana")
-    # res = ticktick.createProject(name="Later  list")
-    res = ticktick.deleteProject(name="Prazen list iz discorda69420")
+    # res = ticktick.createProject(name="Discord")
+    # res = ticktick.deleteProject(name="Prazen list iz discorda69420")
     # res = ticktick.getProjectByName("🚧Projekti")
     # res = ticktick.getProjectById("613930938f08ae2c444a64a7")
     # res = ticktick.createSubtask(ticktick.createTask(
@@ -180,5 +197,6 @@ if __name__ == '__main__':
     # res = ticktick.moveTask(ticktick.createTask(
     # title="Premakni v Projekti"), "613930938f08ae2c444a64a7")
     # res = ticktick.getProject("613930938f08ae2c444a64a7")
+    res = ticktick.updateProject(identifier="Discord renamed", name="Discord")
     # print(res)
     print(json.dumps(res, indent=2))
