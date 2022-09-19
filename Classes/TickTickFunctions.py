@@ -75,7 +75,7 @@ class TickTickFunctions:
     """
     - create_folder(self, name)
     - delete(self, ids)
-    - update_folder(self, obj) 
+    - update_folder(self, obj)
     """
 
     """
@@ -105,24 +105,34 @@ class TickTickFunctions:
         else:
             return by_name
 
+    """
+    Modify search to search by non-existent,
+    using self.getProject()
+    """
+
     def createProject(self, name, color='random', project_type='TASK', folder_id=None):
         search = self.getProjectByName(name)
 
-        if search == []:
-            None
+        if search != []:
+            return None
+        else:
+            project = self.client.project.create(
+                name=name, color=color, project_type=project_type, folder_id=folder_id)
 
-        project = self.client.project.create(
-            name=name, color=color, project_type=project_type, folder_id=folder_id)
-
-        return project
+            return project
 
     def updateProject(self, project):
         updatedProject = self.client.project.update(project)
 
         return updatedProject
 
-    def deleteProject(self, project_id):
-        deletedProject = self.client.project.delete(project_id)
+    def deleteProject(self, name):
+        search = self.getProject(name)
+
+        if search == {}:
+            return None
+
+        deletedProject = self.client.project.delete(search["id"])
 
         return deletedProject
 
@@ -135,12 +145,12 @@ class TickTickFunctions:
     - color(self, label, color)
     - create(self, label, color='random', parent=None, sort=None)
     - delete(self, label)
-    - merge(self, label, merged) 
+    - merge(self, label, merged)
     - nesting(self, child, parent)
     - rename(self, old, new)
     - sorting(self, label, sort)
     - update(self, obj)
-    - 
+    -
     """
 
     #
@@ -161,13 +171,14 @@ if __name__ == '__main__':
     # res = ticktick.deleteTask("test task")
     # res = ticktick.tasksFromProject("🍔Hrana")
     # res = ticktick.tasksFromProject("🍔Hrana")
-    # res = ticktick.createProject(name="projekt")
+    # res = ticktick.createProject(name="Later  list")
+    res = ticktick.deleteProject(name="Prazen list iz discorda69420")
     # res = ticktick.getProjectByName("🚧Projekti")
     # res = ticktick.getProjectById("613930938f08ae2c444a64a7")
     # res = ticktick.createSubtask(ticktick.createTask(
     # title="Child task"), ticktick.createTask(title="Parent task")["id"],)
     # res = ticktick.moveTask(ticktick.createTask(
     # title="Premakni v Projekti"), "613930938f08ae2c444a64a7")
-    res = ticktick.getProject("613930938f08ae2c444a64a7")
+    # res = ticktick.getProject("613930938f08ae2c444a64a7")
     # print(res)
     print(json.dumps(res, indent=2))
