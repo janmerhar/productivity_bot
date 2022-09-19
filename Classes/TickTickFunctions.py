@@ -22,6 +22,28 @@ class TickTickFunctions:
     - move_all(self, old, new)
     """
 
+    def getTaskByTitle(self, title):
+        project = self.client.get_by_fields(
+            search="tasks", title=title)
+        return project
+
+    def getTaskById(self, task_id):
+        project = self.client.get_by_id(
+            search="tasks", obj_id=task_id)
+        return project
+
+    def getTask(self, identifier):
+        by_name = self.getTaskByTitle(identifier)
+        if by_name == [] or by_name == {}:
+            by_id = self.getTaskById(identifier)
+
+            if by_id == [] or by_id == {}:
+                return None
+            else:
+                return by_id
+        else:
+            return by_name
+
     def createTask(self, title, projectId=None, content=None, desc=None, allDay=None, startDate=None, dueDate=None, timeZone=None, reminders=None, repeat=None, priority=None, sortOrder=None, items=None):
         task = self.client.task.builder(title, projectId=projectId, content=content, desc=desc, allDay=allDay, startDate=startDate,
                                         dueDate=dueDate, timeZone=timeZone, reminders=reminders, repeat=repeat, priority=priority, sortOrder=sortOrder, items=items)
@@ -197,6 +219,9 @@ if __name__ == '__main__':
     # res = ticktick.moveTask(ticktick.createTask(
     # title="Premakni v Projekti"), "613930938f08ae2c444a64a7")
     # res = ticktick.getProject("613930938f08ae2c444a64a7")
-    res = ticktick.updateProject(identifier="Discord renamed", name="Discord")
-    # print(res)
-    print(json.dumps(res, indent=2))
+    # res = ticktick.updateProject(identifier="Discord renamed", name="Discord")
+    # res = ticktick.getTaskByTitle("discord task")
+    # res = ticktick.getTaskById("78644c2cb7c51ec7c1ca5bb1")
+    res = ticktick.getTask("discord task")
+    print(res)
+    # print(json.dumps(res, indent=2))
