@@ -3,3 +3,4 @@ google/*/
 token.json
 __pycache__/
 .env
+.token-oauth
