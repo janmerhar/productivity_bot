@@ -4,3 +4,7 @@ token.json
 __pycache__/
 .env
 .token-oauth
+
+# GCSA authentication files
+credentials.json
+token.pickle
