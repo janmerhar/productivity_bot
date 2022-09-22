@@ -1,3 +1,5 @@
+import pymongo
+from pymongo import MongoClient
 from typing import Dict
 from toggl.TogglPy import Toggl
 import requests
@@ -17,11 +19,17 @@ class TogglFunctions:
         # and have functions to change them
 
         # add implementation for API_KEY and email:passwd authentications
+        client = pymongo.MongoClient(
+            f"mongodb+srv://{env['MONGO_USERNAME']}:{env['MONGO_PASSWORD']}@cluster0.puvwbmu.mongodb.net/?retryWrites=true&w=majority")
+        self.mongo = client["productivity_bot"]["custom_commands"]
+
+        self.custom_commands = []
 
     #
     # Authentication
     # https://developers.track.toggl.com/docs/authentication
     #
+
     def aboutMe(self):
         res = requests.get(
             'https://api.track.toggl.com/api/v9/me', auth=self.auth)
@@ -139,6 +147,24 @@ class TogglFunctions:
                            headers={'Content-Type': 'application/json'}, auth=self.auth)
         return res.json()[0:n]
 
+    def saveTimer(self, command, workspace_id, billable=None, description=None,
+                  pid=None, tags=[], tid=None,):
+        data = {
+            "command": command,
+            "application": "toggl",
+            "param": {
+                "workspace_id": workspace_id,
+                "billable": billable,
+                "description": description,
+                "pid": pid,
+                "tags": tags,
+                "tid": tid
+            }
+        }
+
+        res = self.mongo.insert_one(data)
+        return res.inserted_id
+
     #
     # Workspace
     # https://developers.track.toggl.com/docs/workspace
@@ -190,7 +216,7 @@ class TogglFunctions:
 
 if __name__ == "__main__":
     toggl = TogglFunctions(env["TOGGL_TOKEN"])
-    res = toggl.getCurrentTimeEntry()
+    # res = toggl.getCurrentTimeEntry()
     # res = toggl.stopCurrentTimeEntry()
     # res = toggl.getTimeEntryHistory("2022-08-29", "2022-08-29")
     # res = toggl.getLastNTimeEntryHistory(5)
@@ -202,5 +228,7 @@ if __name__ == "__main__":
     # res = toggl.insertTimeEntry(5175304, description="Task iz nekje", pid=168206660, duration=1200, start="2022-09-15T12:12:12.000Z")
     # res = toggl.startCurrentTimeEntry(
     # 5175304, description="Tekoci task iz nekje69", pid=168206660,)
-    print(json.dumps(res, indent=2))
-    # print(type(res))
+    # res = toggl.saveTimer(command="Test command", workspace_id=5175304,
+    #   description="Testiranje komand iz mongoDB", pid=185503661,)
+    # print(json.dumps(res, indent=2))
+    print(type(res))
