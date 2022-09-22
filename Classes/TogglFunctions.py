@@ -165,6 +165,16 @@ class TogglFunctions:
         res = self.mongo.insert_one(data)
         return res.inserted_id
 
+    def updateSavedTimers(self):
+        search = {
+            "application": "toggl"
+        }
+
+        commands = list(self.mongo.find(search))
+        self.custom_commands = commands
+
+        return commands
+
     #
     # Workspace
     # https://developers.track.toggl.com/docs/workspace
@@ -230,5 +240,7 @@ if __name__ == "__main__":
     # 5175304, description="Tekoci task iz nekje69", pid=168206660,)
     # res = toggl.saveTimer(command="Test command", workspace_id=5175304,
     #   description="Testiranje komand iz mongoDB", pid=185503661,)
+    res = toggl.updateSavedTimers()
     # print(json.dumps(res, indent=2))
-    print(type(res))
+    # print(toggl.custom_commands)
+    # print(res)
