@@ -163,6 +163,8 @@ class TogglFunctions:
         }
 
         res = self.mongo.insert_one(data)
+        self.updateSavedTimers()
+
         return res.inserted_id
 
     def updateSavedTimers(self):
