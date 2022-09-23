@@ -7,3 +7,5 @@ gcsa
 parsedatetime
 python-dotenv
 ticktick-py
+pymongo
+dnspython
