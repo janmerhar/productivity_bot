@@ -24,6 +24,7 @@ class TogglFunctions:
         self.mongo = client["productivity_bot"]["custom_commands"]
 
         self.custom_commands = []
+        self.updateSavedTimers()
 
     #
     # Authentication
@@ -147,11 +148,17 @@ class TogglFunctions:
                            headers={'Content-Type': 'application/json'}, auth=self.auth)
         return res.json()[0:n]
 
+    #
+    # Saved timers
+    # mongoDB
+    #
+
     def saveTimer(self, command, workspace_id, billable=None, description=None,
                   pid=None, tags=[], tid=None,):
         data = {
             "command": command,
             "application": "toggl",
+            "number_of_runs": 0,
             "param": {
                 "workspace_id": workspace_id,
                 "billable": billable,
@@ -176,6 +183,27 @@ class TogglFunctions:
         self.custom_commands = commands
 
         return commands
+
+    def startSavedTimer(self, command):
+        search_locally = list(
+            filter(lambda el: el["command"] == command, self.custom_commands))
+
+        if len(search_locally) == 0:
+            return None
+
+        self.startCurrentTimeEntry(**search_locally[0]["param"])
+        # Increment number_of_runs
+        search_param = {"_id": search_locally[0]["_id"]}
+        update_param = {"$inc": {"number_of_runs": 1}}
+
+        res = self.mongo.update_one(search_param, update_param)
+        return search_locally[0]["param"]
+
+    # def mostCommonlyUsedTimers():
+        # pass
+
+    # def removeTimer(command)
+        # pass
 
     #
     # Workspace
@@ -217,12 +245,12 @@ class TogglFunctions:
 
     def getProjectsByWorkspace(self, workspace_id):
         res = requests.get(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects', headers={
-                           'Content-Type': 'application/json'}, auth=self.auth)
+            'Content-Type': 'application/json'}, auth=self.auth)
         return res.json()
 
     def getProjectById(self, workspace_id, project_id):
         res = requests.get(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects/{project_id}', headers={
-                           'Content-Type': 'application/json'}, auth=self.auth)
+            'Content-Type': 'application/json'}, auth=self.auth)
         return res.json()
 
 
@@ -241,8 +269,9 @@ if __name__ == "__main__":
     # res = toggl.startCurrentTimeEntry(
     # 5175304, description="Tekoci task iz nekje69", pid=168206660,)
     # res = toggl.saveTimer(command="Test command", workspace_id=5175304,
-    #   description="Testiranje komand iz mongoDB", pid=185503661,)
-    res = toggl.updateSavedTimers()
+    #   description="Testiranje2 komand iz mongoDB", pid=185503661,)
+    # res = toggl.updateSavedTimers()
+    res = toggl.startSavedTimer("Test command")
     # print(json.dumps(res, indent=2))
     # print(toggl.custom_commands)
-    # print(res)
+    print(res)
