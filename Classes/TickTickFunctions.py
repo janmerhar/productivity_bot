@@ -105,6 +105,9 @@ class TickTickFunctions:
     - e.g. 🚧Projekti
     """
 
+    def getProjects(self):
+        pass
+
     def getProjectByName(self, name):
         project = self.client.get_by_fields(
             search="projects", name=name)
