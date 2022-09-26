@@ -179,9 +179,43 @@ class TogglCog(commands.Cog):
     async def removetimer(self, interaction: discord.Interaction):
         pass
 
+    """
+    TogglFunctions.py/startSavedTimer does not start timer given by Id
+    """
     @app_commands.command(name="startsaved", description="toggl start saved timer")
-    async def startsaved(self, interaction: discord.Interaction):
-        pass
+    async def startsaved(self, interaction: discord.Interaction, identifier: str):
+        timer = self.toggl.startSavedTimer(identifier)
+
+        if timer is None:
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Start Saved Timer",
+                color=discord.Colour.from_str("#552d4f"),
+                description="Timer not found"
+            )
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+            await interaction.response.send_message(embed=embed)
+        else:
+            project = self.toggl.getProjectById(
+                timer["workspace_id"], timer["pid"])
+
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Start Saved Timer",
+                color=discord.Colour.from_str(project['color']),
+            )
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+
+            embed.add_field(
+                name="Project ID", value=timer["pid"], inline=False)
+            embed.add_field(
+                name="Project name", value=project["name"], inline=False)
+            embed.add_field(
+                name="Timer description", value=timer["description"], inline=False)
+
+            await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="populartimers", description="toggl most popular timers")
     async def populartimers(self, interaction: discord.Interaction):
