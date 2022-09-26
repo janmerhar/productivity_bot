@@ -163,7 +163,7 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="inserttime", description="toggl insert past time")
+    @app_commands.command(name="inserttimer", description="toggl insert past time")
     async def inserttimer(self, interaction: discord.Interaction):
         pass
 
@@ -177,11 +177,45 @@ class TogglCog(commands.Cog):
         pass
 
     @app_commands.command(name="removetimer", description="toggl remove saved timer")
-    async def removetimer(self, interaction: discord.Interaction):
-        pass
+    async def removetimer(self, interaction: discord.Interaction, identifier: str):
+        timer = self.toggl.findSavedTimer(identifier)
+
+        if timer is None:
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Delete Timer",
+                color=discord.Colour.from_str("#552d4f"),
+                description="Timer not found"
+            )
+
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+
+            await interaction.response.send_message(embed=embed)
+        else:
+            self.toggl.removeSavedTimer(identifier)
+
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Delete Timer",
+                color=discord.Colour.from_str("#552d4f"),
+                description=f"Timer {timer['command']} deleted"
+            )
+
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+
+            embed.add_field(
+                name="Timer command", value=timer["command"], inline=False)
+            embed.add_field(
+                name="Project ID", value=timer['param']["pid"], inline=False)
+            embed.add_field(
+                name="Timer description", value=timer['param']["description"], inline=False)
+            await interaction.response.send_message(embed=embed)
 
     """
-    TogglFunctions.py/startSavedTimer does not start timer given by Id
+    - TogglFunctions.py/startSavedTimer does not start timer given by Id
+    - When force stopped, the timer duration is incorrect
     """
     @app_commands.command(name="startsaved", description="toggl start saved timer")
     async def startsaved(self, interaction: discord.Interaction, identifier: str):
