@@ -6,6 +6,7 @@ import requests
 from dateutil import parser
 import datetime
 import json
+from bson.objectid import ObjectId
 
 from dotenv import dotenv_values
 env = dotenv_values(".env")
@@ -207,6 +208,20 @@ class TogglFunctions:
 
         return list(res)
 
+    def findSavedTimer(self, identifier: str):
+        res_command = list(self.mongo.find({"command": identifier}))
+        if len(res_command) == 0:
+            res_id = list(self.mongo.find({"_id": ObjectId(identifier)}))
+
+            if len(res_id) == 0:
+                return None
+            else:
+                return res_id
+        else:
+            return res_command[0]
+
+        return res_id
+
     # def removeTimer(command)
         # pass
 
@@ -277,7 +292,8 @@ if __name__ == "__main__":
     #   description="Testiranje2 komand iz mongoDB", pid=185503661,)
     # res = toggl.updateSavedTimers()
     # res = toggl.startSavedTimer("Test command")
-    res = toggl.mostCommonlyUsedTimers(2)
+    # res = toggl.mostCommonlyUsedTimers(2)
+    res = toggl.findSavedTimer("Test command")
     # print(json.dumps(res, indent=2))
     # print(toggl.custom_commands)
     print(res)
