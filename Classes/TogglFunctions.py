@@ -199,8 +199,13 @@ class TogglFunctions:
         res = self.mongo.update_one(search_param, update_param)
         return search_locally[0]["param"]
 
-    # def mostCommonlyUsedTimers():
-        # pass
+    def mostCommonlyUsedTimers(self, n: int):
+        search_param = {"application": "toggl"}
+
+        res = self.mongo.find(search_param, limit=n).sort(
+            "number_of_runs", -1)
+
+        return list(res)
 
     # def removeTimer(command)
         # pass
@@ -268,10 +273,11 @@ if __name__ == "__main__":
     # res = toggl.insertTimeEntry(5175304, description="Task iz nekje", pid=168206660, duration=1200, start="2022-09-15T12:12:12.000Z")
     # res = toggl.startCurrentTimeEntry(
     # 5175304, description="Tekoci task iz nekje69", pid=168206660,)
-    # res = toggl.saveTimer(command="Test command", workspace_id=5175304,
+    # res = toggl.saveTimer(command="Test command2", workspace_id=5175304,
     #   description="Testiranje2 komand iz mongoDB", pid=185503661,)
     # res = toggl.updateSavedTimers()
-    res = toggl.startSavedTimer("Test command")
+    # res = toggl.startSavedTimer("Test command")
+    res = toggl.mostCommonlyUsedTimers(2)
     # print(json.dumps(res, indent=2))
     # print(toggl.custom_commands)
     print(res)
