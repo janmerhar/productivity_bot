@@ -11,7 +11,7 @@ import random
 import sys
 import aiohttp
 
-from Classes.TogglFunctions import TogglFunctions
+from classes.TogglFunctions import TogglFunctions
 from dotenv import dotenv_values
 env = dotenv_values(".env")
 
@@ -22,6 +22,7 @@ class TogglCog(commands.Cog):
         self.toggl = TogglFunctions(env["TOGGL_TOKEN"])
 
     # Events
+
     @commands.Cog.listener()
     async def on_ready(self):
         print("TogglCog cog loaded")
@@ -163,6 +164,27 @@ class TogglCog(commands.Cog):
 
     @app_commands.command(name="inserttime", description="toggl insert past time")
     async def inserttimer(self, interaction: discord.Interaction):
+        pass
+
+    #
+    # Saved timers
+    # mongoDB
+    #
+
+    @app_commands.command(name="savetimer", description="toggl save timer")
+    async def savetimer(self, interaction: discord.Interaction):
+        pass
+
+    @app_commands.command(name="removetimer", description="toggl remove saved timer")
+    async def removetimer(self, interaction: discord.Interaction):
+        pass
+
+    @app_commands.command(name="startsaved", description="toggl start saved timer")
+    async def startsaved(self, interaction: discord.Interaction):
+        pass
+
+    @app_commands.command(name="populartimers", description="toggl most popular timers")
+    async def populartimers(self, interaction: discord.Interaction):
         pass
 
     """
