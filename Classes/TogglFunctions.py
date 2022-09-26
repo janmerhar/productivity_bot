@@ -208,11 +208,16 @@ class TogglFunctions:
 
         return list(res)
 
-    # ObjectId throws exceptions if string is not valid
     def findSavedTimer(self, identifier: str):
         res_command = list(self.mongo.find({"command": identifier}))
+
         if len(res_command) == 0:
-            res_id = list(self.mongo.find({"_id": ObjectId(identifier)}))
+            try:
+                search_id = ObjectId(identifier)
+            except:
+                return None
+
+            res_id = list(self.mongo.find({"_id": search_id}))
 
             if len(res_id) == 0:
                 return None
@@ -300,7 +305,7 @@ if __name__ == "__main__":
     # res = toggl.updateSavedTimers()
     # res = toggl.startSavedTimer("Test command")
     # res = toggl.mostCommonlyUsedTimers(2)
-    # res = toggl.findSavedTimer("632cc55babd7c4af6074e6bc")
+    res = toggl.findSavedTimer("6331bbb97da235c9d05e1f38")
     # res = toggl.removeSavedTimer("Test command2")
     # print(json.dumps(res, indent=2))
     # print(toggl.custom_commands)
