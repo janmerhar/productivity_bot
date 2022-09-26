@@ -99,6 +99,7 @@ class TogglCog(commands.Cog):
     There are problems when field project_data['color'] doesn't have color defined
     - add no timer availble
     - stop current timer, if availble and start new one
+    - error when timer hahs no project_id
     """
     @app_commands.command(name="timer", description="toggl get active timer")
     async def timer(self, interaction: discord.Interaction):
@@ -218,8 +219,31 @@ class TogglCog(commands.Cog):
             await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="populartimers", description="toggl most popular timers")
-    async def populartimers(self, interaction: discord.Interaction):
-        pass
+    async def populartimers(self, interaction: discord.Interaction, n: int = 5):
+        timers = self.toggl.mostCommonlyUsedTimers(n)
+
+        embed = discord.Embed(
+            title=":stopwatch: Toggl Stop Timer",
+            color=discord.Colour.from_str("#552d4f"),
+            description=f"{len(timers)} most commonly used timers"
+        )
+
+        embed.set_thumbnail(
+            url="https://i.imgur.com/Cmjl4Kb.png"
+        )
+
+        for timer in timers:
+            embed.add_field(
+                name="Command", value=timer["command"], inline=True
+            )
+            embed.add_field(
+                name="Project ID", value=timer["param"]["pid"], inline=True
+            )
+            embed.add_field(
+                name="Description", value=timer["param"]["description"], inline=True
+            )
+
+        await interaction.response.send_message(embed=embed)
 
     """
     FOR NOW THE MAXIMUM VALUE OF N IS __5__
