@@ -154,14 +154,14 @@ class TogglFunctions:
     # mongoDB
     #
 
-    def saveTimer(self, command, workspace_id, billable=None, description=None,
+    def saveTimer(self, command, workspace_id=None, billable=None, description=None,
                   pid=None, tags=[], tid=None,):
         data = {
             "command": command,
             "application": "toggl",
             "number_of_runs": 0,
             "param": {
-                "workspace_id": workspace_id,
+                "workspace_id": workspace_id if workspace_id is not None else self.workspace_id,
                 "billable": billable,
                 "description": description,
                 "pid": pid,
@@ -300,12 +300,12 @@ if __name__ == "__main__":
     # res = toggl.insertTimeEntry(5175304, description="Task iz nekje", pid=168206660, duration=1200, start="2022-09-15T12:12:12.000Z")
     # res = toggl.startCurrentTimeEntry(
     # 5175304, description="Tekoci task iz nekje69", pid=168206660,)
-    # res = toggl.saveTimer(command="Test command2", workspace_id=5175304,
+    # res = toggl.saveTimer(command="Test command2 LOL", workspace_id=5175304,
     #   description="Testiranje2 komand iz mongoDB", pid=185503661,)
     # res = toggl.updateSavedTimers()
     # res = toggl.startSavedTimer("Test command")
-    # res = toggl.mostCommonlyUsedTimers(2)
-    res = toggl.findSavedTimer("6331bbb97da235c9d05e1f38")
+    res = toggl.mostCommonlyUsedTimers(3)
+    # res = toggl.findSavedTimer("6331bbb97da235c9d05e1f38")
     # res = toggl.removeSavedTimer("Test command2")
     # print(json.dumps(res, indent=2))
     # print(toggl.custom_commands)
