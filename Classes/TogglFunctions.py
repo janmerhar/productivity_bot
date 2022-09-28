@@ -331,7 +331,8 @@ class TogglFunctions:
 
     def getProject(self, identifier: Union[str, int]) -> Union[None, dict]:
         if type(identifier) == int:
-            project = self.getProjectById(self.workspace_id, identifier)
+            project = self.getProjectById(
+                workspace_id=self.workspace_id, project_id=identifier)
         else:
             project = self.getProjectByName(identifier)
 
@@ -352,7 +353,7 @@ if __name__ == "__main__":
     # res = toggl.insertTimeEntry(5175304, description="Task iz nekje", pid=168206660, duration=1200, start="2022-09-15T12:12:12.000Z")
     # res = toggl.startCurrentTimeEntry(
     # 5175304, description="Tekoci task iz nekje69", pid=168206660,)
-    # res = toggl.saveTimer(command="Test command", workspace_id=5175304,
+    # res = toggl.saveTimer(command="saave", workspace_id=5175304,
     #   description="Testiranje2 komand iz mongoDB", project=185503661,)
     # res = toggl.updateSavedTimers()
     # res = toggl.startSavedTimer("Test command")
