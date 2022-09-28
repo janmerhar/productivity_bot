@@ -292,6 +292,10 @@ class TogglFunctions:
             'Content-Type': 'application/json'}, auth=self.auth)
         return res.json()
 
+    """
+    - Upgrade for searching without workspace_id
+    """
+
     def getProjectById(self, workspace_id, project_id):
         res = requests.get(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects/{project_id}', headers={
             'Content-Type': 'application/json'}, auth=self.auth)
@@ -313,6 +317,14 @@ class TogglFunctions:
             filter(lambda el: el["name"].lower() == project_name.lower(), projects))
 
         return search_projects[0] if len(search_projects) > 0 else None
+
+    def getProject(self, identifier: Union[str, int]) -> Union[None, dict]:
+        if type(identifier) == int:
+            project = self.getProjectById(self.workspace_id, identifier)
+        else:
+            project = self.getProjectByName(identifier)
+
+        return project
 
 
 if __name__ == "__main__":
@@ -336,7 +348,8 @@ if __name__ == "__main__":
     # res = toggl.mostCommonlyUsedTimers(5)
     # res = toggl.findSavedTimer("6331bbb97da235c9d05e1f38")
     # res = toggl.removeSavedTimer("Test command2")
-    res = toggl.getProjectByName("Hrana", 5175304)
+    # res = toggl.getProjectByName("Hrana", 5175304)
+    # res = toggl.getProject(185503661)
     # print(json.dumps(res, indent=2))
     # print(toggl.custom_commands)
     print(res)
