@@ -296,16 +296,27 @@ class TogglFunctions:
     - Upgrade for searching without workspace_id
     """
 
-    def getProjectById(self, workspace_id, project_id):
-        res = requests.get(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects/{project_id}', headers={
-            'Content-Type': 'application/json'}, auth=self.auth)
+    def getProjectById(self, project_id: int, workspace_id: Optional[int] = None) -> Union[None, dict]:
+        if workspace_id is not None:
+            res = requests.get(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects/{project_id}', headers={
+                'Content-Type': 'application/json'}, auth=self.auth)
 
-        res = res.json()
+            # Checking for 403 error
+            try:
+                res = res.json()
+            except:
+                return None
 
-        if type(res) == dict:
-            return res
+            if type(res) == dict:
+                return res
+            else:
+                return None
         else:
-            return None
+            projects = self.getAllProjects()
+            search_projects = list(
+                filter(lambda el: el["id"] == project_id, projects))
+
+            return search_projects[0] if len(search_projects) > 0 else None
 
     def getProjectByName(self, project_name: str, workspace_id: Optional[int] = None) -> Union[None, dict]:
         if workspace_id is None:
@@ -337,7 +348,7 @@ if __name__ == "__main__":
     # res = toggl.createProject(workspace_id=5175304, name="Testni projekt iz pythona2 asdfds", is_private=True)
     # res = toggl.getAllProjects()
     # res = toggl.getProjectsByWorkspace(5175304)
-    # res = toggl.getProjectById(5175304, 185503661)
+    res = toggl.getProjectById(185503661, 5175304)
     # res = toggl.insertTimeEntry(5175304, description="Task iz nekje", pid=168206660, duration=1200, start="2022-09-15T12:12:12.000Z")
     # res = toggl.startCurrentTimeEntry(
     # 5175304, description="Tekoci task iz nekje69", pid=168206660,)
