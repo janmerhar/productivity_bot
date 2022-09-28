@@ -155,11 +155,22 @@ class TogglFunctions:
     #
 
     def saveTimer(self, command, workspace_id=None, billable=None, description=None,
-                  pid=None, tags=[], tid=None,):
+                  project=None, tags=[], tid=None,):
+
+        if project is None:
+            project_data = None
+            pid = None
+        else:
+            workspace_id = workspace_id if workspace_id is not None else self.workspace_id
+            project_data = self.getProjectById(
+                workspace_id=workspace_id, project_id=project)
+            pid = project_data["id"] if project_data["id"] is not None else None
+
         data = {
             "command": command,
             "application": "toggl",
             "number_of_runs": 0,
+            "project": project_data,
             "param": {
                 "workspace_id": workspace_id if workspace_id is not None else self.workspace_id,
                 "billable": billable,
@@ -280,6 +291,10 @@ class TogglFunctions:
             'Content-Type': 'application/json'}, auth=self.auth)
         return res.json()
 
+    """
+    - Return None if project cannot be found
+    """
+
     def getProjectById(self, workspace_id, project_id):
         res = requests.get(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects/{project_id}', headers={
             'Content-Type': 'application/json'}, auth=self.auth)
@@ -288,7 +303,7 @@ class TogglFunctions:
 
 if __name__ == "__main__":
     toggl = TogglFunctions(env["TOGGL_TOKEN"])
-    # res = toggl.getCurrentTimeEntry()
+    res = toggl.getCurrentTimeEntry()
     # res = toggl.stopCurrentTimeEntry()
     # res = toggl.getTimeEntryHistory("2022-08-29", "2022-08-29")
     # res = toggl.getLastNTimeEntryHistory(5)
@@ -300,11 +315,11 @@ if __name__ == "__main__":
     # res = toggl.insertTimeEntry(5175304, description="Task iz nekje", pid=168206660, duration=1200, start="2022-09-15T12:12:12.000Z")
     # res = toggl.startCurrentTimeEntry(
     # 5175304, description="Tekoci task iz nekje69", pid=168206660,)
-    # res = toggl.saveTimer(command="Test command2 LOL", workspace_id=5175304,
-    #   description="Testiranje2 komand iz mongoDB", pid=185503661,)
+    # res = toggl.saveTimer(command="Test command", workspace_id=5175304,
+    #   description="Testiranje2 komand iz mongoDB", project=185503661,)
     # res = toggl.updateSavedTimers()
     # res = toggl.startSavedTimer("Test command")
-    res = toggl.mostCommonlyUsedTimers(3)
+    # res = toggl.mostCommonlyUsedTimers(5)
     # res = toggl.findSavedTimer("6331bbb97da235c9d05e1f38")
     # res = toggl.removeSavedTimer("Test command2")
     # print(json.dumps(res, indent=2))
