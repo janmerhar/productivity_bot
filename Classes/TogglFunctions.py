@@ -1,6 +1,7 @@
+from tkinter import PROJECTING
 import pymongo
 from pymongo import MongoClient
-from typing import Dict
+from typing import Dict, Optional, Union
 from toggl.TogglPy import Toggl
 import requests
 from dateutil import parser
@@ -302,6 +303,17 @@ class TogglFunctions:
         else:
             return None
 
+    def getProjectByName(self, project_name: str, workspace_id: Optional[int] = None) -> Union[None, dict]:
+        if workspace_id is None:
+            projects = self.getAllProjects()
+        else:
+            projects = self.getProjectsByWorkspace(workspace_id)
+
+        search_projects = list(
+            filter(lambda el: el["name"].lower() == project_name.lower(), projects))
+
+        return search_projects[0] if len(search_projects) > 0 else None
+
 
 if __name__ == "__main__":
     toggl = TogglFunctions(env["TOGGL_TOKEN"])
@@ -313,7 +325,7 @@ if __name__ == "__main__":
     # res = toggl.createProject(workspace_id=5175304, name="Testni projekt iz pythona2 asdfds", is_private=True)
     # res = toggl.getAllProjects()
     # res = toggl.getProjectsByWorkspace(5175304)
-    res = toggl.getProjectById(5175304, 185503661)
+    # res = toggl.getProjectById(5175304, 185503661)
     # res = toggl.insertTimeEntry(5175304, description="Task iz nekje", pid=168206660, duration=1200, start="2022-09-15T12:12:12.000Z")
     # res = toggl.startCurrentTimeEntry(
     # 5175304, description="Tekoci task iz nekje69", pid=168206660,)
@@ -324,6 +336,7 @@ if __name__ == "__main__":
     # res = toggl.mostCommonlyUsedTimers(5)
     # res = toggl.findSavedTimer("6331bbb97da235c9d05e1f38")
     # res = toggl.removeSavedTimer("Test command2")
+    res = toggl.getProjectByName("Hrana", 5175304)
     # print(json.dumps(res, indent=2))
     # print(toggl.custom_commands)
     print(res)
