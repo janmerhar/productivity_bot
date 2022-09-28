@@ -291,14 +291,16 @@ class TogglFunctions:
             'Content-Type': 'application/json'}, auth=self.auth)
         return res.json()
 
-    """
-    - Return None if project cannot be found
-    """
-
     def getProjectById(self, workspace_id, project_id):
         res = requests.get(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects/{project_id}', headers={
             'Content-Type': 'application/json'}, auth=self.auth)
-        return res.json()
+
+        res = res.json()
+
+        if type(res) == dict:
+            return res
+        else:
+            return None
 
 
 if __name__ == "__main__":
@@ -311,7 +313,7 @@ if __name__ == "__main__":
     # res = toggl.createProject(workspace_id=5175304, name="Testni projekt iz pythona2 asdfds", is_private=True)
     # res = toggl.getAllProjects()
     # res = toggl.getProjectsByWorkspace(5175304)
-    # res = toggl.getProjectById(5175304, 185503661)
+    res = toggl.getProjectById(5175304, 185503661)
     # res = toggl.insertTimeEntry(5175304, description="Task iz nekje", pid=168206660, duration=1200, start="2022-09-15T12:12:12.000Z")
     # res = toggl.startCurrentTimeEntry(
     # 5175304, description="Tekoci task iz nekje69", pid=168206660,)
