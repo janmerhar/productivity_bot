@@ -105,7 +105,7 @@ class TogglCog(commands.Cog):
     async def timer(self, interaction: discord.Interaction):
         timer_data = self.toggl.getCurrentTimeEntry()
         project_data = self.toggl.getProjectById(
-            timer_data["workspace_id"], timer_data["project_id"])
+            workspace_id=timer_data["workspace_id"], project_id=timer_data["project_id"])
 
         if project_data['color'] is None:
             project_data['color'] = "#000000"
@@ -153,7 +153,7 @@ class TogglCog(commands.Cog):
 
         if timer_data is not None:
             project_data = self.toggl.getProjectById(
-                timer_data["workspace_id"], timer_data["project_id"])
+                workspace_id=timer_data["workspace_id"], project_id=timer_data["project_id"])
             timer_stop = self.toggl.stopCurrentTimeEntry()
             embed.add_field(
                 name="Projekt", value=project_data["name"], inline=False)
@@ -258,7 +258,7 @@ class TogglCog(commands.Cog):
             await interaction.response.send_message(embed=embed)
         else:
             project = self.toggl.getProjectById(
-                timer["workspace_id"], timer["pid"])
+                workspace_id=timer["workspace_id"], project_id=timer["pid"])
 
             embed = discord.Embed(
                 title=":stopwatch: Toggl Start Saved Timer",
@@ -308,6 +308,8 @@ class TogglCog(commands.Cog):
     FOR NOW THE MAXIMUM VALUE OF N IS __5__
     OTHERWISE BOT DOES NOT RESPOND
     - I suspect that Discord's servers timeout the bot, since it takes too long time
+    - toggl.getLastNTimeEntryHistory() searches only history of this day
+      -> so it crashes when n > today's entries
     """
     @app_commands.command(name="timerhistory", description="toggl get timer history")
     async def timerhistory(self, interaction: discord.Interaction, n: int):
@@ -325,7 +327,7 @@ class TogglCog(commands.Cog):
 
         for timer in history:
             project_data = self.toggl.getProjectById(
-                timer["workspace_id"], timer["project_id"])
+                workspace_id=timer["workspace_id"], project_id=timer["project_id"])
 
             project = project_data["name"] if project_data["name"] is not None else "<no project name>"
             name = timer["description"] if len(
@@ -404,7 +406,8 @@ class TogglCog(commands.Cog):
     @app_commands.command(name="getproject", description="toggl get project by id")
     async def getproject(self, interaction: discord.Interaction, project_id: int):
         workspace_id = self.toggl.aboutMe()["default_workspace_id"]
-        project = self.toggl.getProjectById(workspace_id, project_id)
+        project = self.toggl.getProjectById(
+            workspace_id=workspace_id, project_id=project_id)
 
         if project != "Resource can not be found":
             embed = discord.Embed(
