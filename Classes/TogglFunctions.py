@@ -197,7 +197,14 @@ class TogglFunctions:
 
         return commands
 
-    def startSavedTimer(self, command):
+    def startSavedTimer(self, command: str) -> Union[None, int]:
+        # Cheking for ative timer
+        current_timer = self.getCurrentTimeEntry()
+
+        # Stopping an active timer
+        if current_timer is not None:
+            self.stopCurrentTimeEntry()
+
         search_locally = list(
             filter(lambda el: el["command"] == command, self.custom_commands))
 
@@ -237,8 +244,6 @@ class TogglFunctions:
                 return res_id[0]
         else:
             return res_command[0]
-
-        return res_id
 
     def removeSavedTimer(self, identifier: str) -> bool:
         timer = self.findSavedTimer(identifier)
@@ -341,7 +346,7 @@ class TogglFunctions:
 
 if __name__ == "__main__":
     toggl = TogglFunctions(env["TOGGL_TOKEN"])
-    res = toggl.getCurrentTimeEntry()
+    # res = toggl.getCurrentTimeEntry()
     # res = toggl.stopCurrentTimeEntry()
     # res = toggl.getTimeEntryHistory("2022-08-29", "2022-08-29")
     # res = toggl.getLastNTimeEntryHistory(5)
@@ -349,7 +354,7 @@ if __name__ == "__main__":
     # res = toggl.createProject(workspace_id=5175304, name="Testni projekt iz pythona2 asdfds", is_private=True)
     # res = toggl.getAllProjects()
     # res = toggl.getProjectsByWorkspace(5175304)
-    res = toggl.getProjectById(185503661, 5175304)
+    # res = toggl.getProjectById(185503661, 5175304)
     # res = toggl.insertTimeEntry(5175304, description="Task iz nekje", pid=168206660, duration=1200, start="2022-09-15T12:12:12.000Z")
     # res = toggl.startCurrentTimeEntry(
     # 5175304, description="Tekoci task iz nekje69", pid=168206660,)
