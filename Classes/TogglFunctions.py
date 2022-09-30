@@ -1,3 +1,4 @@
+from ast import List
 from tkinter import PROJECTING
 import pymongo
 from pymongo import MongoClient
@@ -135,10 +136,11 @@ class TogglFunctions:
                            params=params, headers={'Content-Type': 'application/json'}, auth=self.auth)
         return res.json()
 
-    def getLastNTimeEntryHistory(self, n):
+    def getLastNTimeEntryHistory(self, n) -> List:
         res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries',
                            headers={'Content-Type': 'application/json'}, auth=self.auth)
-        return res.json()[0:n]
+        entries = res.json()
+        return entries[0:n] if len(entries) >= n else entries
 
     #
     # Saved timers
@@ -288,10 +290,6 @@ class TogglFunctions:
             'Content-Type': 'application/json'}, auth=self.auth)
         return res.json()
 
-    """
-    - Upgrade for searching without workspace_id
-    """
-
     def getProjectById(self, project_id: int, workspace_id: Optional[int] = None) -> Union[None, dict]:
         if workspace_id is not None:
             res = requests.get(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects/{project_id}', headers={
@@ -340,7 +338,7 @@ if __name__ == "__main__":
     # res = toggl.getCurrentTimeEntry()
     # res = toggl.stopCurrentTimeEntry()
     # res = toggl.getTimeEntryHistory("2022-08-29", "2022-08-29")
-    # res = toggl.getLastNTimeEntryHistory(5)
+    res = toggl.getLastNTimeEntryHistory(20000)
     # res = toggl.aboutMe()
     # res = toggl.createProject(workspace_id=5175304, name="Testni projekt iz pythona2 asdfds", is_private=True)
     # res = toggl.getAllProjects()
