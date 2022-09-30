@@ -205,19 +205,20 @@ class TogglFunctions:
         if current_timer is not None:
             self.stopCurrentTimeEntry()
 
-        search_locally = list(
-            filter(lambda el: el["command"] == command, self.custom_commands))
+        # Search for the timer in database
+        search_timer = self.mongo.find_one({"command": command})
 
-        if len(search_locally) == 0:
+        # Not starting the timer if it is not found in database
+        if search_timer is None:
             return None
 
-        self.startCurrentTimeEntry(**search_locally[0]["param"])
+        self.startCurrentTimeEntry(**search_timer["param"])
         # Increment number_of_runs
-        search_param = {"_id": search_locally[0]["_id"]}
+        search_param = {"_id": search_timer["_id"]}
         update_param = {"$inc": {"number_of_runs": 1}}
 
         res = self.mongo.update_one(search_param, update_param)
-        return search_locally[0]["param"]
+        return search_timer["param"]
 
     def mostCommonlyUsedTimers(self, n: int):
         search_param = {"application": "toggl"}
