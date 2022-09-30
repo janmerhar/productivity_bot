@@ -119,16 +119,6 @@ class TogglFunctions:
         return res.json()
 
     def getTimeEntryHistory(self, start_date, end_date):
-        params = {
-            'start_date': start_date,
-            'end_date': end_date,
-        }
-
-        res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries',
-                           params=params, headers={'Content-Type': 'application/json'}, auth=self.auth)
-        return res.json()
-
-    def getTimeEntryHistory(self, start_date, end_date):
         # Start date and end date cannot be the same
         # update end date to +1 day
         if start_date == end_date:
