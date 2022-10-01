@@ -83,6 +83,41 @@ class TogglEmbeds:
     # Projects
     #
 
+    """
+    - Add more arguments to be passed in slash command
+    """
+
+    def newproject_embed(self, name: str) -> dict:
+        project = self.toggl.createProject(
+            self.toggl.aboutMe()["default_workspace_id"], name=name)
+
+        if type(project) != str:
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Create Project Details",
+                description=name
+            )
+
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+            embed.add_field(name="Project ID",
+                            value=project["id"], inline=True)
+            embed.add_field(name="Workspace ID",
+                            value=project["wid"], inline=True)
+            embed.add_field(name="Creation date",
+                            value=project["at"], inline=False)
+        else:
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Create Project Details",
+                description=f"Project {name} already exists"
+            )
+
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+
+        return {"embeds": [embed]}
+
     def workspaceprojects_embed(self):
         projects = self.toggl.getProjectsByWorkspace(
             self.toggl.aboutMe()["default_workspace_id"])
@@ -104,4 +139,4 @@ class TogglEmbeds:
             embed.add_field(name="Hours documented",
                             value=project["actual_hours"], inline=True)
 
-        return {"embed": embed}
+        return {"embeds": [embed]}
