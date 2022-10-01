@@ -14,6 +14,7 @@ class TogglEmbeds:
     #
     # Authentication
     #
+
     def aboutme_embed(self) -> dict:
         data = self.toggl.aboutMe()
 
@@ -40,6 +41,7 @@ class TogglEmbeds:
     #
     # Tracking
     #
+
     def stop_embed(self) -> dict:
         timer_data = self.toggl.getCurrentTimeEntry()
 
@@ -80,3 +82,26 @@ class TogglEmbeds:
     #
     # Projects
     #
+
+    def workspaceprojects_embed(self):
+        projects = self.toggl.getProjectsByWorkspace(
+            self.toggl.aboutMe()["default_workspace_id"])
+
+        embed = discord.Embed(
+            title=":stopwatch: Toggl All Projects",
+            color=discord.Colour.from_str("#552d4f"),
+        )
+
+        embed.set_thumbnail(
+            url="https://i.imgur.com/Cmjl4Kb.png"
+        )
+
+        for project in projects:
+            embed.add_field(name="Project ID",
+                            value=project["id"], inline=True)
+            embed.add_field(name="Project name",
+                            value=project["name"], inline=True)
+            embed.add_field(name="Hours documented",
+                            value=project["actual_hours"], inline=True)
+
+        return {"embed": embed}

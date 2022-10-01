@@ -327,27 +327,8 @@ class TogglCog(commands.Cog):
     """
     @app_commands.command(name="workspaceprojects", description="toggl get all projects")
     async def workspaceprojects(self, interaction: discord.Interaction):
-        projects = self.toggl.getProjectsByWorkspace(
-            self.toggl.aboutMe()["default_workspace_id"])
-
-        embed = discord.Embed(
-            title=":stopwatch: Toggl All Projects",
-            color=discord.Colour.from_str("#552d4f"),
-        )
-
-        embed.set_thumbnail(
-            url="https://i.imgur.com/Cmjl4Kb.png"
-        )
-
-        for project in projects:
-            embed.add_field(name="Project ID",
-                            value=project["id"], inline=True)
-            embed.add_field(name="Project name",
-                            value=project["name"], inline=True)
-            embed.add_field(name="Hours documented",
-                            value=project["actual_hours"], inline=True)
-
-        await interaction.response.send_message(embed=embed)
+        param = self.embeds.workspaceprojects_embed()
+        await interaction.response.send_message(**param)
 
     @app_commands.command(name="getproject", description="toggl get project by id")
     async def getproject(self, interaction: discord.Interaction, project_id: int):
