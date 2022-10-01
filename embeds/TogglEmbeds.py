@@ -11,7 +11,7 @@ class TogglEmbeds:
     def __init__(self):
         self.toggl = TogglFunctions(env["TOGGL_TOKEN"])
 
-    def aboutme_embed(self):
+    def aboutme_embed(self) -> dict:
         data = self.toggl.aboutMe()
 
         embed = discord.Embed(
@@ -32,4 +32,4 @@ class TogglEmbeds:
         embed.add_field(name="Default workspace ID",
                         value=data["default_workspace_id"], inline=False)
 
-        return embed
+        return {"embed": embed}
