@@ -118,6 +118,11 @@ class TogglEmbeds:
 
         return {"embeds": [embed]}
 
+    """
+    WHEN LOOPING OVER RECEIVED PROJECTS
+    THE LAST ONE IS NOT FULLY WIRTTEN IN EMBED
+    """
+
     def workspaceprojects_embed(self):
         projects = self.toggl.getProjectsByWorkspace(
             self.toggl.aboutMe()["default_workspace_id"])
@@ -140,3 +145,41 @@ class TogglEmbeds:
                             value=project["actual_hours"], inline=True)
 
         return {"embeds": [embed]}
+
+    def getproject_embeds(self, project_id: int) -> dict:
+        workspace_id = self.toggl.aboutMe()["default_workspace_id"]
+        project = self.toggl.getProjectById(
+            workspace_id=workspace_id, project_id=project_id)
+
+        if project != "Resource can not be found":
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Project Details",
+                color=discord.Colour.from_str(project["color"]),
+                description=project["name"]
+            )
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+
+            embed.add_field(name="Project ID",
+                            value=project["id"], inline=True)
+            embed.add_field(name="Workspace ID",
+                            value=workspace_id, inline=True)
+            embed.add_field(name="Creation date",
+                            value=project["created_at"], inline=False)
+            embed.add_field(name="Hours documented",
+                            value=project["actual_hours"], inline=False)
+
+            return {"embeds": [embed]}
+        else:
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Timer History",
+                color=discord.Colour.from_str("#552d4f"),
+                description="No project was found"
+            )
+
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+
+            return {"embeds": [embed]}

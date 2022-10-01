@@ -294,10 +294,6 @@ class TogglCog(commands.Cog):
         param = self.embeds.newproject_embed(name=name)
         await interaction.response.send_message(**param)
 
-    """
-    WHEN LOOPING OVER RECEIVED PROJECTS
-    THE LAST ONE IS NOT FULLY WIRTTEN IN EMBED
-    """
     @app_commands.command(name="workspaceprojects", description="toggl get all projects")
     async def workspaceprojects(self, interaction: discord.Interaction):
         param = self.embeds.workspaceprojects_embed()
@@ -305,42 +301,8 @@ class TogglCog(commands.Cog):
 
     @app_commands.command(name="getproject", description="toggl get project by id")
     async def getproject(self, interaction: discord.Interaction, project_id: int):
-        workspace_id = self.toggl.aboutMe()["default_workspace_id"]
-        project = self.toggl.getProjectById(
-            workspace_id=workspace_id, project_id=project_id)
-
-        if project != "Resource can not be found":
-            embed = discord.Embed(
-                title=":stopwatch: Toggl Project Details",
-                color=discord.Colour.from_str(project["color"]),
-                description=project["name"]
-            )
-            embed.set_thumbnail(
-                url="https://i.imgur.com/Cmjl4Kb.png"
-            )
-
-            embed.add_field(name="Project ID",
-                            value=project["id"], inline=True)
-            embed.add_field(name="Workspace ID",
-                            value=workspace_id, inline=True)
-            embed.add_field(name="Creation date",
-                            value=project["created_at"], inline=False)
-            embed.add_field(name="Hours documented",
-                            value=project["actual_hours"], inline=False)
-
-            await interaction.response.send_message(embed=embed)
-        else:
-            embed = discord.Embed(
-                title=":stopwatch: Toggl Timer History",
-                color=discord.Colour.from_str("#552d4f"),
-                description="No project was found"
-            )
-
-            embed.set_thumbnail(
-                url="https://i.imgur.com/Cmjl4Kb.png"
-            )
-
-            await interaction.response.send_message(embed=embed)
+        param = self.embeds.getproject_embeds(project_id=project_id)
+        await interaction.response.send_message(**param)
 
 
 async def setup(client):
