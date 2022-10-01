@@ -11,6 +11,9 @@ class TogglEmbeds:
     def __init__(self):
         self.toggl = TogglFunctions(env["TOGGL_TOKEN"])
 
+    #
+    # Authentication
+    #
     def aboutme_embed(self) -> dict:
         data = self.toggl.aboutMe()
 
@@ -34,6 +37,9 @@ class TogglEmbeds:
 
         return {"embed": embed}
 
+    #
+    # Tracking
+    #
     def stop_embed(self) -> dict:
         timer_data = self.toggl.getCurrentTimeEntry()
 
@@ -65,3 +71,12 @@ class TogglEmbeds:
             # embed.add_field(name="Time passed", value=timer_data["start"], inline=False)
 
         return {"embed": embed}
+
+    #
+    # Saved timers
+    # mongoDB
+    #
+
+    #
+    # Projects
+    #
