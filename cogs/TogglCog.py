@@ -1,5 +1,6 @@
 # Color palette
 # https://colorswall.com/palette/72717/
+from embeds.TogglEmbeds import TogglEmbeds
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -20,6 +21,7 @@ class TogglCog(commands.Cog):
     def __init__(self, client):
         self.client = client
         self.toggl = TogglFunctions(env["TOGGL_TOKEN"])
+        self.embeds = TogglEmbeds()
 
     # Events
 
@@ -54,7 +56,7 @@ class TogglCog(commands.Cog):
         embed.add_field(name="Default workspace ID",
                         value=data["default_workspace_id"], inline=False)
 
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embeds=[embed, embed])
 
     #
     # Tracking
@@ -304,13 +306,6 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    """
-    FOR NOW THE MAXIMUM VALUE OF N IS __5__
-    OTHERWISE BOT DOES NOT RESPOND
-    - I suspect that Discord's servers timeout the bot, since it takes too long time
-    - toggl.getLastNTimeEntryHistory() searches only history of this day
-      -> so it crashes when n > today's entries
-    """
     @app_commands.command(name="timerhistory", description="toggl get timer history")
     async def timerhistory(self, interaction: discord.Interaction, n: int):
         history = self.toggl.getLastNTimeEntryHistory(n)
