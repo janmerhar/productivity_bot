@@ -110,42 +110,11 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    """
-    1) Check if timer is active
-    2) Add stop comfirmation
-    """
     @app_commands.command(name="stop", description="toggl stop active time")
     async def stop(self, interaction: discord.Interaction):
-        timer_data = self.toggl.getCurrentTimeEntry()
+        param = self.embeds.stop_embed()
 
-        # Already stopped timer
-        if timer_data is None:
-            description = "No timer running"
-        # Timer to be stopped
-        else:
-            description = "Timer stopped"
-
-        embed = discord.Embed(
-            title=":stopwatch: Toggl Stop Timer",
-            color=discord.Colour.from_str("#552d4f"),
-            description=description
-        )
-
-        embed.set_thumbnail(
-            url="https://i.imgur.com/Cmjl4Kb.png"
-        )
-
-        if timer_data is not None:
-            project_data = self.toggl.getProjectById(
-                workspace_id=timer_data["workspace_id"], project_id=timer_data["project_id"])
-            timer_stop = self.toggl.stopCurrentTimeEntry()
-            embed.add_field(
-                name="Projekt", value=project_data["name"], inline=False)
-            # This field causes chrashes
-            # by passing timer_data[]
-            # embed.add_field(name="Time passed", value=timer_data["start"], inline=False)
-
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(**param)
 
     @app_commands.command(name="inserttimer", description="toggl insert past time")
     async def inserttimer(self, interaction: discord.Interaction):

@@ -33,3 +33,35 @@ class TogglEmbeds:
                         value=data["default_workspace_id"], inline=False)
 
         return {"embed": embed}
+
+    def stop_embed(self) -> dict:
+        timer_data = self.toggl.getCurrentTimeEntry()
+
+        # Already stopped timer
+        if timer_data is None:
+            description = "No timer running"
+        # Timer to be stopped
+        else:
+            description = "Timer stopped"
+
+        embed = discord.Embed(
+            title=":stopwatch: Toggl Stop Timer",
+            color=discord.Colour.from_str("#552d4f"),
+            description=description
+        )
+
+        embed.set_thumbnail(
+            url="https://i.imgur.com/Cmjl4Kb.png"
+        )
+
+        if timer_data is not None:
+            project_data = self.toggl.getProjectById(
+                workspace_id=timer_data["workspace_id"], project_id=timer_data["project_id"])
+            timer_stop = self.toggl.stopCurrentTimeEntry()
+            embed.add_field(
+                name="Projekt", value=project_data["name"], inline=False)
+            # This field causes chrashes
+            # by passing timer_data[]
+            # embed.add_field(name="Time passed", value=timer_data["start"], inline=False)
+
+        return {"embed": embed}
