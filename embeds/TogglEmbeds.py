@@ -188,6 +188,33 @@ class TogglEmbeds:
                 name="Timer description", value=timer["description"], inline=False)
 
             return {"embeds": [embed]}
+
+    def populartimers_embed(self, n: int):
+        timers = self.toggl.mostCommonlyUsedTimers(n)
+
+        embed = discord.Embed(
+            title=":stopwatch: Toggl Stop Timer",
+            color=discord.Colour.from_str("#552d4f"),
+            description=f"{len(timers)} most commonly used timers"
+        )
+
+        embed.set_thumbnail(
+            url="https://i.imgur.com/Cmjl4Kb.png"
+        )
+
+        for timer in timers:
+            embed.add_field(
+                name="Command", value=timer["command"], inline=True
+            )
+            embed.add_field(
+                name="Project ID", value=timer["param"]["pid"], inline=True
+            )
+            embed.add_field(
+                name="Description", value=timer["param"]["description"], inline=True
+            )
+
+        return {"embeds": [embed]}
+
     #
     # Projects
     #
