@@ -137,38 +137,9 @@ class TogglCog(commands.Cog):
     """
     @app_commands.command(name="startsaved", description="toggl start saved timer")
     async def startsaved(self, interaction: discord.Interaction, identifier: str):
-        timer = self.toggl.startSavedTimer(identifier)
+        param = self.embeds.startsaved_embed(identifier=identifier)
 
-        if timer is None:
-            embed = discord.Embed(
-                title=":stopwatch: Toggl Start Saved Timer",
-                color=discord.Colour.from_str("#552d4f"),
-                description="Timer not found"
-            )
-            embed.set_thumbnail(
-                url="https://i.imgur.com/Cmjl4Kb.png"
-            )
-            await interaction.response.send_message(embed=embed)
-        else:
-            project = self.toggl.getProjectById(
-                workspace_id=timer["workspace_id"], project_id=timer["pid"])
-
-            embed = discord.Embed(
-                title=":stopwatch: Toggl Start Saved Timer",
-                color=discord.Colour.from_str(project['color']),
-            )
-            embed.set_thumbnail(
-                url="https://i.imgur.com/Cmjl4Kb.png"
-            )
-
-            embed.add_field(
-                name="Project ID", value=timer["pid"], inline=False)
-            embed.add_field(
-                name="Project name", value=project["name"], inline=False)
-            embed.add_field(
-                name="Timer description", value=timer["description"], inline=False)
-
-            await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(**param)
 
     @app_commands.command(name="populartimers", description="toggl most popular timers")
     async def populartimers(self, interaction: discord.Interaction, n: int = 5):
