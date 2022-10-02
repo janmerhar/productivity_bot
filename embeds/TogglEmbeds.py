@@ -117,6 +117,43 @@ class TogglEmbeds:
     # mongoDB
     #
 
+    def removetimer_embed(self, identifier: str):
+        timer = self.toggl.findSavedTimer(identifier)
+
+        if timer is None:
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Delete Timer",
+                color=discord.Colour.from_str("#552d4f"),
+                description="Timer not found"
+            )
+
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+
+            return {"embeds": [embed]}
+        else:
+            self.toggl.removeSavedTimer(identifier)
+
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Delete Timer",
+                color=discord.Colour.from_str("#552d4f"),
+                description=f"Timer {timer['command']} deleted"
+            )
+
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+
+            embed.add_field(
+                name="Timer command", value=timer["command"], inline=False)
+            embed.add_field(
+                name="Project ID", value=timer['param']["pid"], inline=False)
+            embed.add_field(
+                name="Timer description", value=timer['param']["description"], inline=False)
+
+            return {"embeds": [embed]}
+
     #
     # Projects
     #

@@ -127,40 +127,9 @@ class TogglCog(commands.Cog):
 
     @app_commands.command(name="removetimer", description="toggl remove saved timer")
     async def removetimer(self, interaction: discord.Interaction, identifier: str):
-        timer = self.toggl.findSavedTimer(identifier)
+        param = self.embeds.removetimer_embed(identifier=identifier)
 
-        if timer is None:
-            embed = discord.Embed(
-                title=":stopwatch: Toggl Delete Timer",
-                color=discord.Colour.from_str("#552d4f"),
-                description="Timer not found"
-            )
-
-            embed.set_thumbnail(
-                url="https://i.imgur.com/Cmjl4Kb.png"
-            )
-
-            await interaction.response.send_message(embed=embed)
-        else:
-            self.toggl.removeSavedTimer(identifier)
-
-            embed = discord.Embed(
-                title=":stopwatch: Toggl Delete Timer",
-                color=discord.Colour.from_str("#552d4f"),
-                description=f"Timer {timer['command']} deleted"
-            )
-
-            embed.set_thumbnail(
-                url="https://i.imgur.com/Cmjl4Kb.png"
-            )
-
-            embed.add_field(
-                name="Timer command", value=timer["command"], inline=False)
-            embed.add_field(
-                name="Project ID", value=timer['param']["pid"], inline=False)
-            embed.add_field(
-                name="Timer description", value=timer['param']["description"], inline=False)
-            await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(**param)
 
     """
     - TogglFunctions.py/startSavedTimer does not start timer given by Id
