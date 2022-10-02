@@ -1,3 +1,4 @@
+from typing import Dict
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -41,6 +42,43 @@ class TogglEmbeds:
     #
     # Tracking
     #
+
+    """
+    - Add stop embed if another timer is active
+    - Add search for project using name
+    """
+
+    def start_embed(self, project_id: int, description: str = None) -> dict[str, list[discord.Embed]]:
+        workspace_id = self.toggl.aboutMe()["default_workspace_id"]
+        curr_timer = self.toggl.getCurrentTimeEntry()
+
+        # if curr_timer is not None:
+        # await self.stop(interaction)
+
+        new_time = self.toggl.startCurrentTimeEntry(
+            workspace_id, description=description, pid=project_id,)
+
+        project = self.toggl.getProjectById(
+            workspace_id=workspace_id, project_id=project_id)
+
+        embed = discord.Embed(
+            title=":stopwatch: Toggl Start Timer",
+            color=discord.Colour.from_str(project["color"]),
+        )
+        embed.set_thumbnail(
+            url="https://i.imgur.com/Cmjl4Kb.png"
+        )
+
+        embed.add_field(
+            name="Project ID", value=project["id"], inline=False)
+        embed.add_field(
+            name="Project name", value=project["name"], inline=False)
+        embed.add_field(
+            name="Timer description", value=new_time["description"], inline=False)
+        embed.add_field(
+            name="Timer start", value=new_time["start"], inline=False)
+
+        return {"embeds": [embed]}
 
     def stop_embed(self) -> dict:
         timer_data = self.toggl.getCurrentTimeEntry()
