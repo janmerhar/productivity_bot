@@ -131,10 +131,6 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(**param)
 
-    """
-    - TogglFunctions.py/startSavedTimer does not start timer given by Id
-    - When force stopped, the timer duration is incorrect
-    """
     @app_commands.command(name="startsaved", description="toggl start saved timer")
     async def startsaved(self, interaction: discord.Interaction, identifier: str):
         param = self.embeds.startsaved_embed(identifier=identifier)
@@ -149,32 +145,9 @@ class TogglCog(commands.Cog):
 
     @app_commands.command(name="timerhistory", description="toggl get timer history")
     async def timerhistory(self, interaction: discord.Interaction, n: int):
-        history = self.toggl.getLastNTimeEntryHistory(n)
+        param = self.embeds.timerhistory_embed(n=n)
 
-        embed = discord.Embed(
-            title=":stopwatch: Toggl Timer History",
-            color=discord.Colour.from_str("#552d4f"),
-            description=f"Last {n} timers"
-        )
-
-        embed.set_thumbnail(
-            url="https://i.imgur.com/Cmjl4Kb.png"
-        )
-
-        for timer in history:
-            project_data = self.toggl.getProjectById(
-                workspace_id=timer["workspace_id"], project_id=timer["project_id"])
-
-            project = project_data["name"] if project_data["name"] is not None else "<no project name>"
-            name = timer["description"] if len(
-                timer["description"]) > 0 else "<no description>"
-            duration = f"{timer['duration'] // 60} minutes"
-
-            embed.add_field(name="Project", value=project, inline=True)
-            embed.add_field(name="Name", value=name, inline=True)
-            embed.add_field(name="Duration", value=duration, inline=True)
-
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(**param)
 
     #
     # Projects

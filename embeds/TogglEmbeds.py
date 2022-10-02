@@ -154,6 +154,11 @@ class TogglEmbeds:
 
             return {"embeds": [embed]}
 
+    """
+    - TogglFunctions.py/startSavedTimer does not start timer given by Id
+    - When force stopped, the timer duration is incorrect
+    """
+
     def startsaved_embed(self, identifier: str):
         timer = self.toggl.startSavedTimer(identifier)
 
@@ -212,6 +217,39 @@ class TogglEmbeds:
             embed.add_field(
                 name="Description", value=timer["param"]["description"], inline=True
             )
+
+        return {"embeds": [embed]}
+
+    """
+    - Function is configured for only this days' timerrs to be displayed,
+    otherwise it fails
+    """
+
+    def timerhistory_embed(self, n: int) -> dict[str, list[discord.Embed]]:
+        history = self.toggl.getLastNTimeEntryHistory(n)
+
+        embed = discord.Embed(
+            title=":stopwatch: Toggl Timer History",
+            color=discord.Colour.from_str("#552d4f"),
+            description=f"Last {n} timers"
+        )
+
+        embed.set_thumbnail(
+            url="https://i.imgur.com/Cmjl4Kb.png"
+        )
+
+        for timer in history:
+            project_data = self.toggl.getProjectById(
+                workspace_id=timer["workspace_id"], project_id=timer["project_id"])
+
+            project = project_data["name"] if project_data["name"] is not None else "<no project name>"
+            name = timer["description"] if len(
+                timer["description"]) > 0 else "<no description>"
+            duration = f"{timer['duration'] // 60} minutes"
+
+            embed.add_field(name="Project", value=project, inline=True)
+            embed.add_field(name="Name", value=name, inline=True)
+            embed.add_field(name="Duration", value=duration, inline=True)
 
         return {"embeds": [embed]}
 
