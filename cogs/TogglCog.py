@@ -50,36 +50,10 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(**param)
 
-    """
-    There are problems when field project_data['color'] doesn't have color defined
-    - add no timer availble
-    - stop current timer, if availble and start new one
-    - error when timer hahs no project_id
-    """
     @app_commands.command(name="timer", description="toggl get active timer")
     async def timer(self, interaction: discord.Interaction):
-        timer_data = self.toggl.getCurrentTimeEntry()
-        project_data = self.toggl.getProjectById(
-            workspace_id=timer_data["workspace_id"], project_id=timer_data["project_id"])
-
-        if project_data['color'] is None:
-            project_data['color'] = "#000000"
-
-        embed = discord.Embed(
-            title=":stopwatch: Toggl Current Timer",
-            color=discord.Colour.from_str(project_data['color']),
-            description=timer_data["description"],
-        )
-        embed.set_thumbnail(
-            url="https://i.imgur.com/Cmjl4Kb.png"
-        )
-
-        embed.add_field(
-            name="Projekt", value=project_data["name"], inline=False)
-        embed.add_field(name="Time passed",
-                        value=timer_data["start"], inline=False)
-
-        await interaction.response.send_message(embed=embed)
+        param = self.embeds.timer_embed()
+        await interaction.response.send_message(**param)
 
     @app_commands.command(name="stop", description="toggl stop active time")
     async def stop(self, interaction: discord.Interaction):
