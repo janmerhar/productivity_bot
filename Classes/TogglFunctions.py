@@ -1,9 +1,7 @@
 from ast import List
-from tkinter import PROJECTING
 import pymongo
 from pymongo import MongoClient
 from typing import Dict, Optional, Union
-from toggl.TogglPy import Toggl
 import requests
 from dateutil import parser
 import datetime
