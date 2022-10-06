@@ -103,7 +103,7 @@ class TogglCog(commands.Cog):
     async def savetimer(self, interaction: discord.Interaction, command: str, workspace_id: int = None, billable: str = None, description: str = None,
                         pid: int = None, tags: str = None, tid: int = None,):
         inserted_id = self.toggl.saveTimer(
-            command=command, workspace_id=workspace_id, billable=billable, description=description, pid=pid, tid=tid)
+            command=command, workspace_id=workspace_id, billable=billable, description=description, project=pid, tid=tid)
 
         timer = self.toggl.findSavedTimer(inserted_id)
 
