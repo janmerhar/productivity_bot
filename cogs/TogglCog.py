@@ -102,28 +102,10 @@ class TogglCog(commands.Cog):
     @app_commands.command(name="savetimer", description="toggl save timer")
     async def savetimer(self, interaction: discord.Interaction, command: str, workspace_id: int = None, billable: str = None, description: str = None,
                         pid: int = None, tags: str = None, tid: int = None,):
-        inserted_id = self.toggl.saveTimer(
-            command=command, workspace_id=workspace_id, billable=billable, description=description, project=pid, tid=tid)
+        param = self.embeds.savetimer_embed(command=command, workspace_id=workspace_id, billable=billable, description=description, 
+                                            pid=pid, tags=tags)
 
-        timer = self.toggl.findSavedTimer(inserted_id)
-
-        embed = discord.Embed(
-            title=":stopwatch: Toggl Insert Timer",
-            color=discord.Colour.from_str("#552d4f"),
-        )
-
-        embed.set_thumbnail(
-            url="https://i.imgur.com/Cmjl4Kb.png"
-        )
-
-        embed.add_field(
-            name="Timer command", value=timer["command"], inline=False)
-        embed.add_field(
-            name="Project ID", value=timer['param']["pid"], inline=False)
-        embed.add_field(
-            name="Timer description", value=timer['param']["description"], inline=False)
-
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(**param)
 
     @app_commands.command(name="removetimer", description="toggl remove saved timer")
     async def removetimer(self, interaction: discord.Interaction, identifier: str):

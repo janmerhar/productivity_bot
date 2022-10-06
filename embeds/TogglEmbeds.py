@@ -117,6 +117,35 @@ class TogglEmbeds:
     # mongoDB
     #
 
+    """
+    - Add project color of embed, if applicable
+    """
+    def savetimer_embed(self, command: str, workspace_id: int = None, billable: str = None, description: str = None,
+                        pid: int = None, tags: str = None, tid: int = None,):
+
+        inserted_id = self.toggl.saveTimer(
+            command=command, workspace_id=workspace_id, billable=billable, description=description, project=pid, tid=tid)
+
+        timer = self.toggl.findSavedTimer(inserted_id)
+
+        embed = discord.Embed(
+            title=":stopwatch: Toggl Insert Timer",
+            color=discord.Colour.from_str("#552d4f"),
+        )
+
+        embed.set_thumbnail(
+            url="https://i.imgur.com/Cmjl4Kb.png"
+        )
+
+        embed.add_field(
+            name="Timer command", value=timer["command"], inline=False)
+        embed.add_field(
+            name="Project ID", value=timer['param']["pid"], inline=False)
+        embed.add_field(
+            name="Timer description", value=timer['param']["description"], inline=False)
+
+        return {"embeds": [embed]}
+
     def removetimer_embed(self, identifier: str):
         timer = self.toggl.findSavedTimer(identifier)
 
