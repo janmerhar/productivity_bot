@@ -330,13 +330,23 @@ class TogglFunctions:
 
         return project
 
+    #
+    # Shortcuts
+    #
+
+    def saveShortcut(self, command: str, alias: str, arguments: str) -> str:
+        pass
+
+    def parseShortcutArguments(self, arguments: str) -> List[str]:
+        pass
+
 
 if __name__ == "__main__":
     toggl = TogglFunctions(env["TOGGL_TOKEN"])
     # res = toggl.getCurrentTimeEntry()
     # res = toggl.stopCurrentTimeEntry()
     # res = toggl.getTimeEntryHistory("2022-08-29", "2022-08-29")
-    res = toggl.getLastNTimeEntryHistory(20000)
+    # res = toggl.getLastNTimeEntryHistory(20000)
     # res = toggl.aboutMe()
     # res = toggl.createProject(workspace_id=5175304, name="Testni projekt iz pythona2 asdfds", is_private=True)
     # res = toggl.getAllProjects()
@@ -356,4 +366,5 @@ if __name__ == "__main__":
     # res = toggl.getProject(185503661)
     # print(json.dumps(res, indent=2))
     # print(toggl.custom_commands)
+    res = toggl.createShortcut("", "")
     print(res)
