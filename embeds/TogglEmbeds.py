@@ -428,7 +428,10 @@ class TogglEmbeds:
     # Shortcuts
     #
 
-    def createShortcut(self, command: str, arguments):
+    def getFunctionByName(self, name):
+        pass
+
+    def createalias_embed(self, command: str, arguments: str):
         pass
 
 
