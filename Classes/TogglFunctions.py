@@ -336,7 +336,19 @@ class TogglFunctions:
     #
 
     def saveShortcut(self, command: str, alias: str, arguments: str) -> str:
-        pass
+        param = self.parseShortcutArguments(arguments)
+
+        data = {
+            "alias": alias,         # Name of the shortened command
+            "command": command,     # Name of the slash command
+            "application": "toggl",
+            "number_of_runs": 0,
+            "param": param,         # Parameters passed to aliased slash command
+        }
+
+        res = self.mongo_aliases.insert_one(data)
+
+        return res.inserted_id
 
     def parseShortcutArguments(self, arguments: str) -> dict[str, str]:
         param = {}
@@ -378,5 +390,7 @@ if __name__ == "__main__":
     # res = toggl.getProject(185503661)
     # print(json.dumps(res, indent=2))
     # print(toggl.custom_commands)
-    res = toggl.parseShortcutArguments("  command   aaa   BBB ;  lol LOL   ")
+    # res = toggl.parseShortcutArguments("  command   aaa   BBB ;  lol LOL   ")
+    res = toggl.saveShortcut("command", "neki krajsega",
+                             "  command   aaa   BBB ;  lol LOL   ")
     print(res)
