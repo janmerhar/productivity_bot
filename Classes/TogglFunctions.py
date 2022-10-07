@@ -338,8 +338,19 @@ class TogglFunctions:
     def saveShortcut(self, command: str, alias: str, arguments: str) -> str:
         pass
 
-    def parseShortcutArguments(self, arguments: str) -> List[str]:
-        pass
+    def parseShortcutArguments(self, arguments: str) -> dict[str, str]:
+        param = {}
+
+        arg_lines = arguments.split(";")
+
+        for arg_line in arg_lines:
+            arg_line = arg_line.strip()
+            command = arg_line.split(" ")[0].strip()
+
+            if len(command) > 0:
+                param[command] = " ".join(arg_line.split(" ")[1:]).strip()
+
+        return param
 
 
 if __name__ == "__main__":
@@ -367,5 +378,5 @@ if __name__ == "__main__":
     # res = toggl.getProject(185503661)
     # print(json.dumps(res, indent=2))
     # print(toggl.custom_commands)
-    res = toggl.createShortcut("", "")
+    res = toggl.parseShortcutArguments("  command   aaa   BBB ;  lol LOL   ")
     print(res)
