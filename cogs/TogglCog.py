@@ -76,7 +76,7 @@ class TogglCog(commands.Cog):
     @app_commands.command(name="savetimer", description="toggl save timer")
     async def savetimer(self, interaction: discord.Interaction, command: str, workspace_id: int = None, billable: str = None, description: str = None,
                         pid: int = None, tags: str = None, tid: int = None,):
-        param = self.embeds.savetimer_embed(command=command, workspace_id=workspace_id, billable=billable, description=description, 
+        param = self.embeds.savetimer_embed(command=command, workspace_id=workspace_id, billable=billable, description=description,
                                             pid=pid, tags=tags)
 
         await interaction.response.send_message(**param)
@@ -122,7 +122,18 @@ class TogglCog(commands.Cog):
 
     @app_commands.command(name="getproject", description="toggl get project by id")
     async def getproject(self, interaction: discord.Interaction, project_id: int):
-        param = self.embeds.getproject_embeds(project_id=project_id)
+        param = self.embeds.getproject_embed(project_id=project_id)
+
+        await interaction.response.send_message(**param)
+
+    #
+    # Shortcuts
+    #
+
+    @app_commands.command(name="createalias", description="create alias")
+    async def createalias(self, interaction: discord.Interaction, command: str,  alias: str, arguments: str = ""):
+        param = self.embeds.createalias_embed(
+            command=command, arguments=arguments)
 
         await interaction.response.send_message(**param)
 
