@@ -55,6 +55,7 @@ class TogglEmbeds:
     - error when timer hahs no project_id
     - use embed from stop_embed()
     """
+
     def timer_embed(self):
         timer_data = self.toggl.getCurrentTimeEntry()
         project_data = self.toggl.getProjectById(
@@ -114,6 +115,7 @@ class TogglEmbeds:
     """
     - Stops the timer but does not send embed back
     """
+
     def stop_embed(self) -> dict:
         timer_data = self.toggl.getCurrentTimeEntry()
 
@@ -154,6 +156,7 @@ class TogglEmbeds:
     """
     - Add project color of embed, if applicable
     """
+
     def savetimer_embed(self, command: str, workspace_id: int = None, billable: str = None, description: str = None,
                         pid: int = None, tags: str = None, tid: int = None,):
 
@@ -420,3 +423,14 @@ class TogglEmbeds:
             )
 
             return {"embeds": [embed]}
+
+    #
+    # Shortcuts
+    #
+
+    def createShortcut(self, command: str, arguments):
+        pass
+
+
+if __name__ == "__main__":
+    embeds = TogglEmbeds()
