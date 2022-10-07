@@ -22,7 +22,8 @@ class TogglFunctions:
         # add implementation for API_KEY and email:passwd authentications
         client = pymongo.MongoClient(
             f"mongodb+srv://{env['MONGO_USERNAME']}:{env['MONGO_PASSWORD']}@cluster0.puvwbmu.mongodb.net/?retryWrites=true&w=majority")
-        self.mongo = client["productivity_bot"]["custom_commands"]
+        self.mongo_commands = client["productivity_bot"]["custom_commands"]
+        self.mongo_aliases = client["productivity_bot"]["aliases"]
 
         self.custom_commands = []
         self.updateSavedTimers()
@@ -172,7 +173,7 @@ class TogglFunctions:
             }
         }
 
-        res = self.mongo.insert_one(data)
+        res = self.mongo_commands.insert_one(data)
         self.updateSavedTimers()
 
         return res.inserted_id
@@ -182,7 +183,7 @@ class TogglFunctions:
             "application": "toggl"
         }
 
-        commands = list(self.mongo.find(search))
+        commands = list(self.mongo_commands.find(search))
         self.custom_commands = commands
 
         return commands
@@ -196,7 +197,7 @@ class TogglFunctions:
             self.stopCurrentTimeEntry()
 
         # Search for the timer in database
-        search_timer = self.mongo.find_one({"command": command})
+        search_timer = self.mongo_commands.find_one({"command": command})
 
         # Not starting the timer if it is not found in database
         if search_timer is None:
@@ -207,19 +208,19 @@ class TogglFunctions:
         search_param = {"_id": search_timer["_id"]}
         update_param = {"$inc": {"number_of_runs": 1}}
 
-        res = self.mongo.update_one(search_param, update_param)
+        res = self.mongo_commands.update_one(search_param, update_param)
         return search_timer["param"]
 
     def mostCommonlyUsedTimers(self, n: int):
         search_param = {"application": "toggl"}
 
-        res = self.mongo.find(search_param, limit=n).sort(
+        res = self.mongo_commands.find(search_param, limit=n).sort(
             "number_of_runs", -1)
 
         return list(res)
 
     def findSavedTimer(self, identifier: str):
-        res_command = list(self.mongo.find({"command": identifier}))
+        res_command = list(self.mongo_commands.find({"command": identifier}))
 
         if len(res_command) == 0:
             try:
@@ -227,7 +228,7 @@ class TogglFunctions:
             except:
                 return None
 
-            res_id = list(self.mongo.find({"_id": search_id}))
+            res_id = list(self.mongo_commands.find({"_id": search_id}))
 
             if len(res_id) == 0:
                 return None
@@ -242,7 +243,7 @@ class TogglFunctions:
         if timer is None:
             return False
         else:
-            self.mongo.delete_one({"_id": timer["_id"]})
+            self.mongo_commands.delete_one({"_id": timer["_id"]})
             return True
 
     #
