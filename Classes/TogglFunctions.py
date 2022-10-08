@@ -364,6 +364,11 @@ class TogglFunctions:
 
         return param
 
+    def findSavedShortcut(self, alias: str):
+        saved_shortcut = self.mongo_aliases.find_one({"alias": alias})
+
+        return saved_shortcut
+
 
 if __name__ == "__main__":
     toggl = TogglFunctions(env["TOGGL_TOKEN"])
@@ -391,6 +396,7 @@ if __name__ == "__main__":
     # print(json.dumps(res, indent=2))
     # print(toggl.custom_commands)
     # res = toggl.parseShortcutArguments("  command   aaa   BBB ;  lol LOL   ")
-    res = toggl.saveShortcut("command", "neki krajsega",
-                             "  command   aaa   BBB ;  lol LOL   ")
+    # res = toggl.saveShortcut("command", "neki krajsega",
+    #  "  command   aaa   BBB ;  lol LOL   ")
+    res = toggl.findSavedShortcut("abt")
     print(res)
