@@ -137,6 +137,12 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(**param)
 
+    @app_commands.command(name="usealias", description="use alias")
+    async def usealias(self, interaction: discord.Interaction,   alias:   str):
+        param = self.embeds.usealias_embed(alias=alias)
+
+        await interaction.response.send_message(**param)
+
 
 async def setup(client):
     await client.add_cog(TogglCog(client), guilds=[discord.Object(id=864242668066177044)])
