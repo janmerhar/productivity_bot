@@ -1,3 +1,4 @@
+from re import A
 from typing import Dict
 import discord
 from discord.ext import commands
@@ -465,7 +466,7 @@ class TogglEmbeds:
                             value=inserted_data["alias"], inline=False)
             embed.add_field(name="Command",
                             value=inserted_data["command"], inline=False)
-            embed.add_field(name="Applicationn",
+            embed.add_field(name="Application",
                             value=inserted_data["application"], inline=False)
             embed.add_field(name="Id",
                             value=str(inserted_data["_id"]), inline=False)
@@ -475,6 +476,39 @@ class TogglEmbeds:
                                 value=str(value), inline=False)
 
             return {"embeds": [embed]}
+
+    """
+    - Default parameters are problematic
+    - Add number_of_runs increment after each run
+    """
+
+    def usealias_embed(self, alias: str):
+        alias_data = self.toggl.findSavedShortcut(alias=alias)
+
+        embed_no_found = discord.Embed(
+            title=":stopwatch: Toggl New Shortcut",
+            color=discord.Colour.from_str("#552d4f"),
+            description="Alias command not found"
+        )
+        embed_no_found.set_thumbnail(
+            url="https://i.imgur.com/Cmjl4Kb.png"
+        )
+
+        if alias_data is None:
+            return {"embeds": [embed_no_found]}
+
+        fn_embed = self.getFunctionByName(alias_data["command"])
+
+        if fn_embed is None:
+            embed_no_found.description = "Alias command not correct"
+
+            return {"embeds": [embed_no_found]}
+
+        # print(alias_data)
+        embed = fn_embed(**alias_data["param"])
+
+        # print(embed)
+        return embed
 
 
 if __name__ == "__main__":
