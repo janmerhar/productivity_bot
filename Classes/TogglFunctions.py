@@ -1,7 +1,7 @@
 from ast import List
 import pymongo
 from pymongo import MongoClient
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Tuple, Union
 import requests
 from dateutil import parser
 import datetime
@@ -335,7 +335,7 @@ class TogglFunctions:
     # Shortcuts
     #
 
-    def saveShortcut(self, command: str, alias: str, arguments: str) -> str:
+    def saveShortcut(self, command: str, alias: str, arguments: str) -> dict:
         param = self.parseShortcutArguments(arguments)
 
         data = {
@@ -348,7 +348,7 @@ class TogglFunctions:
 
         res = self.mongo_aliases.insert_one(data)
 
-        return res.inserted_id
+        return data
 
     def parseShortcutArguments(self, arguments: str) -> dict[str, str]:
         param = {}
