@@ -435,8 +435,46 @@ class TogglEmbeds:
         except:
             return None
 
-    def createalias_embed(self, command: str, arguments: str = None):
-        pass
+    def createalias_embed(self, command: str,  alias: str, arguments: str = "") -> dict:
+        alias_fn = self.getFunctionByName(name=command)
+
+        if alias_fn is None:
+            embed = discord.Embed(
+                title=":stopwatch: Toggl New Shortcut",
+                color=discord.Colour.from_str("#552d4f"),
+                description="Slash command not found"
+            )
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+
+            return {"embeds": [embed]}
+        else:
+            inserted_data = self.toggl.saveShortcut(
+                command=command, alias=alias, arguments=arguments)
+
+            embed = discord.Embed(
+                title=":stopwatch: Toggl New Shortcut",
+                color=discord.Colour.from_str("#552d4f"),
+            )
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+
+            embed.add_field(name="Alias",
+                            value=inserted_data["alias"], inline=False)
+            embed.add_field(name="Command",
+                            value=inserted_data["command"], inline=False)
+            embed.add_field(name="Applicationn",
+                            value=inserted_data["application"], inline=False)
+            embed.add_field(name="Id",
+                            value=str(inserted_data["_id"]), inline=False)
+
+            for key, value in inserted_data["param"].items():
+                embed.add_field(name=f"Param __{str(key)}__",
+                                value=str(value), inline=False)
+
+            return {"embeds": [embed]}
 
 
 if __name__ == "__main__":
