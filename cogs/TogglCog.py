@@ -133,7 +133,7 @@ class TogglCog(commands.Cog):
     @app_commands.command(name="createalias", description="create alias")
     async def createalias(self, interaction: discord.Interaction, command: str,  alias: str, arguments: str = ""):
         param = self.embeds.createalias_embed(
-            command=command, arguments=arguments)
+            command=command, alias=alias, arguments=arguments)
 
         await interaction.response.send_message(**param)
 
