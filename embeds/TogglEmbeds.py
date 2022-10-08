@@ -429,9 +429,13 @@ class TogglEmbeds:
     #
 
     def getFunctionByName(self, name):
-        pass
+        try:
+            fn = getattr(self, f"{name}_embed")
+            return fn
+        except:
+            return None
 
-    def createalias_embed(self, command: str, arguments: str):
+    def createalias_embed(self, command: str, arguments: str = None):
         pass
 
 
