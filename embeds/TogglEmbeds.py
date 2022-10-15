@@ -1,5 +1,5 @@
 from re import A
-from typing import Dict
+from typing import Dict, Optional
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -81,12 +81,20 @@ class TogglEmbeds:
 
         return {"embeds": [embed]}
 
-    def start_embed(self, project_id: int, description: str = None) -> dict[str, list[discord.Embed]]:
+    """
+    - Add default project_id if not provided
+    """
+
+    def start_embed(self, project_id: int = None, description: str = None) -> dict[str, list[discord.Embed]]:
         workspace_id = self.toggl.aboutMe()["default_workspace_id"]
         curr_timer = self.toggl.getCurrentTimeEntry()
 
-        # if curr_timer is not None:
-        # await self.stop(interaction)
+        embeds = []
+
+        if curr_timer is not None:
+            timer_stopped_embed = self.stop_embed()
+
+            embeds.append(timer_stopped_embed["embed"])
 
         new_time = self.toggl.startCurrentTimeEntry(
             workspace_id, description=description, pid=project_id,)
@@ -111,7 +119,9 @@ class TogglEmbeds:
         embed.add_field(
             name="Timer start", value=new_time["start"], inline=False)
 
-        return {"embeds": [embed]}
+        embeds.append(embed)
+
+        return {"embeds": embeds}
 
     """
     - Stops the timer but does not send embed back
