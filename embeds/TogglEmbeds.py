@@ -44,45 +44,47 @@ class TogglEmbeds:
     # Tracking
     #
 
-    """
-    - Add stop embed if another timer is active
-    - Add search for project using name
-    """
-
-    """
-    There are problems when field project_data['color'] doesn't have color defined
-    - add no timer availble
-    - stop current timer, if availble and start new one
-    - error when timer hahs no project_id
-    - use embed from stop_embed()
-    """
-
     def timer_embed(self):
         timer_data = self.toggl.getCurrentTimeEntry()
-        project_data = self.toggl.getProjectById(
-            workspace_id=timer_data["workspace_id"], project_id=timer_data["project_id"])
 
-        if project_data['color'] is None:
-            project_data['color'] = "#000000"
+        if timer_data is not None:
+            project_data = self.toggl.getProjectById(
+                workspace_id=timer_data["workspace_id"], project_id=timer_data["project_id"])
 
-        embed = discord.Embed(
-            title=":stopwatch: Toggl Current Timer",
-            color=discord.Colour.from_str(project_data['color']),
-            description=timer_data["description"],
-        )
-        embed.set_thumbnail(
-            url="https://i.imgur.com/Cmjl4Kb.png"
-        )
+            if project_data['color'] is None:
+                project_data['color'] = "#000000"
 
-        embed.add_field(
-            name="Projekt", value=project_data["name"], inline=False)
-        embed.add_field(name="Time passed",
-                        value=timer_data["start"], inline=False)
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Current Timer",
+                color=discord.Colour.from_str(project_data['color']),
+                description=timer_data["description"],
+            )
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
 
-        return {"embeds": [embed]}
+            embed.add_field(
+                name="Projekt", value=project_data["name"], inline=False)
+            embed.add_field(name="Time passed",
+                            value=timer_data["start"], inline=False)
+
+            return {"embeds": [embed]}
+        else:
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Current Timer",
+                color=discord.Colour.from_str("#df80c7"),
+                description="No active timer",
+            )
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+
+            return {"embeds": [embed]}
 
     """
     - Add default project_id if not provided
+    - Add stop embed if another timer is active
+    - Add search for project using name
     """
 
     def start_embed(self, project_id: int = None, description: str = None) -> dict[str, list[discord.Embed]]:
@@ -234,6 +236,8 @@ class TogglEmbeds:
     """
     - TogglFunctions.py/startSavedTimer does not start timer given by Id
     - When force stopped, the timer duration is incorrect
+        -> add check for timer that has already stopped
+        -> use stop embed
     """
 
     def startsaved_embed(self, identifier: str):
