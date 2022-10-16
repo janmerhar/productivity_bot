@@ -235,12 +235,19 @@ class TogglEmbeds:
 
     """
     - TogglFunctions.py/startSavedTimer does not start timer given by Id
-    - When force stopped, the timer duration is incorrect
-        -> add check for timer that has already stopped
-        -> use stop embed
+    - Active timer will be stopped regardless if the saved command exist in database
     """
 
     def startsaved_embed(self, identifier: str):
+        embeds = []
+
+        active_timer = self.toggl.getCurrentTimeEntry()
+
+        if active_timer is not None:
+            stopped_embed = self.stop_embed()
+
+            embeds.append(stopped_embed["embed"])
+
         timer = self.toggl.startSavedTimer(identifier)
 
         if timer is None:
@@ -273,7 +280,9 @@ class TogglEmbeds:
             embed.add_field(
                 name="Timer description", value=timer["description"], inline=False)
 
-            return {"embeds": [embed]}
+            embeds.append(embed)
+
+            return {"embeds": embeds}
 
     def populartimers_embed(self, n: int):
         timers = self.toggl.mostCommonlyUsedTimers(n)
