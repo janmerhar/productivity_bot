@@ -322,11 +322,12 @@ class TogglFunctions:
 
         return search_projects[0] if len(search_projects) > 0 else None
 
-    def getProject(self, identifier: Union[str, int]) -> Union[None, dict]:
-        if type(identifier) == int:
+    def getProject(self, identifier: str) -> Union[None, dict]:
+        try:
+            identifier_int = int(identifier)
             project = self.getProjectById(
-                workspace_id=self.workspace_id, project_id=identifier)
-        else:
+                workspace_id=self.workspace_id, project_id=identifier_int)
+        except:
             project = self.getProjectByName(identifier)
 
         return project
@@ -372,7 +373,7 @@ class TogglFunctions:
 
 if __name__ == "__main__":
     toggl = TogglFunctions(env["TOGGL_TOKEN"])
-    # res = toggl.getCurrentTimeEntry()
+    res = toggl.getCurrentTimeEntry()
     # res = toggl.stopCurrentTimeEntry()
     # res = toggl.getTimeEntryHistory("2022-08-29", "2022-08-29")
     # res = toggl.getLastNTimeEntryHistory(20000)
@@ -393,10 +394,11 @@ if __name__ == "__main__":
     # res = toggl.removeSavedTimer("Test command2")
     # res = toggl.getProjectByName("Hrana", 5175304)
     # res = toggl.getProject(185503661)
+    # res = toggl.getProject('Testni projekt iz pythona2')
     # print(json.dumps(res, indent=2))
     # print(toggl.custom_commands)
     # res = toggl.parseShortcutArguments("  command   aaa   BBB ;  lol LOL   ")
     # res = toggl.saveShortcut("command", "neki krajsega",
     #  "  command   aaa   BBB ;  lol LOL   ")
-    res = toggl.findSavedShortcut("abt")
+    # res = toggl.findSavedShortcut("abt")
     print(res)
