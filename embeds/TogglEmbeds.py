@@ -82,12 +82,10 @@ class TogglEmbeds:
             return {"embeds": [embed]}
 
     """
-    - Add default project_id if not provided
-    - Add stop embed if another timer is active
-    - Add search for project using name
+    - Add check if project color is not defined
     """
 
-    def start_embed(self, project_id: int = None, description: str = None) -> dict[str, list[discord.Embed]]:
+    def start_embed(self, project: str = None, description: str = None) -> dict[str, list[discord.Embed]]:
         workspace_id = self.toggl.aboutMe()["default_workspace_id"]
         curr_timer = self.toggl.getCurrentTimeEntry()
 
@@ -98,24 +96,32 @@ class TogglEmbeds:
 
             embeds.append(timer_stopped_embed["embed"])
 
-        new_time = self.toggl.startCurrentTimeEntry(
-            workspace_id, description=description, pid=project_id,)
+        print(project)
+        if project is not None:
+            project_data = self.toggl.getProject(identifier=project)
 
-        project = self.toggl.getProjectById(
-            workspace_id=workspace_id, project_id=project_id)
+            new_time = self.toggl.startCurrentTimeEntry(
+                workspace_id, description=description, pid=project_data["id"] if project_data is not None else None,)
+        else:
+            new_time = self.toggl.startCurrentTimeEntry(
+                workspace_id, description=description)
 
         embed = discord.Embed(
             title=":stopwatch: Toggl Start Timer",
-            color=discord.Colour.from_str(project["color"]),
+            # color=discord.Colour.from_str(
+            #     project_data["color"] if project is not None and project_data is not None else "#df80c7"
+            # ),
         )
         embed.set_thumbnail(
             url="https://i.imgur.com/Cmjl4Kb.png"
         )
 
-        embed.add_field(
-            name="Project ID", value=project["id"], inline=False)
-        embed.add_field(
-            name="Project name", value=project["name"], inline=False)
+        if project is not None and project_data is not None:
+            embed.add_field(
+                name="Project ID", value=project_data["id"], inline=False)
+            embed.add_field(
+                name="Project name", value=project_data["name"], inline=False)
+
         embed.add_field(
             name="Timer description", value=new_time["description"], inline=False)
         embed.add_field(
@@ -349,6 +355,8 @@ class TogglEmbeds:
 
     """
     - Add more arguments to be passed in slash command
+        -> workspace_id, name, active=True, auto_estimates=None, billable=None,
+                      color=None, currency="EUR", estimated_hours=1, is_private=None, template=None 
     """
 
     def newproject_embed(self, name: str) -> dict:
@@ -503,6 +511,7 @@ class TogglEmbeds:
     """
     - Default parameters are problematic
     - Add number_of_runs increment after each run
+        -> creating function inside togglEmbeds might be useful
     """
 
     def usealias_embed(self, alias: str):
