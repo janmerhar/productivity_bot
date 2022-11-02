@@ -85,7 +85,7 @@ class TogglEmbeds:
     - Add check if project color is not defined
     """
 
-    def start_embed(self, project: str = None, description: str = None) -> dict[str, list[discord.Embed]]:
+    def start_embed(self, project: str = None, description: str = None) -> dict:
         workspace_id = self.toggl.aboutMe()["default_workspace_id"]
         curr_timer = self.toggl.getCurrentTimeEntry()
 
@@ -321,7 +321,7 @@ class TogglEmbeds:
     otherwise it fails
     """
 
-    def timerhistory_embed(self, n: int) -> dict[str, list[discord.Embed]]:
+    def timerhistory_embed(self, n: int) -> dict:
         history = self.toggl.getLastNTimeEntryHistory(n)
 
         embed = discord.Embed(
