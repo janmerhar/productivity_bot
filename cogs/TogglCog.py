@@ -34,7 +34,7 @@ class TogglCog(commands.Cog):
     #
     # Authentication
     #
-    @app_commands.command(name="aboutme", description="toggl about me")
+    @app_commands.command(name="aboutme", description="Toggl about me")
     async def aboutme(self, interaction: discord.Interaction):
         param = self.embeds.aboutme_embed()
 
@@ -43,25 +43,25 @@ class TogglCog(commands.Cog):
     #
     # Tracking
     #
-    @app_commands.command(name="start", description="toggl start timer")
+    @app_commands.command(name="start", description="Toggl start timer")
     async def start(self, interaction: discord.Interaction, project: str = None, description: str = None):
         param = self.embeds.start_embed(
             project=project, description=description)
 
         await interaction.response.send_message(**param)
 
-    @app_commands.command(name="timer", description="toggl get active timer")
+    @app_commands.command(name="timer", description="Toggl get active timer")
     async def timer(self, interaction: discord.Interaction):
         param = self.embeds.timer_embed()
         await interaction.response.send_message(**param)
 
-    @app_commands.command(name="stop", description="toggl stop active time")
+    @app_commands.command(name="stop", description="Toggl stop active time")
     async def stop(self, interaction: discord.Interaction):
         param = self.embeds.stop_embed()
 
         await interaction.response.send_message(**param)
 
-    @app_commands.command(name="inserttimer", description="toggl insert past time")
+    @app_commands.command(name="inserttimer", description="Toggl insert past time")
     async def inserttimer(self, interaction: discord.Interaction):
         pass
 
@@ -73,7 +73,7 @@ class TogglCog(commands.Cog):
     """
     - Improve tags handling
     """
-    @app_commands.command(name="savetimer", description="toggl save timer")
+    @app_commands.command(name="savetimer", description="Toggl save timer")
     async def savetimer(self, interaction: discord.Interaction, command: str, workspace_id: int = None, billable: str = None, description: str = None,
                         pid: int = None, tags: str = None, tid: int = None,):
         param = self.embeds.savetimer_embed(command=command, workspace_id=workspace_id, billable=billable, description=description,
@@ -81,25 +81,25 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(**param)
 
-    @app_commands.command(name="removetimer", description="toggl remove saved timer")
+    @app_commands.command(name="removetimer", description="Toggl remove saved timer")
     async def removetimer(self, interaction: discord.Interaction, identifier: str):
         param = self.embeds.removetimer_embed(identifier=identifier)
 
         await interaction.response.send_message(**param)
 
-    @app_commands.command(name="startsaved", description="toggl start saved timer")
+    @app_commands.command(name="startsaved", description="Toggl start saved timer")
     async def startsaved(self, interaction: discord.Interaction, identifier: str):
         param = self.embeds.startsaved_embed(identifier=identifier)
 
         await interaction.response.send_message(**param)
 
-    @app_commands.command(name="populartimers", description="toggl most popular timers")
+    @app_commands.command(name="populartimers", description="Toggl most popular timers")
     async def populartimers(self, interaction: discord.Interaction, n: int = 5):
         param = self.embeds.populartimers_embed(n=n)
 
         await interaction.response.send_message(**param)
 
-    @app_commands.command(name="timerhistory", description="toggl get timer history")
+    @app_commands.command(name="timerhistory", description="Toggl get timer history")
     async def timerhistory(self, interaction: discord.Interaction, n: int):
         param = self.embeds.timerhistory_embed(n=n)
 
@@ -108,19 +108,19 @@ class TogglCog(commands.Cog):
     #
     # Projects
     #
-    @app_commands.command(name="newproject", description="toggl create new project")
+    @app_commands.command(name="newproject", description="Toggl create new project")
     async def newproject(self, interaction: discord.Interaction, name: str):
         param = self.embeds.newproject_embed(name=name)
 
         await interaction.response.send_message(**param)
 
-    @app_commands.command(name="workspaceprojects", description="toggl get all projects")
+    @app_commands.command(name="workspaceprojects", description="Toggl get all projects")
     async def workspaceprojects(self, interaction: discord.Interaction):
         param = self.embeds.workspaceprojects_embed()
 
         await interaction.response.send_message(**param)
 
-    @app_commands.command(name="getproject", description="toggl get project by id")
+    @app_commands.command(name="getproject", description="Toggl get project by id")
     async def getproject(self, interaction: discord.Interaction, project_id: int):
         param = self.embeds.getproject_embed(project_id=project_id)
 
