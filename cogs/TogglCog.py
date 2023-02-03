@@ -74,6 +74,15 @@ class TogglCog(commands.Cog):
     - Improve tags handling
     """
     @app_commands.command(name="savetimer", description="Toggl save timer")
+    @app_commands.describe(
+        command="Name of the saved timer",
+        workspace_id="Workspace id",
+        billable="Billable",
+        description="Description of the saved timer",
+        pid="Project id",
+        tags="Tags, separated by whitespaces",
+        tid="Tid"
+    )
     async def savetimer(self, interaction: discord.Interaction, command: str, workspace_id: int = None, billable: str = None, description: str = None,
                         pid: int = None, tags: str = None, tid: int = None,):
         param = self.embeds.savetimer_embed(command=command, workspace_id=workspace_id, billable=billable, description=description,
