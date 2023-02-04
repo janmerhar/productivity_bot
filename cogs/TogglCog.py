@@ -130,6 +130,9 @@ class TogglCog(commands.Cog):
     # Projects
     #
     @app_commands.command(name="newproject", description="Toggl create new project")
+    @app_commands.describe(
+        name="Name of newly created project"
+    )
     async def newproject(self, interaction: discord.Interaction, name: str):
         param = self.embeds.newproject_embed(name=name)
 
@@ -142,6 +145,9 @@ class TogglCog(commands.Cog):
         await interaction.response.send_message(**param)
 
     @app_commands.command(name="getproject", description="Toggl get project by id")
+    @app_commands.describe(
+        project_id="Project id"
+    )
     async def getproject(self, interaction: discord.Interaction, project_id: int):
         param = self.embeds.getproject_embed(project_id=project_id)
 
