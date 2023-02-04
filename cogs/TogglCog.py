@@ -91,24 +91,36 @@ class TogglCog(commands.Cog):
         await interaction.response.send_message(**param)
 
     @app_commands.command(name="removetimer", description="Toggl remove saved timer")
+    @app_commands.describe(
+        identifier="Timer to be removed"
+    )
     async def removetimer(self, interaction: discord.Interaction, identifier: str):
         param = self.embeds.removetimer_embed(identifier=identifier)
 
         await interaction.response.send_message(**param)
 
     @app_commands.command(name="startsaved", description="Toggl start saved timer")
+    @app_commands.describe(
+        identifier="Saved timer to start"
+    )
     async def startsaved(self, interaction: discord.Interaction, identifier: str):
         param = self.embeds.startsaved_embed(identifier=identifier)
 
         await interaction.response.send_message(**param)
 
     @app_commands.command(name="populartimers", description="Toggl most popular timers")
+    @app_commands.describe(
+        n="Number of most popular timers to be displayed"
+    )
     async def populartimers(self, interaction: discord.Interaction, n: int = 5):
         param = self.embeds.populartimers_embed(n=n)
 
         await interaction.response.send_message(**param)
 
     @app_commands.command(name="timerhistory", description="Toggl get timer history")
+    @app_commands.describe(
+        n="Number of timers to display"
+    )
     async def timerhistory(self, interaction: discord.Interaction, n: int):
         param = self.embeds.timerhistory_embed(n=n)
 
