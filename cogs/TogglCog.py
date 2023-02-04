@@ -158,6 +158,11 @@ class TogglCog(commands.Cog):
     #
 
     @app_commands.command(name="createalias", description="create alias")
+    @app_commands.describe(
+        command="Command name",
+        alias="Alias for the command",
+        arguments="Semicolon separated arguments"
+    )
     async def createalias(self, interaction: discord.Interaction, command: str,  alias: str, arguments: str = ""):
         param = self.embeds.createalias_embed(
             command=command, alias=alias, arguments=arguments)
@@ -165,7 +170,10 @@ class TogglCog(commands.Cog):
         await interaction.response.send_message(**param)
 
     @app_commands.command(name="usealias", description="use alias")
-    async def usealias(self, interaction: discord.Interaction,   alias:   str):
+    @app_commands.describe(
+        alias="Alias of a command to be used",
+    )
+    async def usealias(self, interaction: discord.Interaction, alias: str):
         param = self.embeds.usealias_embed(alias=alias)
 
         await interaction.response.send_message(**param)
