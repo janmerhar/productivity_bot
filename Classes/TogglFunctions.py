@@ -5,6 +5,7 @@ from typing import Dict, Optional, Tuple, Union
 import requests
 from dateutil import parser
 import datetime
+import time
 import json
 from bson.objectid import ObjectId
 
@@ -48,21 +49,22 @@ class TogglFunctions:
         start_date = datetime.datetime.utcnow().replace(
             tzinfo=datetime.timezone.utc).isoformat()
 
+        duration = -1 * int(time.time())
+
         json_data = {
-            'created_with': 'API example code',
+            'at': start_date,
+            'billable': billable,
+            'created_with': "productivity_bot",
+            'description': description,
+            'duration': duration,
             'workspace_id': workspace_id,
             'project_id': pid,
             'pid': pid,
             'tid': tid,
-            'description': description,
             'tags': tags,
-            'billable': billable,
-            'duration': -1663338980,
             'wid': workspace_id,
-            'at': start_date,
             "server_deleted_at": None,
             'start': start_date,
-            "duronly": False,
         }
 
         res = requests.post(
@@ -374,7 +376,7 @@ class TogglFunctions:
 if __name__ == "__main__":
     toggl = TogglFunctions(env["TOGGL_TOKEN"])
     res = toggl.getCurrentTimeEntry()
-    # res = toggl.stopCurrentTimeEntry()
+    res = toggl.stopCurrentTimeEntry()
     # res = toggl.getTimeEntryHistory("2022-08-29", "2022-08-29")
     # res = toggl.getLastNTimeEntryHistory(20000)
     # res = toggl.aboutMe()
@@ -383,6 +385,8 @@ if __name__ == "__main__":
     # res = toggl.getProjectsByWorkspace(5175304)
     # res = toggl.getProjectById(185503661, 5175304)
     # res = toggl.insertTimeEntry(5175304, description="Task iz nekje", pid=168206660, duration=1200, start="2022-09-15T12:12:12.000Z")
+    # res = toggl.startCurrentTimeEntry(
+    # 5175304)
     # res = toggl.startCurrentTimeEntry(
     # 5175304, description="Tekoci task iz nekje69", pid=168206660,)
     # res = toggl.saveTimer(command="saave", workspace_id=5175304,
