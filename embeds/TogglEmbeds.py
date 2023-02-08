@@ -477,6 +477,8 @@ class TogglEmbeds:
             if v.default is not inspect.Parameter.empty
         }
 
+    def createalias_embed(self, command: str,  alias: str, arguments: str = "", cog_param: object = {}) -> dict:
+        print("enter embed")
         alias_fn = self.getFunctionByName(name=command)
 
         if alias_fn is None:
@@ -491,8 +493,11 @@ class TogglEmbeds:
 
             return {"embeds": [embed]}
         else:
-            inserted_data = self.toggl.saveShortcut(
-                command=command, alias=alias, arguments=arguments)
+            insert_args = self.toggl.parseShortcutArguments(arguments)
+            cog_param.update(insert_args)
+
+            inserted_data = self.toggl.saveShortcut2(
+                command=command, alias=alias, param=cog_param)
 
             embed = discord.Embed(
                 title=":stopwatch: Toggl New Shortcut",
