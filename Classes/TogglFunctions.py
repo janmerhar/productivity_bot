@@ -353,6 +353,20 @@ class TogglFunctions:
 
         return data
 
+    def saveShortcut2(self, command: str, alias: str, param: object = {}) -> dict:
+
+        data = {
+            "alias": alias,         # Name of the shortened command
+            "command": command,     # Name of the slash command
+            "application": "toggl",
+            "number_of_runs": 0,
+            "param": param,         # Parameters passed to aliased slash command
+        }
+
+        res = self.mongo_aliases.insert_one(data)
+
+        return data
+
     def parseShortcutArguments(self, arguments: str) -> dict[str, str]:
         param = {}
 
