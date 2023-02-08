@@ -3,6 +3,7 @@ from typing import Dict, Optional
 import discord
 from discord.ext import commands
 from discord import app_commands
+import inspect
 
 from classes.TogglFunctions import TogglFunctions
 from dotenv import dotenv_values
@@ -467,7 +468,15 @@ class TogglEmbeds:
         except:
             return None
 
-    def createalias_embed(self, command: str,  alias: str, arguments: str = "") -> dict:
+    def getDefaultArgs(func):
+        signature = inspect.signature(func)
+
+        return {
+            k: v.default
+            for k, v in signature.parameters.items()
+            if v.default is not inspect.Parameter.empty
+        }
+
         alias_fn = self.getFunctionByName(name=command)
 
         if alias_fn is None:
