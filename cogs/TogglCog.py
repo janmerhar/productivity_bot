@@ -181,8 +181,11 @@ class TogglCog(commands.Cog):
         arguments="Semicolon separated arguments"
     )
     async def createalias(self, interaction: discord.Interaction, command: str,  alias: str, arguments: str = ""):
+        cog_fn = self.getFunctionByName(name=command)
+        cog_param = self.getDefaultParameters(cog_fn=cog_fn)
+
         param = self.embeds.createalias_embed(
-            command=command, alias=alias, arguments=arguments)
+            command=command, alias=alias, arguments=arguments, cog_param=cog_param)
 
         await interaction.response.send_message(**param)
 
