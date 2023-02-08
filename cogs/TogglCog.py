@@ -166,6 +166,14 @@ class TogglCog(commands.Cog):
         except:
             return None
 
+    def getDefaultParameters(self, cog_fn):
+        return {
+            param.name: param.default
+            for param in cog_fn.parameters
+            if param.default is not None and type(param.default) != discord.utils._MissingSentinel
+        }
+
+    """
     @app_commands.command(name="createalias", description="create alias")
     @app_commands.describe(
         command="Command name",
