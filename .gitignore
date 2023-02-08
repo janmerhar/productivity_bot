@@ -8,3 +8,6 @@ __pycache__/
 # GCSA authentication files
 credentials.json
 token.pickle
+
+# Log files
+*.log
