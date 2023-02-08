@@ -11,6 +11,7 @@ import platform
 import random
 import sys
 import aiohttp
+import inspect
 
 from classes.TogglFunctions import TogglFunctions
 from dotenv import dotenv_values
@@ -156,6 +157,14 @@ class TogglCog(commands.Cog):
     #
     # Shortcuts
     #
+
+
+    def getFunctionByName(self, name):
+        try:
+            fn = getattr(self, f"{name}")
+            return fn
+        except:
+            return None
 
     @app_commands.command(name="createalias", description="create alias")
     @app_commands.describe(
