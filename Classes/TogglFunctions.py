@@ -213,10 +213,17 @@ class TogglFunctions:
         res = self.mongo_commands.update_one(search_param, update_param)
         return search_timer["param"]
 
+    def findSavedTimersLike(self, identifier: str = ""):
+        res_command = self.mongo_commands.find(
+            {"command": {"$regex": identifier, "$options": "i"}}).sort(
+            "number_of_runs", -1)
+
+        return list(res_command)
+
     def mostCommonlyUsedTimers(self, n: int):
         search_param = {"application": "toggl"}
 
-        res = self.mongo_commands.find(search_param, limit=n).sort(
+        res = self.mongo_commands.find(search_param, limit=int(n)).sort(
             "number_of_runs", -1)
 
         return list(res)
@@ -419,4 +426,5 @@ if __name__ == "__main__":
     # res = toggl.saveShortcut("command", "neki krajsega",
     #  "  command   aaa   BBB ;  lol LOL   ")
     # res = toggl.findSavedShortcut("abt")
+    # res = toggl.findSavedTimersLike("a")
     print(res)
