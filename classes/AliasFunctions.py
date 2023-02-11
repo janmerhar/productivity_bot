@@ -14,8 +14,6 @@ env = dotenv_values(".env")
 
 
 class AliasFunctions():
-    pass
-
     def __init__(self):
         client = pymongo.MongoClient(
             f"mongodb+srv://{env['MONGO_USERNAME']}:{env['MONGO_PASSWORD']}@cluster0.puvwbmu.mongodb.net/?retryWrites=true&w=majority")
