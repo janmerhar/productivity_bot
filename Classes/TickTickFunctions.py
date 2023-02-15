@@ -1,9 +1,15 @@
 from ticktick.oauth2 import OAuth2        # OAuth2 Manager
 from ticktick.api import TickTickClient   # Main Interface
 import datetime
+from abstract.FunctionsAbstract import FunctionsAbstract
+import pymongo
+from pymongo import MongoClient
+
+from dotenv import dotenv_values
+env = dotenv_values(".env")
 
 
-class TickTickFunctions:
+class TickTickFunctions(FunctionsAbstract):
     def __init__(self, email, password, client_id, client_secret, uri):
         self.auth_client = OAuth2(client_id=client_id,
                                   client_secret=client_secret,
@@ -11,6 +17,10 @@ class TickTickFunctions:
 
         self.client = TickTickClient(email, password, self.auth_client)
 
+        mongo_client = pymongo.MongoClient(
+            f"mongodb+srv://{env['MONGO_USERNAME']}:{env['MONGO_PASSWORD']}@cluster0.puvwbmu.mongodb.net/?retryWrites=true&w=majority")
+        self.mongo_commands = mongo_client["productivity_bot"]["custom_commands"]
+        self.mongo_aliases = mongo_client["productivity_bot"]["aliases"]
     #
     # Tasks
     # https://lazeroffmichael.github.io/ticktick-py/usage/tasks/
@@ -199,6 +209,38 @@ class TickTickFunctions:
     # Helpers
     # https://lazeroffmichael.github.io/ticktick-py/usage/helpers/
     #
+
+    #
+    # Aliases
+    #
+
+    def parseShortcutArguments(self, arguments: str) -> dict[str, str]:
+        param = {}
+
+        arg_lines = arguments.split(";")
+
+        for arg_line in arg_lines:
+            arg_line = arg_line.strip()
+            command = arg_line.split(" ")[0].strip()
+
+            if len(command) > 0:
+                param[command] = " ".join(arg_line.split(" ")[1:]).strip()
+
+        return param
+
+    def saveShortcut2(self, command: str, alias: str, param: object = {}) -> dict:
+
+        data = {
+            "alias": alias,         # Name of the shortened command
+            "command": command,     # Name of the slash command
+            "application": "ticktick",
+            "number_of_runs": 0,
+            "param": param,         # Parameters passed to aliased slash command
+        }
+
+        res = self.mongo_aliases.insert_one(data)
+
+        return data
 
 
 if __name__ == '__main__':
