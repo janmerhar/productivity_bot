@@ -150,3 +150,50 @@ class TickTickEmbeds(EmbedsAbstract):
 
             return {"embeds": [embed]}
 
+    def updatetask_embed(self, identifier: str, name: str = None, project_id: str = None, content: str = None, desc: str = None, start_date: str = None, due_date: str = None, time_zone: str = None, reminders: str = None, repeat: str = None, priority: str = None, sort_order: str = None, items: str = None):
+        task = self.ticktick.getTask(identifier)
+
+        if task is None:
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick Update Task",
+                color=0xffb301,
+                description="No task found"
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            return {"embeds": [embed]}
+        else:
+            # Ignoring startDate and dueDate fields
+            task["title"] = name if name is not None else task["title"]
+
+            # print(project_id)
+            # if project_id is not None:
+            #     project = self.ticktick.getProject(project_id)
+            #     print(project)
+            #     if project is None or project == {}:
+            #         pass
+            #     else:
+            #         task["projectId"] = project["id"]
+            # print(task["projectId"])
+
+            task["content"] = content if content is not None else task["content"]
+            task["desc"] = desc if desc is not None else task["desc"]
+            task["timeZone"] = time_zone if time_zone is not None else task["timeZone"]
+
+            """
+            To be implemented
+            """
+            # task["reminders"] = reminders if reminders is not None else task["reminders"]
+            # task["repeat"] = repeat if repeat is not None else task["repeat"]
+            # task["priority"] = priority if priority is not None else task["priority"]
+            # task["sortOrder"] = sort_order if sort_order is not None else task["sortOrder"]
+            # task["items"] = items if items is not None else task["items"]
+
+            res = self.ticktick.updateTask(task)
+            # print(res)
+
+            return {"embeds": [embed]}
+
