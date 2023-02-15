@@ -13,4 +13,7 @@ env = dotenv_values(".env")
 
 
 class TickTickEmbeds(EmbedsAbstract):
-    pass
+    def __init__(self):
+        self.ticktick = TickTickFunctions(
+            env["TICK_EMAIL"], env["TICK_PASSWORD"], env["TICK_ID"], env["TICK_SECRET"], env["TICK_URI"])
+
