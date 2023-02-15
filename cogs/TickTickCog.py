@@ -58,15 +58,9 @@ class TickTickCog(commands.Cog):
 
     @app_commands.command(name="complete", description="TickTick complete a task")
     async def complete(self, interaction: discord.Interaction, name: str):
-        task = self.ticktick.completeTask(name)
-        # print(task)
+        param = self.embeds.complete_embed(name=name)
 
-        if task is None:
-            embed = discord.Embed(
-                title=":ballot_box_with_check: TickTick Complete Task",
-                color=0xffb301,
-                description="No task found"
-            )
+        await interaction.response.send_message(**param)
 
             embed.set_thumbnail(
                 url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
