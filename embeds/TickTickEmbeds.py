@@ -197,3 +197,48 @@ class TickTickEmbeds(EmbedsAbstract):
 
             return {"embeds": [embed]}
 
+    def movetask_embed(self, task_details: str, list: str):
+        task_details = self.ticktick.getTask(task_details)
+        project_details = self.ticktick.getProject(list)
+
+        # print(task_details)
+        # print(project_details)
+        # await interaction.response.send_message("STOP")
+        # return
+        if (task_details is None) or (project_details == {}):
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick Move Task",
+                color=0xffb301,
+                description="Cannot move task"
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            return {"embeds": [embed]}
+        else:
+            moved_task = self.ticktick.moveTask(
+                task_details, project_details["id"])
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick Move Task",
+                color=discord.Colour.from_str(
+                    project_details["color"] if project_details["color"] is not None else "#ffb301")
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            embed.add_field(
+                name="Task ID", value=task_details["id"], inline=True)
+            embed.add_field(
+                name="Task title", value=task_details["title"], inline=True)
+            # embed.add_field(
+            #     name="List name", value=project["name"], inline=True)
+            embed.add_field(
+                name="Task reminders", value=f"{len(task_details['reminders'])} reminders", inline=True)
+            embed.add_field(
+                name="Task subtasks", value=f"{len(task_details['items'])} reminders", inline=False)
+
+            return {"embeds": [embed]}
