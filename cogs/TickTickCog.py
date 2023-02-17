@@ -108,51 +108,10 @@ class TickTickCog(commands.Cog):
 
     @app_commands.command(name="deletetask", description="TickTick delete task")
     async def deletetask(self, interaction: discord.Interaction, name: str):
-        task = self.ticktick.deleteTask(name)
-        # print(task)
+        param = self.embeds.deletetask_embed(name=name)
 
-        if task is None:
-            embed = discord.Embed(
-                title=":ballot_box_with_check: TickTick Delete Task",
-                color=0xffb301,
-                description="No task found"
-            )
+        await interaction.response.send_message(**param)
 
-            embed.set_thumbnail(
-                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
-            )
-
-            await interaction.response.send_message(embed=embed)
-        else:
-            embed = discord.Embed(
-                title=":ballot_box_with_check: TickTick Delete Task",
-                color=0xffb301,
-            )
-
-            embed.set_thumbnail(
-                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
-            )
-
-            # project = self.ticktick.getProjectById(task["projectId"])
-
-            embed.add_field(
-                name="Task ID", value=task["id"], inline=True)
-            embed.add_field(
-                name="Task title", value=task["title"], inline=True)
-            # embed.add_field(
-            #     name="List name", value=project["name"], inline=True)
-            embed.add_field(
-                name="Task reminders", value=f"{len(task['reminders'])} reminders", inline=True)
-            embed.add_field(
-                name="Task subtasks", value=f"{len(task['items'])} reminders", inline=False)
-
-            await interaction.response.send_message(embed=embed)
-
-    """
-    Implement:
-    - Better printout for reminders
-    - Better printout for subtasks
-    """
     @app_commands.command(name="getlist", description="TickTick get list")
     async def getlist(self, interaction: discord.Interaction, identifier: str):
         project = self.ticktick.getProject(identifier)
