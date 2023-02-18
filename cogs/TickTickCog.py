@@ -127,42 +127,10 @@ class TickTickCog(commands.Cog):
 
     @app_commands.command(name="listinfo", description="TickTick get list info")
     async def listinfo(self, interaction: discord.Interaction, identifier: str):
-        project = self.ticktick.getProject(identifier)
+        param = self.embeds.listinfo_embed(identifier=identifier)
 
-        if project == {}:
-            embed = discord.Embed(
-                title=":ballot_box_with_check: TickTick list search",
-                color=0xffb301,
-                description="List not found"
-            )
+        await interaction.response.send_message(**param)
 
-            embed.set_thumbnail(
-                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
-            )
-
-            await interaction.response.send_message(embed=embed)
-        else:
-            embed = discord.Embed(
-                title=":ballot_box_with_check: TickTick list search",
-                color=discord.Colour.from_str(project["color"])
-            )
-
-            embed.set_thumbnail(
-                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
-            )
-
-            embed.add_field(
-                name="List ID", value=project["id"], inline=False)
-            embed.add_field(
-                name="List name", value=project["name"], inline=False)
-            embed.add_field(
-                name="List view mode", value=project["viewMode"], inline=False)
-
-            await interaction.response.send_message(embed=embed)
-
-    """
-    Function crashes(raises error) when you try to add a project if there's also maximum limit reachhed
-    """
     @app_commands.command(name="newlist", description="TickTick create new list")
     async def newlist(self, interaction: discord.Interaction, name: str, color: str = None, project_type: str = 'TASK', folder_id: str = None):
         project = self.ticktick.createProject(
