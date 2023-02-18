@@ -284,3 +284,42 @@ class TickTickEmbeds(EmbedsAbstract):
 
             return {"embeds": [embed]}
 
+
+    def getlist_embed(self, identifier: str):
+        project = self.ticktick.getProject(identifier)
+
+        if project == {}:
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick list search",
+                color=0xffb301,
+                description="No lists found"
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            return {"embeds": [embed]}
+        else:
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick list search",
+                color=0xffb301,
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            tasks = self.ticktick.tasksFromProject(project["name"])
+            for item in tasks:
+                embed.add_field(
+                    name="List ID", value=item["id"], inline=True)
+                embed.add_field(
+                    name="List title", value=item["title"], inline=True)
+                embed.add_field(
+                    name="List reminders", value=f"{len(item['reminders'])} reminders", inline=True)
+                embed.add_field(
+                    name="List subtasks", value=f"{len(item['items'])} reminders", inline=False)
+
+            return {"embeds": [embed]}
+
