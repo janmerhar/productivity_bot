@@ -114,42 +114,9 @@ class TickTickCog(commands.Cog):
 
     @app_commands.command(name="getlist", description="TickTick get list")
     async def getlist(self, interaction: discord.Interaction, identifier: str):
-        project = self.ticktick.getProject(identifier)
+        param = self.embeds.getlist_embed(identifier=identifier)
 
-        if project == {}:
-            embed = discord.Embed(
-                title=":ballot_box_with_check: TickTick list search",
-                color=0xffb301,
-                description="No lists found"
-            )
-
-            embed.set_thumbnail(
-                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
-            )
-
-            await interaction.response.send_message(embed=embed)
-        else:
-            embed = discord.Embed(
-                title=":ballot_box_with_check: TickTick list search",
-                color=0xffb301,
-            )
-
-            embed.set_thumbnail(
-                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
-            )
-
-            tasks = self.ticktick.tasksFromProject(project["name"])
-            for item in tasks:
-                embed.add_field(
-                    name="List ID", value=item["id"], inline=True)
-                embed.add_field(
-                    name="List title", value=item["title"], inline=True)
-                embed.add_field(
-                    name="List reminders", value=f"{len(item['reminders'])} reminders", inline=True)
-                embed.add_field(
-                    name="List subtasks", value=f"{len(item['items'])} reminders", inline=False)
-
-            await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(**param)
 
     #
     # Projects
