@@ -323,3 +323,42 @@ class TickTickEmbeds(EmbedsAbstract):
 
             return {"embeds": [embed]}
 
+    #
+    # Projects
+    #
+
+    def listinfo_embed(self, identifier: str):
+        project = self.ticktick.getProject(identifier)
+
+        if project == {}:
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick list search",
+                color=0xffb301,
+                description="List not found"
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            return {"embeds": [embed]}
+        else:
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick list search",
+                color=discord.Colour.from_str(project["color"])
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            embed.add_field(
+                name="List ID", value=project["id"], inline=False)
+            embed.add_field(
+                name="List name", value=project["name"], inline=False)
+            embed.add_field(
+                name="List view mode", value=project["viewMode"], inline=False)
+
+            return {"embeds": [embed]}
+
+    """
