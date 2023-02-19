@@ -362,3 +362,51 @@ class TickTickEmbeds(EmbedsAbstract):
             return {"embeds": [embed]}
 
     """
+    Function crashes(raises error) when you try to add a project if there's also maximum limit reachhed
+    """
+
+    def newlist_embed(self, name: str, color: str = None, project_type: str = 'TASK', folder_id: str = None):
+        project = self.ticktick.createProject(
+            name=name, color=color, project_type=project_type, folder_id=folder_id
+        )
+
+        # print(project)
+        # await interaction.response.send_message("NI NI")
+        # return
+        if project is None:
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick New Project",
+                color=0xffb301,
+                description="Project already exists"
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            return {"embeds": [embed]}
+        else:
+            # await interaction.response.send_message("Dela")
+            # return
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick New Project",
+                color=discord.Colour.from_str(
+                    project["color"] if project["color"] is not None else "#ffb301")
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            embed.add_field(
+                name="List ID", value=project["id"], inline=False)
+            embed.add_field(
+                name="List name", value=project["name"], inline=False)
+            embed.add_field(
+                name="List view mode", value=project["viewMode"], inline=False)
+            embed.add_field(
+                name="List kind", value=project["kind"], inline=False)
+
+            return {"embeds": [embed]}
+
+    def changelist_embed(self, identifier: str, name: str = None, color: str = None, project_type: str = None, folder_id: str = None):
