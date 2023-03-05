@@ -16,7 +16,7 @@ bot = commands.Bot(command_prefix=".", intents=intents)
 
 logger = logging.getLogger('discord')
 logger.setLevel(logging.DEBUG)
-logging.getLogger('discord.http').setLevel(logging.INFO)
+logging.getLogger('discord.http').setLevel(logging.WARNING)
 
 handler = logging.handlers.RotatingFileHandler(
     filename='discord.log',
