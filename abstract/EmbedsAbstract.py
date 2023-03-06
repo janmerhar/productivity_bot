@@ -18,3 +18,11 @@ class EmbedsAbstract(ABC):
         except:
             return None
 
+    def getDefaultArgs(func):
+        signature = inspect.signature(func)
+
+        return {
+            k: v.default
+            for k, v in signature.parameters.items()
+            if v.default is not inspect.Parameter.empty
+        }
