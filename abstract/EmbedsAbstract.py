@@ -11,3 +11,10 @@ class EmbedsAbstract(ABC):
     def usealias_embed(self, alias: str):
         pass
 
+    def getFunctionByName(self, name):
+        try:
+            fn = getattr(self, f"{name}_embed")
+            return fn
+        except:
+            return None
+
