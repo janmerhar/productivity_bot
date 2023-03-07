@@ -3,4 +3,6 @@ from abc import ABC, abstractmethod
 
 
 class FunctionsAbstract(ABC):
-    pass
+    @abstractmethod
+    def saveShortcut2(self, command: str, alias: str, param: object = {}):
+        pass
