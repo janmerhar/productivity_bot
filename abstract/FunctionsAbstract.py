@@ -12,3 +12,16 @@ class FunctionsAbstract(ABC):
 
         return saved_shortcut
 
+    def parseShortcutArguments(arguments: str) -> dict[str, str]:
+        param = {}
+
+        arg_lines = arguments.split(";")
+
+        for arg_line in arg_lines:
+            arg_line = arg_line.strip()
+            command = arg_line.split(" ")[0].strip()
+
+            if len(command) > 0:
+                param[command] = " ".join(arg_line.split(" ")[1:]).strip()
+
+        return param
