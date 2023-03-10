@@ -49,3 +49,20 @@ class AliasEmbeds:
         )
 
         return {"embeds": [embed_no_found]}
+
+    def aliasesToEmbed(aliases: List[object], embed):
+        for alias in aliases:
+            embed.add_field(name="Alias name",
+                            value=alias["alias"], inline=True)
+            embed.add_field(name="Slash command",
+                            value=alias["command"], inline=True)
+            embed.add_field(name="Application",
+                            value=alias["application"], inline=True)
+            embed.add_field(name="Number of runs",
+                            value=alias["number_of_runs"], inline=True)
+            embed.add_field(name="Number of runs",
+                            value=alias["number_of_runs"], inline=True)
+            embed.add_field(name="Parameters",
+                            value=str(alias["param"]), inline=True)
+
+        return embed
