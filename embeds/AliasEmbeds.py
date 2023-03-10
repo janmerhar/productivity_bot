@@ -66,3 +66,15 @@ class AliasEmbeds:
                             value=str(alias["param"]), inline=True)
 
         return embed
+
+    def aliasToEmbed(alias: object, embed):
+        embed.add_field(name="Alias name",
+                        value=alias["alias"], inline=False)
+        embed.add_field(name="Slash command",
+                        value=alias["command"], inline=False)
+        embed.add_field(name="Application",
+                        value=alias["application"], inline=False)
+        embed.add_field(name="Parameters",
+                        value=str(alias["param"]), inline=False)
+
+        return embed
