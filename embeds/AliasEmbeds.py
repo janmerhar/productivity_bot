@@ -50,6 +50,16 @@ class AliasEmbeds:
 
         return {"embeds": [embed_no_found]}
 
+    def findaliases_embed(self, alias: str = ""):
+        found_aliases = self.alias.findAliases(identifier=alias)
+
+        embed = discord.Embed(
+            title=f"Found {len(found_aliases)} aliases",
+            color=0x00ff00
+        )
+
+        return {"embeds": [AliasEmbeds.aliasesToEmbed(found_aliases, embed)]}
+
     def aliasesToEmbed(aliases: List[object], embed):
         for alias in aliases:
             embed.add_field(name="Alias name",
