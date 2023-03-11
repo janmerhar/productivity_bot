@@ -21,6 +21,9 @@ class AliasEmbeds:
         self.embed_classes = {"toggl": self.toggl_embeds,
                               "ticktick": self.ticktick_embeds}
 
+    def createalias_embed(self, command: str,  alias: str, arguments: str = ""):
+        pass
+
     def usealias_embed(self, alias: str):
         # Iskanje, ce alias obstaja
         find_alias = self.alias.findAliases(identifier=alias)
@@ -55,6 +58,16 @@ class AliasEmbeds:
 
         embed = discord.Embed(
             title=f"Found {len(found_aliases)} aliases",
+            color=0x00ff00
+        )
+
+        return {"embeds": [AliasEmbeds.aliasesToEmbed(found_aliases, embed)]}
+
+    def popularalias_embed(self, n: int = 5):
+        found_aliases = self.alias.findAliases(identifier="", n=n)
+
+        embed = discord.Embed(
+            title=f"Top {len(found_aliases)} aliases",
             color=0x00ff00
         )
 
