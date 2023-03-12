@@ -31,6 +31,14 @@ class AliasCog(commands.Cog):
         print("Alias cog loaded")
 
 
+    def getFunctionByName(obj, name):
+        try:
+            fn = getattr(obj, f"{name}")
+            return fn
+        except:
+            return None
+
+
 
 async def setup(client):
     await client.add_cog(AliasCog(client), guilds=[discord.Object(id=864242668066177044)])
