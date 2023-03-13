@@ -45,6 +45,14 @@ class AliasCog(commands.Cog):
             if param.default is not None and type(param.default) != discord.utils._MissingSentinel
         }
 
+    @app_commands.command(name="usealias", description="Shortcuts use alias")
+    @app_commands.describe(
+        alias="Alias of a command to be used",
+    )
+    async def usealias(self, interaction: discord.Interaction, alias: str):
+        param = self.embeds.usealias_embed(alias=alias)
+
+        await interaction.response.send_message(**param)
 
 
 async def setup(client):
