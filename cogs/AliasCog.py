@@ -38,6 +38,13 @@ class AliasCog(commands.Cog):
         except:
             return None
 
+    def getDefaultParameters(cog_fn):
+        return {
+            param.name: param.default
+            for param in cog_fn.parameters
+            if param.default is not None and type(param.default) != discord.utils._MissingSentinel
+        }
+
 
 
 async def setup(client):
