@@ -66,5 +66,15 @@ class AliasCog(commands.Cog):
 
         await interaction.response.send_message(**param)
 
+    @app_commands.command(name="popularalias", description="Most popular aliases")
+    @app_commands.describe(
+        n="Number of most popular aliases to be displayed"
+    )
+    async def popularalias(self, interaction: discord.Interaction, n: int = 5):
+        param = self.embeds.popularalias_embed(n=n)
+
+        await interaction.response.send_message(**param)
+
+
 async def setup(client):
     await client.add_cog(AliasCog(client), guilds=[discord.Object(id=864242668066177044)])
