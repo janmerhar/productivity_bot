@@ -54,6 +54,17 @@ class AliasCog(commands.Cog):
 
         await interaction.response.send_message(**param)
 
+    @app_commands.command(name="findaliases", description="Shortcuts find aliases")
+    @app_commands.describe(
+        alias="Alias of a command to be used",
+    )
+    async def findalias(self, interaction: discord.Interaction, alias: str):
+        print(AliasCog.getFunctionByName(AliasCog, "usealias"))
+        print(AliasCog.getDefaultParameters(
+            AliasCog.getFunctionByName(AliasCog, "usealias")))
+        param = self.embeds.findaliases_embed(alias=alias)
+
+        await interaction.response.send_message(**param)
 
 async def setup(client):
     await client.add_cog(AliasCog(client), guilds=[discord.Object(id=864242668066177044)])
