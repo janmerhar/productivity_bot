@@ -291,6 +291,14 @@ class TogglEmbeds:
 
             return {"embeds": embeds}
 
+    def startsaved_autocomplete_embed(self, current: str = ""):
+        res = [
+            app_commands.Choice(name=timer["command"], value=timer["command"])
+            for timer in self.toggl.findSavedTimersLike(current)
+        ]
+
+        return res
+
     def populartimers_embed(self, n: int):
         timers = self.toggl.mostCommonlyUsedTimers(n)
 
