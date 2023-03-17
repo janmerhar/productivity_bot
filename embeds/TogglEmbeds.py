@@ -471,24 +471,7 @@ class TogglEmbeds(EmbedsAbstract):
     # Shortcuts
     #
 
-    def getFunctionByName(self, name):
-        try:
-            fn = getattr(self, f"{name}_embed")
-            return fn
-        except:
-            return None
-
-    def getDefaultArgs(func):
-        signature = inspect.signature(func)
-
-        return {
-            k: v.default
-            for k, v in signature.parameters.items()
-            if v.default is not inspect.Parameter.empty
-        }
-
     def createalias_embed(self, command: str,  alias: str, arguments: str = "", cog_param: object = {}) -> dict:
-        print("enter embed")
         alias_fn = self.getFunctionByName(name=command)
 
         if alias_fn is None:
