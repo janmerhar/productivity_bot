@@ -5,7 +5,7 @@ from discord.ext import commands
 from discord import app_commands
 import inspect
 
-from classes.TickTickFunctions import TickTickFunctions
+from Classes.TickTickFunctions import TickTickFunctions
 from abstract.EmbedsAbstract import EmbedsAbstract  # Se moram implemenetirati
 
 from dotenv import dotenv_values

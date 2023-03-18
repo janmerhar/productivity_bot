@@ -15,7 +15,7 @@ import random
 import sys
 import aiohttp
 
-from classes.TickTickFunctions import TickTickFunctions
+from Classes.TickTickFunctions import TickTickFunctions
 from embeds.TickTickEmbeds import TickTickEmbeds
 from dotenv import dotenv_values
 env = dotenv_values(".env")
