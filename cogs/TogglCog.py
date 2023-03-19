@@ -109,6 +109,12 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(**param)
 
+    @startsaved.autocomplete("identifier")
+    async def starsaved_autocomplete(self, interaction: discord.Interaction, current: str = ""):
+        options = self.embeds.startsaved_autocomplete_embed(current=current)
+
+        return options
+
     @app_commands.command(name="populartimers", description="Toggl most popular timers")
     @app_commands.describe(
         n="Number of most popular timers to be displayed"
