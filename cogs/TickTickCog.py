@@ -62,36 +62,6 @@ class TickTickCog(commands.Cog):
 
         await interaction.response.send_message(**param)
 
-            embed.set_thumbnail(
-                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
-            )
-
-            await interaction.response.send_message(embed=embed)
-        else:
-            embed = discord.Embed(
-                title=":ballot_box_with_check: TickTick Complete Task",
-                color=0xffb301,
-            )
-
-            embed.set_thumbnail(
-                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
-            )
-
-            # project = self.ticktick.getProjectById(task["projectId"])
-
-            embed.add_field(
-                name="Task ID", value=task["id"], inline=True)
-            embed.add_field(
-                name="Task title", value=task["title"], inline=True)
-            # embed.add_field(
-            #     name="List name", value=project["name"], inline=True)
-            embed.add_field(
-                name="Task reminders", value=f"{len(task['reminders'])} reminders", inline=True)
-            embed.add_field(
-                name="Task subtasks", value=f"{len(task['items'])} reminders", inline=False)
-
-            await interaction.response.send_message(embed=embed)
-
     @app_commands.command(name="updatetask", description="TickTick update a task")
     async def updatetask(self, interaction: discord.Interaction, identifier: str, name: str = None, project_id: str = None, content: str = None, desc: str = None, start_date: str = None, due_date: str = None, time_zone: str = None, reminders: str = None, repeat: str = None, priority: str = None, sort_order: str = None, items: str = None):
         param = self.embeds.updatetask_embed(identifier=identifier, name=name, project_id=project_id, content=content, desc=desc, start_date=start_date,
