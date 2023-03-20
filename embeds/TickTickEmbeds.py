@@ -451,3 +451,44 @@ class TickTickEmbeds(EmbedsAbstract):
 
             return {"embeds": [embed]}
 
+    def deletelist_embed(self, identifier: str):
+        project = self.ticktick.deleteProject(identifier)
+
+        if project is None:
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick Delete Project",
+                color=0xffb301,
+                description="Project does not exist"
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            return {"embeds": [embed]}
+        else:
+            embed = discord.Embed(
+                title=":ballot_box_with_check: TickTick Delete Project",
+                # color=discord.Colour.from_str(
+                # project["color"] if project["color"] is not None else "#ffb301")
+            )
+
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            embed.add_field(
+                name="List ID", value=project["id"], inline=False)
+            embed.add_field(
+                name="List name", value=project["name"], inline=False)
+            embed.add_field(
+                name="List view mode", value=project["viewMode"], inline=False)
+            embed.add_field(
+                name="List kind", value=project["kind"], inline=False)
+
+            return {"embeds": [embed]}
+
+    #
+    # Tags
+    #
+
