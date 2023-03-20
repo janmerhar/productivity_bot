@@ -45,6 +45,10 @@ class TogglCog(commands.Cog):
     # Tracking
     #
     @app_commands.command(name="start", description="Toggl start timer")
+    @app_commands.describe(
+        project="Project that timer will start in",
+        description="Description of this timer",
+    )
     async def start(self, interaction: discord.Interaction, project: str = None, description: str = None):
         param = self.embeds.start_embed(
             project=project, description=description)
