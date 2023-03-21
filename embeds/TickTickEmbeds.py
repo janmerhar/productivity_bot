@@ -539,3 +539,12 @@ class TickTickEmbeds(EmbedsAbstract):
                                 value=str(value), inline=False)
 
             return {"embeds": [embed]}
+
+    def usealias_embed(self, alias: str):
+        alias_data = self.ticktick.findSavedShortcut(alias=alias)
+
+        fn_embed = self.getFunctionByName(alias_data["command"])
+
+        embed = fn_embed(**alias_data["param"])
+
+        return embed
