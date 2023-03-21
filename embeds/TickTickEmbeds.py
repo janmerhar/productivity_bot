@@ -492,3 +492,50 @@ class TickTickEmbeds(EmbedsAbstract):
     # Tags
     #
 
+    #
+    # Aliases
+    #
+
+    def createalias_embed(self, command: str,  alias: str, arguments: str = "", cog_param: object = {}) -> dict:
+        alias_fn = self.getFunctionByName(name=command)
+
+        if alias_fn is None:
+            embed = discord.Embed(
+                title=":stopwatch: TickTick New Shortcut",
+                color=discord.Colour.from_str("#ffb301"),
+                description="Slash command not found"
+            )
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            return {"embeds": [embed]}
+        else:
+            insert_args = self.ticktick.parseShortcutArguments(arguments)
+            cog_param.update(insert_args)
+
+            inserted_data = self.ticktick.saveShortcut2(
+                command=command, alias=alias, param=cog_param)
+
+            embed = discord.Embed(
+                title=":stopwatch: TickTick New Shortcut",
+                color=discord.Colour.from_str("#ffb301"),
+            )
+            embed.set_thumbnail(
+                url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+            )
+
+            embed.add_field(name="Alias",
+                            value=inserted_data["alias"], inline=False)
+            embed.add_field(name="Command",
+                            value=inserted_data["command"], inline=False)
+            embed.add_field(name="Application",
+                            value=inserted_data["application"], inline=False)
+            embed.add_field(name="Id",
+                            value=str(inserted_data["_id"]), inline=False)
+
+            for key, value in inserted_data["param"].items():
+                embed.add_field(name=f"Param __{str(key)}__",
+                                value=str(value), inline=False)
+
+            return {"embeds": [embed]}
