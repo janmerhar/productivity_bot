@@ -170,12 +170,24 @@ class TickTickCog(commands.Cog):
     # async def newlist(self, interaction: discord.Interaction):
 
     @app_commands.command(name="listinfo", description="TickTick get list info")
+    @app_commands.describe(
+        identifier="List info to be displayed",
+    )
+    @app_commands.rename(
+        identifier="name"
+    )
     async def listinfo(self, interaction: discord.Interaction, identifier: str):
         param = self.embeds.listinfo_embed(identifier=identifier)
 
         await interaction.response.send_message(**param)
 
     @app_commands.command(name="newlist", description="TickTick create new list")
+    @app_commands.describe(
+        name="Name of the list",
+        color="Color of the list",
+        project_type="Type of the list",
+        folder_id="Folder to which the list will be added",
+    )
     async def newlist(self, interaction: discord.Interaction, name: str, color: str = None, project_type: str = 'TASK', folder_id: str = None):
         param = self.embeds.newlist_embed(
             name=name, color=color, project_type=project_type, folder_id=folder_id)
@@ -183,6 +195,12 @@ class TickTickCog(commands.Cog):
         await interaction.response.send_message(**param)
 
     @app_commands.command(name="changelist", description="TickTick change list")
+    @app_commands.describe(
+        name="Name of the list",
+        color="Color of the list",
+        project_type="Type of the list",
+        folder_id="Folder to which the list will be added",
+    )
     async def changelist(self, interaction: discord.Interaction, identifier: str, name: str = None, color: str = None, project_type: str = None, folder_id: str = None):
         param = self.embeds.changelist_embed(
             identifier=identifier, name=name, color=color, project_type=project_type, folder_id=folder_id)
@@ -190,6 +208,12 @@ class TickTickCog(commands.Cog):
         await interaction.response.send_message(**param)
 
     @app_commands.command(name="deletelist", description="TickTick delete list")
+    @app_commands.describe(
+        identifier="List to be deleted",
+    )
+    @app_commands.rename(
+        identifier="name"
+    )
     async def deletelist(self, interaction: discord.Interaction, identifier: str):
         param = self.embeds.deletelist_embed(identifier=identifier)
 
