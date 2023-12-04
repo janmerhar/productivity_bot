@@ -1,26 +1,29 @@
-from ticktick.oauth2 import OAuth2        # OAuth2 Manager
-from ticktick.api import TickTickClient   # Main Interface
-import datetime
+from ticktick.oauth2 import OAuth2
+from ticktick.api import TickTickClient
+
 from abstract.FunctionsAbstract import FunctionsAbstract
 import pymongo
 from pymongo import MongoClient
 
 from dotenv import dotenv_values
+
 env = dotenv_values(".env")
 
 
 class TickTickFunctions(FunctionsAbstract):
     def __init__(self, email, password, client_id, client_secret, uri):
-        self.auth_client = OAuth2(client_id=client_id,
-                                  client_secret=client_secret,
-                                  redirect_uri=uri)
+        auth_client = OAuth2(
+            client_id=client_id, client_secret=client_secret, redirect_uri=uri
+        )
 
-        self.client = TickTickClient(email, password, self.auth_client)
+        self.client = TickTickClient(email, password, auth_client)
 
         mongo_client = pymongo.MongoClient(
-            f"mongodb+srv://{env['MONGO_USERNAME']}:{env['MONGO_PASSWORD']}@cluster0.puvwbmu.mongodb.net/?retryWrites=true&w=majority")
+            f"mongodb+srv://{env['MONGO_USERNAME']}:{env['MONGO_PASSWORD']}@cluster0.puvwbmu.mongodb.net/?retryWrites=true&w=majority"
+        )
         self.mongo_commands = mongo_client["productivity_bot"]["custom_commands"]
         self.mongo_aliases = mongo_client["productivity_bot"]["aliases"]
+
     #
     # Tasks
     # https://lazeroffmichael.github.io/ticktick-py/usage/tasks/
