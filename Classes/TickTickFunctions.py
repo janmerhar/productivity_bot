@@ -18,9 +18,7 @@ class TickTickFunctions(FunctionsAbstract):
 
         self.client = TickTickClient(email, password, auth_client)
 
-        mongo_client = pymongo.MongoClient(
-            f"mongodb+srv://{env['MONGO_USERNAME']}:{env['MONGO_PASSWORD']}@cluster0.puvwbmu.mongodb.net/?retryWrites=true&w=majority"
-        )
+        mongo_client = pymongo.MongoClient(env["MONGO_URI"])
         self.mongo_commands = mongo_client["productivity_bot"]["custom_commands"]
         self.mongo_aliases = mongo_client["productivity_bot"]["aliases"]
 
@@ -36,13 +34,11 @@ class TickTickFunctions(FunctionsAbstract):
     """
 
     def getTaskByTitle(self, title):
-        project = self.client.get_by_fields(
-            search="tasks", title=title)
+        project = self.client.get_by_fields(search="tasks", title=title)
         return project
 
     def getTaskById(self, task_id):
-        project = self.client.get_by_id(
-            search="tasks", obj_id=task_id)
+        project = self.client.get_by_id(search="tasks", obj_id=task_id)
         return project
 
     def getTask(self, identifier):
@@ -57,9 +53,37 @@ class TickTickFunctions(FunctionsAbstract):
         else:
             return by_name
 
-    def createTask(self, title, projectId=None, content=None, desc=None, allDay=None, startDate=None, dueDate=None, timeZone=None, reminders=None, repeat=None, priority=None, sortOrder=None, items=None):
-        task = self.client.task.builder(title, projectId=projectId, content=content, desc=desc, allDay=allDay, startDate=startDate,
-                                        dueDate=dueDate, timeZone=timeZone, reminders=reminders, repeat=repeat, priority=priority, sortOrder=sortOrder, items=items)
+    def createTask(
+        self,
+        title,
+        projectId=None,
+        content=None,
+        desc=None,
+        allDay=None,
+        startDate=None,
+        dueDate=None,
+        timeZone=None,
+        reminders=None,
+        repeat=None,
+        priority=None,
+        sortOrder=None,
+        items=None,
+    ):
+        task = self.client.task.builder(
+            title,
+            projectId=projectId,
+            content=content,
+            desc=desc,
+            allDay=allDay,
+            startDate=startDate,
+            dueDate=dueDate,
+            timeZone=timeZone,
+            reminders=reminders,
+            repeat=repeat,
+            priority=priority,
+            sortOrder=sortOrder,
+            items=items,
+        )
         newTask = self.client.task.create(task)
         return newTask
 
@@ -122,13 +146,11 @@ class TickTickFunctions(FunctionsAbstract):
         pass
 
     def getProjectByName(self, name):
-        project = self.client.get_by_fields(
-            search="projects", name=name)
+        project = self.client.get_by_fields(search="projects", name=name)
         return project
 
     def getProjectById(self, project_id):
-        project = self.client.get_by_id(
-            search="projects", obj_id=project_id)
+        project = self.client.get_by_id(search="projects", obj_id=project_id)
         return project
 
     def getProject(self, identifier):
@@ -148,34 +170,42 @@ class TickTickFunctions(FunctionsAbstract):
     using self.getProject()
     """
 
-    def createProject(self, name, color='random', project_type='TASK', folder_id=None):
+    def createProject(self, name, color="random", project_type="TASK", folder_id=None):
         search = self.getProjectByName(name)
 
         if search != []:
             return None
         else:
             project = self.client.project.create(
-                name=name, color=color, project_type=project_type, folder_id=folder_id)
+                name=name, color=color, project_type=project_type, folder_id=folder_id
+            )
 
             return project
 
-    def updateProject(self, identifier, name=None, color=None, project_type=None, folder_id=None):
+    def updateProject(
+        self, identifier, name=None, color=None, project_type=None, folder_id=None
+    ):
         project = self.getProject(identifier)
 
         if project == {}:
             return None
 
-        if name is None and color is None and project_type is None and folder_id is None:
+        if (
+            name is None
+            and color is None
+            and project_type is None
+            and folder_id is None
+        ):
             return project
 
         if name is not None:
-            project['name'] = name
+            project["name"] = name
         if color is not None:
-            project['color'] = color
+            project["color"] = color
         if project_type is not None:
-            project['project_type'] = project_type
+            project["project_type"] = project_type
         if folder_id is not None:
-            project['folder_id'] = folder_id
+            project["folder_id"] = folder_id
 
         updatedProject = self.client.project.update(project)
 
@@ -232,13 +262,12 @@ class TickTickFunctions(FunctionsAbstract):
         return param
 
     def saveShortcut2(self, command: str, alias: str, param: object = {}) -> dict:
-
         data = {
-            "alias": alias,         # Name of the shortened command
-            "command": command,     # Name of the slash command
+            "alias": alias,  # Name of the shortened command
+            "command": command,  # Name of the slash command
             "application": "ticktick",
             "number_of_runs": 0,
-            "param": param,         # Parameters passed to aliased slash command
+            "param": param,  # Parameters passed to aliased slash command
         }
 
         res = self.mongo_aliases.insert_one(data)
@@ -246,13 +275,19 @@ class TickTickFunctions(FunctionsAbstract):
         return data
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from dotenv import dotenv_values
+
     env = dotenv_values(".env")
     import json
 
     ticktick = TickTickFunctions(
-        env["TICK_EMAIL"], env["TICK_PASSWORD"], env["TICK_ID"], env["TICK_SECRET"], env["TICK_URI"])
+        env["TICK_EMAIL"],
+        env["TICK_PASSWORD"],
+        env["TICK_ID"],
+        env["TICK_SECRET"],
+        env["TICK_URI"],
+    )
 
     # res = ticktick.completeTask("test task")
     # res = ticktick.deleteTask("test task")

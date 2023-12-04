@@ -10,6 +10,7 @@ import json
 from bson.objectid import ObjectId
 
 from dotenv import dotenv_values
+
 env = dotenv_values(".env")
 
 
@@ -21,8 +22,7 @@ class TogglFunctions:
         # and have functions to change them
 
         # add implementation for API_KEY and email:passwd authentications
-        client = pymongo.MongoClient(
-            f"mongodb+srv://{env['MONGO_USERNAME']}:{env['MONGO_PASSWORD']}@cluster0.puvwbmu.mongodb.net/?retryWrites=true&w=majority")
+        client = pymongo.MongoClient(env["MONGO_URI"])
         self.mongo_commands = client["productivity_bot"]["custom_commands"]
         self.mongo_aliases = client["productivity_bot"]["aliases"]
 
@@ -35,45 +35,58 @@ class TogglFunctions:
     #
 
     def aboutMe(self):
-        res = requests.get(
-            'https://api.track.toggl.com/api/v9/me', auth=self.auth)
+        res = requests.get("https://api.track.toggl.com/api/v9/me", auth=self.auth)
         return res.json()
+
     #
     # Tracking
     # https://developers.track.toggl.com/docs/tracking
     #
 
-    def startCurrentTimeEntry(self, workspace_id, billable=None, description=None,
-                              pid=None, tags=[], tid=None,):
-
-        start_date = datetime.datetime.utcnow().replace(
-            tzinfo=datetime.timezone.utc).isoformat()
+    def startCurrentTimeEntry(
+        self,
+        workspace_id,
+        billable=None,
+        description=None,
+        pid=None,
+        tags=[],
+        tid=None,
+    ):
+        start_date = (
+            datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc).isoformat()
+        )
 
         duration = -1 * int(time.time())
 
         json_data = {
-            'at': start_date,
-            'billable': billable,
-            'created_with': "productivity_bot",
-            'description': description,
-            'duration': duration,
-            'workspace_id': workspace_id,
-            'project_id': pid,
-            'pid': pid,
-            'tid': tid,
-            'tags': tags,
-            'wid': workspace_id,
+            "at": start_date,
+            "billable": billable,
+            "created_with": "productivity_bot",
+            "description": description,
+            "duration": duration,
+            "workspace_id": workspace_id,
+            "project_id": pid,
+            "pid": pid,
+            "tid": tid,
+            "tags": tags,
+            "wid": workspace_id,
             "server_deleted_at": None,
-            'start': start_date,
+            "start": start_date,
         }
 
         res = requests.post(
-            'https://api.track.toggl.com/api/v9/time_entries', json=json_data, auth=self.auth)
+            "https://api.track.toggl.com/api/v9/time_entries",
+            json=json_data,
+            auth=self.auth,
+        )
         return res.json()
 
     def getCurrentTimeEntry(self):
-        res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries/current',
-                           headers={'Content-Type': 'application/json'}, auth=self.auth)
+        res = requests.get(
+            "https://api.track.toggl.com/api/v9/me/time_entries/current",
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
         return res.json()
 
     def stopCurrentTimeEntry(self):
@@ -85,39 +98,62 @@ class TogglFunctions:
         time_entry_id = self.getCurrentTimeEntry()["id"]
         workspace_id = self.getCurrentTimeEntry()["wid"]
 
-        res = requests.patch(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}/stop', headers={
-                             'Content-Type': 'application/json'}, auth=self.auth)
+        res = requests.patch(
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}/stop",
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
         return res.json()
 
-    def insertTimeEntry(self, workspace_id, billable=None, created_with="curl", description=None,
-                        duration=None, duronly=None, pid=None, postedFields=[], project_id=None,
-                        start=None, start_date=None, stop=None, tag_action=None, tag_ids=[],
-                        tags=[], task_id=None, tid=None, uid=None, user_id=None):
-
+    def insertTimeEntry(
+        self,
+        workspace_id,
+        billable=None,
+        created_with="curl",
+        description=None,
+        duration=None,
+        duronly=None,
+        pid=None,
+        postedFields=[],
+        project_id=None,
+        start=None,
+        start_date=None,
+        stop=None,
+        tag_action=None,
+        tag_ids=[],
+        tags=[],
+        task_id=None,
+        tid=None,
+        uid=None,
+        user_id=None,
+    ):
         json_data = {
-            'billable': billable,
-            'created_with': created_with,
-            'description': description,
-            'duration': duration,
-            'duronly': duronly,
-            'pid': pid,
-            'postedFields': postedFields,
-            'project_id': project_id,
-            'start': start,
-            'start_date': start_date,
-            'stop': stop,
-            'tag_action': tag_action,
-            'tag_ids': tag_ids,
-            'tags': tags,
-            'task_id': task_id,
-            'tid': tid,
-            'uid': uid,
-            'user_id': user_id,
-            'workspace_id': workspace_id,
+            "billable": billable,
+            "created_with": created_with,
+            "description": description,
+            "duration": duration,
+            "duronly": duronly,
+            "pid": pid,
+            "postedFields": postedFields,
+            "project_id": project_id,
+            "start": start,
+            "start_date": start_date,
+            "stop": stop,
+            "tag_action": tag_action,
+            "tag_ids": tag_ids,
+            "tags": tags,
+            "task_id": task_id,
+            "tid": tid,
+            "uid": uid,
+            "user_id": user_id,
+            "workspace_id": workspace_id,
         }
 
         res = requests.post(
-            f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries', json=json_data, auth=self.auth)
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries",
+            json=json_data,
+            auth=self.auth,
+        )
         return res.json()
 
     def getTimeEntryHistory(self, start_date, end_date):
@@ -129,17 +165,24 @@ class TogglFunctions:
             end_date = tmp_date.strftime("%Y-%m-%d")
 
         params = {
-            'start_date': start_date,
-            'end_date': end_date,
+            "start_date": start_date,
+            "end_date": end_date,
         }
 
-        res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries',
-                           params=params, headers={'Content-Type': 'application/json'}, auth=self.auth)
+        res = requests.get(
+            "https://api.track.toggl.com/api/v9/me/time_entries",
+            params=params,
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
         return res.json()
 
     def getLastNTimeEntryHistory(self, n) -> List:
-        res = requests.get('https://api.track.toggl.com/api/v9/me/time_entries',
-                           headers={'Content-Type': 'application/json'}, auth=self.auth)
+        res = requests.get(
+            "https://api.track.toggl.com/api/v9/me/time_entries",
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
         entries = res.json()
         return entries[0:n] if len(entries) >= n else entries
 
@@ -148,16 +191,26 @@ class TogglFunctions:
     # mongoDB
     #
 
-    def saveTimer(self, command, workspace_id=None, billable=None, description=None,
-                  project=None, tags=[], tid=None,):
-
+    def saveTimer(
+        self,
+        command,
+        workspace_id=None,
+        billable=None,
+        description=None,
+        project=None,
+        tags=[],
+        tid=None,
+    ):
         if project is None:
             project_data = None
             pid = None
         else:
-            workspace_id = workspace_id if workspace_id is not None else self.workspace_id
+            workspace_id = (
+                workspace_id if workspace_id is not None else self.workspace_id
+            )
             project_data = self.getProjectById(
-                workspace_id=workspace_id, project_id=project)
+                workspace_id=workspace_id, project_id=project
+            )
             pid = project_data["id"] if project_data["id"] is not None else None
 
         data = {
@@ -166,13 +219,15 @@ class TogglFunctions:
             "number_of_runs": 0,
             "project": project_data,
             "param": {
-                "workspace_id": workspace_id if workspace_id is not None else self.workspace_id,
+                "workspace_id": workspace_id
+                if workspace_id is not None
+                else self.workspace_id,
                 "billable": billable,
                 "description": description,
                 "pid": pid,
                 "tags": tags,
-                "tid": tid
-            }
+                "tid": tid,
+            },
         }
 
         res = self.mongo_commands.insert_one(data)
@@ -181,9 +236,7 @@ class TogglFunctions:
         return res.inserted_id
 
     def updateSavedTimers(self):
-        search = {
-            "application": "toggl"
-        }
+        search = {"application": "toggl"}
 
         commands = list(self.mongo_commands.find(search))
         self.custom_commands = commands
@@ -215,8 +268,8 @@ class TogglFunctions:
 
     def findSavedTimersLike(self, identifier: str = ""):
         res_command = self.mongo_commands.find(
-            {"command": {"$regex": identifier, "$options": "i"}}).sort(
-            "number_of_runs", -1)
+            {"command": {"$regex": identifier, "$options": "i"}}
+        ).sort("number_of_runs", -1)
 
         return list(res_command)
 
@@ -224,7 +277,8 @@ class TogglFunctions:
         search_param = {"application": "toggl"}
 
         res = self.mongo_commands.find(search_param, limit=int(n)).sort(
-            "number_of_runs", -1)
+            "number_of_runs", -1
+        )
 
         return list(res)
 
@@ -261,8 +315,11 @@ class TogglFunctions:
     #
 
     def getWorkspaces(self):
-        res = requests.get('https://api.track.toggl.com/api/v9/workspaces',
-                           headers={'Content-Type': 'application/json'}, auth=self.auth)
+        res = requests.get(
+            "https://api.track.toggl.com/api/v9/workspaces",
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
         return res.json()
 
     #
@@ -270,38 +327,63 @@ class TogglFunctions:
     # https://developers.track.toggl.com/docs/projects
     #
 
-    def createProject(self, workspace_id, name, active=True, auto_estimates=None, billable=None,
-                      color=None, currency="EUR", estimated_hours=1, is_private=None, template=None):
+    def createProject(
+        self,
+        workspace_id,
+        name,
+        active=True,
+        auto_estimates=None,
+        billable=None,
+        color=None,
+        currency="EUR",
+        estimated_hours=1,
+        is_private=None,
+        template=None,
+    ):
         json_data = {
-            'active': active,
-            'auto_estimates': auto_estimates,
-            'billable': billable,
-            'color': color,
-            'currency': currency,
-            'estimated_hours': estimated_hours,
-            'is_private': is_private,
-            'name': name,
-            'template': template,
+            "active": active,
+            "auto_estimates": auto_estimates,
+            "billable": billable,
+            "color": color,
+            "currency": currency,
+            "estimated_hours": estimated_hours,
+            "is_private": is_private,
+            "name": name,
+            "template": template,
         }
 
         res = requests.post(
-            f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects', json=json_data, auth=self.auth)
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects",
+            json=json_data,
+            auth=self.auth,
+        )
         return res.json()
 
     def getAllProjects(self):
-        res = requests.get('https://api.track.toggl.com/api/v9/me/projects',
-                           headers={'Content-Type': 'application/json'}, auth=self.auth)
+        res = requests.get(
+            "https://api.track.toggl.com/api/v9/me/projects",
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
         return res.json()
 
     def getProjectsByWorkspace(self, workspace_id):
-        res = requests.get(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects', headers={
-            'Content-Type': 'application/json'}, auth=self.auth)
+        res = requests.get(
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects",
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
         return res.json()
 
-    def getProjectById(self, project_id: int, workspace_id: Optional[int] = None) -> Union[None, dict]:
+    def getProjectById(
+        self, project_id: int, workspace_id: Optional[int] = None
+    ) -> Union[None, dict]:
         if workspace_id is not None:
-            res = requests.get(f'https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects/{project_id}', headers={
-                'Content-Type': 'application/json'}, auth=self.auth)
+            res = requests.get(
+                f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects/{project_id}",
+                headers={"Content-Type": "application/json"},
+                auth=self.auth,
+            )
 
             # Checking for 403 error
             try:
@@ -315,19 +397,21 @@ class TogglFunctions:
                 return None
         else:
             projects = self.getAllProjects()
-            search_projects = list(
-                filter(lambda el: el["id"] == project_id, projects))
+            search_projects = list(filter(lambda el: el["id"] == project_id, projects))
 
             return search_projects[0] if len(search_projects) > 0 else None
 
-    def getProjectByName(self, project_name: str, workspace_id: Optional[int] = None) -> Union[None, dict]:
+    def getProjectByName(
+        self, project_name: str, workspace_id: Optional[int] = None
+    ) -> Union[None, dict]:
         if workspace_id is None:
             projects = self.getAllProjects()
         else:
             projects = self.getProjectsByWorkspace(workspace_id)
 
         search_projects = list(
-            filter(lambda el: el["name"].lower() == project_name.lower(), projects))
+            filter(lambda el: el["name"].lower() == project_name.lower(), projects)
+        )
 
         return search_projects[0] if len(search_projects) > 0 else None
 
@@ -335,7 +419,8 @@ class TogglFunctions:
         try:
             identifier_int = int(identifier)
             project = self.getProjectById(
-                workspace_id=self.workspace_id, project_id=identifier_int)
+                workspace_id=self.workspace_id, project_id=identifier_int
+            )
         except:
             project = self.getProjectByName(identifier)
 
@@ -349,11 +434,11 @@ class TogglFunctions:
         param = self.parseShortcutArguments(arguments)
 
         data = {
-            "alias": alias,         # Name of the shortened command
-            "command": command,     # Name of the slash command
+            "alias": alias,  # Name of the shortened command
+            "command": command,  # Name of the slash command
             "application": "toggl",
             "number_of_runs": 0,
-            "param": param,         # Parameters passed to aliased slash command
+            "param": param,  # Parameters passed to aliased slash command
         }
 
         res = self.mongo_aliases.insert_one(data)
@@ -361,13 +446,12 @@ class TogglFunctions:
         return data
 
     def saveShortcut2(self, command: str, alias: str, param: object = {}) -> dict:
-
         data = {
-            "alias": alias,         # Name of the shortened command
-            "command": command,     # Name of the slash command
+            "alias": alias,  # Name of the shortened command
+            "command": command,  # Name of the slash command
             "application": "toggl",
             "number_of_runs": 0,
-            "param": param,         # Parameters passed to aliased slash command
+            "param": param,  # Parameters passed to aliased slash command
         }
 
         res = self.mongo_aliases.insert_one(data)
