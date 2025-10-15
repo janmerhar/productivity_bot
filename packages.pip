@@ -9,3 +9,4 @@ python-dotenv
 ticktick-py
 pymongo
 dnspython
+dotenv
