@@ -1,14 +1,16 @@
 from embeds.TogglEmbeds import TogglEmbeds
-from embeds.TickTickEmbeds import TickTickEmbeds
 from re import A
 from typing import Dict, List, Optional
 import discord
 from discord.ext import commands
 from discord import app_commands
 
-from Classes.AliasFunctions import AliasFunctions
+from classes.AliasFunctions import AliasFunctions
 from dotenv import dotenv_values
+
 env = dotenv_values(".env")
+
+tick_disabled = env.get("TICK_DISABLED") == "true"
 
 
 class AliasEmbeds:
@@ -16,10 +18,15 @@ class AliasEmbeds:
         self.alias = AliasFunctions()
 
         self.toggl_embeds = TogglEmbeds()
-        self.ticktick_embeds = TickTickEmbeds()
+        self.ticktick_embeds = None
 
-        self.embed_classes = {"toggl": self.toggl_embeds,
-                              "ticktick": self.ticktick_embeds}
+        self.embed_classes = {"toggl": self.toggl_embeds}
+
+        if not tick_disabled:
+            from embeds.TickTickEmbeds import TickTickEmbeds
+
+            self.ticktick_embeds = TickTickEmbeds()
+            self.embed_classes["ticktick"] = self.ticktick_embeds
 
     def createalias_embed(self, command: str,  alias: str, arguments: str = ""):
         pass
@@ -33,11 +40,25 @@ class AliasEmbeds:
 
             # Iskanje po embed_classes, ce obstaja komanda
             # Tale if stavek gre notri, toda retun ne dela
-            if find_alias["application"] in self.embed_classes:
-                # TogglEmbeds object
-                alias_class = self.embed_classes[find_alias["application"]]
+            application = find_alias["application"]
+
+            if application in self.embed_classes:
+                alias_class = self.embed_classes[application]
 
                 return alias_class.usealias_embed(alias=alias)
+
+            if application == "ticktick" and tick_disabled:
+                embed_disabled = discord.Embed(
+                    title=":ballot_box_with_check: TickTick",
+                    color=discord.Colour.from_str("#ffb301"),
+                    description="TickTick integration is disabled."
+                )
+
+                embed_disabled.set_thumbnail(
+                    url="https://dashboard.snapcraft.io/site_media/appmedia/2022/02/icon_2XdTt7H.png"
+                )
+
+                return {"embeds": [embed_disabled]}
 
         # Nismo nasli alias
         # tukaj bom samo na koncu narredi en embed return
