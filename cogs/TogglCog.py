@@ -13,7 +13,7 @@ import sys
 import aiohttp
 import inspect
 
-from Classes.TogglFunctions import TogglFunctions
+from classes.TogglFunctions import TogglFunctions
 from dotenv import dotenv_values
 env = dotenv_values(".env")
 

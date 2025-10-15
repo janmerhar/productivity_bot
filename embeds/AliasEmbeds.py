@@ -5,7 +5,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from Classes.AliasFunctions import AliasFunctions
+from classes.AliasFunctions import AliasFunctions
 from dotenv import dotenv_values
 
 env = dotenv_values(".env")
