@@ -1,6 +1,13 @@
 import discord
 
 
+def fmt_change(value):
+    if value is None:
+        return "-"
+    arrow = "▲" if value >= 0 else "▼"
+    return f"{arrow} {value:.2f}%"
+
+
 class CryptoEmbeds:
     def __init__(self):
         pass
@@ -34,17 +41,17 @@ class CryptoEmbeds:
 
         embed.add_field(
             name="24h Change",
-            value=f"{change_24h:.2f}%" if change_24h is not None else "-",
+            value=fmt_change(change_24h),
             inline=True,
         )
         embed.add_field(
             name="7d Change",
-            value=f"{change_7d:.2f}%" if change_7d is not None else "-",
+            value=fmt_change(change_7d),
             inline=True,
         )
         embed.add_field(
             name="30d Change",
-            value=f"{change_30d:.2f}%" if change_30d is not None else "-",
+            value=fmt_change(change_30d),
             inline=True,
         )
 
