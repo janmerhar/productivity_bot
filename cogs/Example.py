@@ -13,8 +13,18 @@ class Color(commands.Cog):
 
     @commands.command()
     async def sync(self, ctx):
-        fmt = await ctx.bot.tree.sync(guild=ctx.guild)
-        await ctx.send(f"Synced {len(fmt)} commands to thhe current guild.")
+        """Sync slash commands to the guild and clear stale global commands."""
+        # Remove old global commands so Discord stops offering outdated options
+        ctx.bot.tree.clear_commands(guild=None)
+        global_sync = await ctx.bot.tree.sync(guild=None)
+
+        guild_sync = await ctx.bot.tree.sync(guild=ctx.guild)
+        await ctx.send(
+            "Synced {guild_count} guild command(s); cleared {global_count} global command(s).".format(
+                guild_count=len(guild_sync),
+                global_count=len(global_sync),
+            )
+        )
         return
 
     @app_commands.command(name="choosecolor", description="color selector")
