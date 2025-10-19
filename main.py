@@ -45,6 +45,7 @@ async def load():
         "cogs.Example",
         "cogs.ExampleCog",
         "cogs.TogglCog",
+        "cogs.CryptoCog",
     ]
 
     if not tick_disabled:
