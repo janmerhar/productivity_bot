@@ -10,3 +10,5 @@ ticktick-py
 pymongo
 dnspython
 dotenv
+feedparser
+openai
