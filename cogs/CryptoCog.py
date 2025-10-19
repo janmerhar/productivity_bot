@@ -37,6 +37,7 @@ class CryptoCog(commands.Cog):
                     CryptoFunctions.fetchPrices,
                     [ticker.lower()],
                     currency.lower(),
+                    ("24h", "7d", "30d"),
                 )
             except Exception as exc:
                 await interaction.edit_original_response(
