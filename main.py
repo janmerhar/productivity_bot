@@ -6,9 +6,7 @@ import asyncio
 from discord.ext import commands
 from discord import app_commands
 
-from dotenv import dotenv_values
-
-env = dotenv_values(".env")
+from config import env
 
 tick_disabled = env.get("TICK_DISABLED") == "true"
 

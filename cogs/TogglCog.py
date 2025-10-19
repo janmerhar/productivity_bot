@@ -13,15 +13,10 @@ import sys
 import aiohttp
 import inspect
 
-from classes.TogglFunctions import TogglFunctions
-from dotenv import dotenv_values
-env = dotenv_values(".env")
-
 
 class TogglCog(commands.Cog):
     def __init__(self, client):
         self.client = client
-        self.toggl = TogglFunctions(env["TOGGL_TOKEN"])
         self.embeds = TogglEmbeds()
 
     # Events

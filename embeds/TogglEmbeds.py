@@ -8,13 +8,18 @@ import inspect
 from classes.TogglFunctions import TogglFunctions
 from abstract.EmbedsAbstract import EmbedsAbstract
 
-from dotenv import dotenv_values
-env = dotenv_values(".env")
+from config import env
 
 
 class TogglEmbeds(EmbedsAbstract):
     def __init__(self):
-        self.toggl = TogglFunctions(env["TOGGL_TOKEN"])
+        self._toggl = None
+
+    @property
+    def toggl(self):
+        if self._toggl is None:
+            self._toggl = TogglFunctions(env["TOGGL_TOKEN"])
+        return self._toggl
 
     #
     # Authentication

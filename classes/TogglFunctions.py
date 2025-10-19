@@ -9,9 +9,7 @@ import time
 import json
 from bson.objectid import ObjectId
 
-from dotenv import dotenv_values
-
-env = dotenv_values(".env")
+from config import env
 
 
 class TogglFunctions:

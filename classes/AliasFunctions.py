@@ -1,19 +1,22 @@
 import pymongo
 
-from dotenv import dotenv_values
-
-env = dotenv_values(".env")
+from config import env
 
 
 class AliasFunctions:
     def __init__(self):
-        # TODO - Move this to a config file
-        client = pymongo.MongoClient(env["MONGO_URI"])
+        self._client = None
+        self.mongo_commands = None
+        self.mongo_aliases = None
 
-        self.mongo_commands = client["productivity_bot"]["custom_commands"]
-        self.mongo_aliases = client["productivity_bot"]["aliases"]
+    def _connect(self):
+        if self.mongo_aliases is None:
+            self._client = pymongo.MongoClient(env["MONGO_URI"])
+            self.mongo_commands = self._client["productivity_bot"]["custom_commands"]
+            self.mongo_aliases = self._client["productivity_bot"]["aliases"]
 
     def findAliases(self, identifier: str = "", n: int = 0):
+        self._connect()
         res_command = (
             self.mongo_aliases.find({"alias": {"$regex": identifier, "$options": "i"}})
             .limit(int(n))

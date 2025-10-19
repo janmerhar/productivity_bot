@@ -5,9 +5,7 @@ from abstract.FunctionsAbstract import FunctionsAbstract
 import pymongo
 from pymongo import MongoClient
 
-from dotenv import dotenv_values
-
-env = dotenv_values(".env")
+from config import env
 
 
 class TickTickFunctions(FunctionsAbstract):
@@ -276,9 +274,7 @@ class TickTickFunctions(FunctionsAbstract):
 
 
 if __name__ == "__main__":
-    from dotenv import dotenv_values
-
-    env = dotenv_values(".env")
+    from config import env
     import json
 
     ticktick = TickTickFunctions(
