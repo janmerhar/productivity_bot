@@ -1,10 +1,12 @@
 import datetime
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
+
+import dateparser
 
 
 @dataclass
@@ -36,15 +38,15 @@ class DailyTaskCog(commands.Cog):
     async def daily_task(
         self, interaction: discord.Interaction, time: str, message: str
     ) -> None:
-        hour_str, minute_str = time.split(":", 1)
-        hour = int(hour_str)
-        minute = int(minute_str)
-        if not 0 <= hour < 24 or not 0 <= minute < 60:
+        parsed = parse_time_string(time)
+        if parsed is None:
             await interaction.response.send_message(
-                "Please provide time as HH:MM in 24-hour format.",
+                "I couldn't understand that time. Try '08:30', '8pm', or similar.",
                 ephemeral=True,
             )
             return
+
+        hour, minute = parsed
 
         job = DailyJob(
             channel_id=interaction.channel_id,
@@ -83,6 +85,31 @@ class DailyTaskCog(commands.Cog):
     @_runner.before_loop
     async def _before_runner(self) -> None:
         await self.bot.wait_until_ready()
+
+
+def parse_time_string(raw: str) -> Optional[Tuple[int, int]]:
+    text = raw.strip()
+
+    dt = dateparser.parse(
+        text,
+        settings={
+            "PREFER_DATES_FROM": "future",
+            "RETURN_AS_TIMEZONE_AWARE": False,
+            "PREFER_DAY_OF_MONTH": "current",
+        },
+    )
+
+    if text is not None:
+        return dt.hour, dt.minute
+
+    for fmt in ("%H:%M", "%H%M", "%I:%M%p", "%I%p", "%H"):
+        try:
+            dt = datetime.datetime.strptime(text, fmt)
+            return dt.hour, dt.minute
+        except ValueError:
+            continue
+
+    return None
 
 
 async def setup(client: commands.Bot) -> None:
