@@ -3,6 +3,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from classes.CryptoFunctions import CryptoFunctions
+from cogs.CryptoEmbeds import CryptoEmbeds
 
 
 class CryptoCog(commands.Cog):
@@ -17,6 +18,7 @@ class CryptoCog(commands.Cog):
 
     # Commands
 
+    # Naredi embed...
     @app_commands.command(name="crypto", description="Get cryptocurrency price")
     @app_commands.describe(
         ticker="Ticker symbol of the cryptocurrency",
@@ -38,25 +40,20 @@ class CryptoCog(commands.Cog):
                 )
             except Exception as exc:
                 await interaction.edit_original_response(
-                    content=f"• `{ticker.upper()}` lookup failed: {exc}"
+                    content=f"• `{ticker.upper()}` lookup failed: {exc}", embed=None
                 )
                 return
 
             if not results:
                 await interaction.edit_original_response(
-                    content=f"• No data returned for `{ticker.upper()}` in {currency.upper()}."
+                    content=f"• No data returned for `{ticker.upper()}` in {currency.upper()}.",
+                    embed=None,
                 )
                 return
 
             coin = results[0]
-            price = coin.get("current_price")
-            change = coin.get("price_change_percentage_24h")
-
-            message = f"`{ticker.upper()}` price: {price} {currency.upper()}"
-            if change is not None:
-                message += f" (24h: {change:.2f}% )"
-
-            await interaction.edit_original_response(content=message)
+            embed_param = CryptoEmbeds.price_embed(coin, currency)
+            await interaction.edit_original_response(content=None, **embed_param)
 
         asyncio.create_task(_update_message())
 
