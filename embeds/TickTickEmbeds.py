@@ -8,14 +8,24 @@ import inspect
 from classes.TickTickFunctions import TickTickFunctions
 from abstract.EmbedsAbstract import EmbedsAbstract  # Se moram implemenetirati
 
-from dotenv import dotenv_values
-env = dotenv_values(".env")
+from config import env
 
 
 class TickTickEmbeds(EmbedsAbstract):
     def __init__(self):
-        self.ticktick = TickTickFunctions(
-            env["TICK_EMAIL"], env["TICK_PASSWORD"], env["TICK_ID"], env["TICK_SECRET"], env["TICK_URI"])
+        self._ticktick = None
+
+    @property
+    def ticktick(self):
+        if self._ticktick is None:
+            self._ticktick = TickTickFunctions(
+                env["TICK_EMAIL"],
+                env["TICK_PASSWORD"],
+                env["TICK_ID"],
+                env["TICK_SECRET"],
+                env["TICK_URI"],
+            )
+        return self._ticktick
 
     #
     # Tasks

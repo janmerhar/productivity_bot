@@ -4,28 +4,12 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from ticktick.oauth2 import OAuth2        # OAuth2 Manager
-from ticktick.api import TickTickClient   # Main Interface
-import datetime
-
-import json
-import os
-import platform
-import random
-import sys
-import aiohttp
-
-from classes.TickTickFunctions import TickTickFunctions
 from embeds.TickTickEmbeds import TickTickEmbeds
-from dotenv import dotenv_values
-env = dotenv_values(".env")
 
 
 class TickTickCog(commands.Cog):
     def __init__(self, client):
         self.client = client
-        self.ticktick = TickTickFunctions(
-            env["TICK_EMAIL"], env["TICK_PASSWORD"], env["TICK_ID"], env["TICK_SECRET"], env["TICK_URI"])
         self.embeds = TickTickEmbeds()
 
     # Events

@@ -1,6 +1,5 @@
 # Color palette
 # https://colorswall.com/palette/72717/
-from dotenv import dotenv_values
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -14,7 +13,6 @@ import aiohttp
 
 from embeds.AliasEmbeds import AliasEmbeds
 from embeds.TogglEmbeds import TogglEmbeds
-env = dotenv_values(".env")
 
 
 class AliasCog(commands.Cog):
