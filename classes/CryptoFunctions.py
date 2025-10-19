@@ -22,8 +22,11 @@ class CryptoFunctions:
     ):
         pass
 
-    #
-    def fetchPrices(tickers: str, currency: str, change_periods=["24h"]):
+    def fetchPrices(
+        tickers: list[str],
+        currency: str,
+        change_periods=("24h", "7d", "30d"),
+    ):
         url = f"https://api.coingecko.com/api/v3/coins/markets"
         params = {
             "vs_currency": currency,
