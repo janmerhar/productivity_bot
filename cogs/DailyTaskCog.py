@@ -9,6 +9,31 @@ from discord.ext import commands, tasks
 import dateparser
 
 
+def parse_time_string(raw: str) -> Optional[Tuple[int, int]]:
+    text = raw.strip()
+
+    dt = dateparser.parse(
+        text,
+        settings={
+            "PREFER_DATES_FROM": "future",
+            "RETURN_AS_TIMEZONE_AWARE": False,
+            "PREFER_DAY_OF_MONTH": "current",
+        },
+    )
+
+    if text is not None:
+        return dt.hour, dt.minute
+
+    for fmt in ("%H:%M", "%H%M", "%I:%M%p", "%I%p", "%H"):
+        try:
+            dt = datetime.datetime.strptime(text, fmt)
+            return dt.hour, dt.minute
+        except ValueError:
+            continue
+
+    return None
+
+
 @dataclass
 class DailyJob:
     channel_id: int
@@ -85,31 +110,6 @@ class DailyTaskCog(commands.Cog):
     @_runner.before_loop
     async def _before_runner(self) -> None:
         await self.bot.wait_until_ready()
-
-
-def parse_time_string(raw: str) -> Optional[Tuple[int, int]]:
-    text = raw.strip()
-
-    dt = dateparser.parse(
-        text,
-        settings={
-            "PREFER_DATES_FROM": "future",
-            "RETURN_AS_TIMEZONE_AWARE": False,
-            "PREFER_DAY_OF_MONTH": "current",
-        },
-    )
-
-    if text is not None:
-        return dt.hour, dt.minute
-
-    for fmt in ("%H:%M", "%H%M", "%I:%M%p", "%I%p", "%H"):
-        try:
-            dt = datetime.datetime.strptime(text, fmt)
-            return dt.hour, dt.minute
-        except ValueError:
-            continue
-
-    return None
 
 
 async def setup(client: commands.Bot) -> None:
