@@ -64,6 +64,7 @@ async def load():
         "cogs.AliasCog",
         "cogs.Example",
         "cogs.ExampleCog",
+        "cogs.DailyTaskCog",
         "cogs.TogglCog",
         "cogs.CryptoCog",
     ]
