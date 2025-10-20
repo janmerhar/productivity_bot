@@ -44,9 +44,9 @@ class DailyJob:
     channel_id: int
     hour: int
     minute: int
-    message: str
+    type: str
+    data: dict
     last_run: Optional[datetime.date] = None
-    tickers: Optional[List[str]] = None
 
 
 CRYPTO_CHANNEL_ID = 1429530996000161938
@@ -59,8 +59,8 @@ CRYPTO_DAILY_JOB = DailyJob(
     channel_id=CRYPTO_CHANNEL_ID,
     hour=8,
     minute=0,
-    message="",
-    tickers=CRYPTO_TICKERS,
+    type="crypto",
+    data={"tickers": CRYPTO_TICKERS},
 )
 
 
@@ -99,7 +99,8 @@ class DailyTaskCog(commands.Cog):
             channel_id=interaction.channel_id,
             hour=hour,
             minute=minute,
-            message=message,
+            type="message",
+            data={"message": message},
         )
         self.jobs.append(job)
         await interaction.response.send_message(
@@ -126,10 +127,12 @@ class DailyTaskCog(commands.Cog):
                 channel = self.bot.get_channel(job.channel_id)
                 if channel is None:
                     channel = await self.bot.fetch_channel(job.channel_id)
-                if job.tickers:
-                    await self._send_crypto_embeds(channel, job.tickers)
+                if job.type == "crypto":
+                    await self._send_crypto_embeds(
+                        channel, job.data.get("tickers", CRYPTO_TICKERS)
+                    )
                 else:
-                    await channel.send(job.message)
+                    await channel.send(job.data.get("message", ""))
                 job.last_run = today
 
     @_runner.before_loop
