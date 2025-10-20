@@ -8,9 +8,14 @@ from discord.ext import commands, tasks
 
 import dateparser
 
+from classes.CryptoFunctions import CryptoFunctions
+from cogs.CryptoEmbeds import CryptoEmbeds
+
 
 def parse_time_string(raw: str) -> Optional[Tuple[int, int]]:
     text = raw.strip()
+    if not text:
+        return None
 
     dt = dateparser.parse(
         text,
@@ -41,12 +46,29 @@ class DailyJob:
     minute: int
     message: str
     last_run: Optional[datetime.date] = None
+    tickers: Optional[List[str]] = None
+
+
+CRYPTO_CHANNEL_ID = 1429530996000161938
+CRYPTO_TICKERS = ["bitcoin", "ethereum", "syrup"]
+CRYPTO_CURRENCY = "usd"
+CRYPTO_CHANGE_PERIODS = ("24h", "7d", "30d")
+CRYPTO_HEADER = "Daily crypto prices"
+
+CRYPTO_DAILY_JOB = DailyJob(
+    channel_id=CRYPTO_CHANNEL_ID,
+    hour=8,
+    minute=0,
+    message="",
+    tickers=CRYPTO_TICKERS,
+)
 
 
 class DailyTaskCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.jobs: List[DailyJob] = []
+        self.jobs.append(CRYPTO_DAILY_JOB)
         self._runner.start()
 
     @commands.Cog.listener()
@@ -104,12 +126,35 @@ class DailyTaskCog(commands.Cog):
                 channel = self.bot.get_channel(job.channel_id)
                 if channel is None:
                     channel = await self.bot.fetch_channel(job.channel_id)
-                await channel.send(job.message)
+                if job.tickers:
+                    await self._send_crypto_embeds(channel, job.tickers)
+                else:
+                    await channel.send(job.message)
                 job.last_run = today
 
     @_runner.before_loop
     async def _before_runner(self) -> None:
         await self.bot.wait_until_ready()
+
+    async def _send_crypto_embeds(self, channel, tickers: List[str]) -> None:
+        try:
+            rows = CryptoFunctions.fetchPrices(
+                tickers,
+                CRYPTO_CURRENCY,
+                CRYPTO_CHANGE_PERIODS,
+            )
+        except Exception as exc:
+            await channel.send(f"Failed to fetch crypto prices: {exc}")
+            return
+
+        if not rows:
+            await channel.send("No crypto price data returned today.")
+            return
+
+        await channel.send(CRYPTO_HEADER)
+        for coin in rows:
+            embed_kwargs = CryptoEmbeds.price_embed(coin, CRYPTO_CURRENCY)
+            await channel.send(**embed_kwargs)
 
 
 async def setup(client: commands.Bot) -> None:
