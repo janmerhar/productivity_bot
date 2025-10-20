@@ -154,10 +154,18 @@ class DailyTaskCog(commands.Cog):
             await channel.send("No crypto price data returned today.")
             return
 
-        await channel.send(CRYPTO_HEADER)
+        embeds = []
         for coin in rows:
             embed_kwargs = CryptoEmbeds.price_embed(coin, CRYPTO_CURRENCY)
-            await channel.send(**embed_kwargs)
+            embed = embed_kwargs.get("embed")
+            if embed is not None:
+                embeds.append(embed)
+
+        if not embeds:
+            await channel.send("No crypto price data returned today.")
+            return
+
+        await channel.send(content=CRYPTO_HEADER, embeds=embeds[:10])
 
 
 async def setup(client: commands.Bot) -> None:
