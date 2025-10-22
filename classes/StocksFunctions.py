@@ -12,9 +12,16 @@ class StocksFunctions:
         ticker_obj = yf.Ticker(ticker)
 
         price = None
-        fast_info = getattr(ticker_obj, "fast_info", None)
+        currency = None
+
+        try:
+            fast_info = getattr(ticker_obj, "fast_info", None)
+        except Exception:
+            fast_info = None
+
         if fast_info is not None:
             price = getattr(fast_info, "last_price", None)
+            currency = getattr(fast_info, "currency", None)
 
         day_hist = ticker_obj.history(period="1d")
         if price is None and not day_hist.empty:
@@ -28,6 +35,7 @@ class StocksFunctions:
             "change1D_pct": None,
             "change1W_pct": None,
             "change1M_pct": None,
+            "currency": currency,
         }
 
         if hist.empty:
