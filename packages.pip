@@ -13,3 +13,4 @@ dotenv
 feedparser
 openai
 dateparser
+yfinance==0.2.66
