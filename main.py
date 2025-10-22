@@ -67,6 +67,7 @@ async def load():
         "cogs.DailyTaskCog",
         "cogs.TogglCog",
         "cogs.CryptoCog",
+        "cogs.StocksCog",
     ]
 
     if not tick_disabled:
