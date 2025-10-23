@@ -45,13 +45,13 @@ class StocksCog(commands.Cog):
         currency_code = currency.upper()
         change_1d = quote.get("change1D_pct")
 
-        colour = 0x57F287 if change_1d is None or change_1d >= 0 else 0xED4245
+        yahoo_purple = 0x6001D2
 
         price_label = f"{price:,.2f}{f' {currency_code}' if currency_code else ''}"
         embed = discord.Embed(
             title=quote["symbol"].upper(),
             description=f"`{price_label}`",
-            colour=colour,
+            colour=yahoo_purple,
             timestamp=discord.utils.utcnow(),
         )
 
