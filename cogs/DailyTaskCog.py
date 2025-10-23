@@ -9,7 +9,7 @@ from discord.ext import commands, tasks
 import dateparser
 
 from classes.CryptoFunctions import CryptoFunctions
-from cogs.CryptoEmbeds import CryptoEmbeds
+from embeds.CryptoEmbeds import CryptoEmbeds
 from config import env
 
 
@@ -70,6 +70,7 @@ class DailyTaskCog(commands.Cog):
         self.bot = bot
         self.jobs: List[DailyJob] = []
         self.jobs.append(CRYPTO_DAILY_JOB)
+        self.crypto_embeds = CryptoEmbeds()
         self._runner.start()
 
     @commands.Cog.listener()
@@ -157,7 +158,7 @@ class DailyTaskCog(commands.Cog):
 
         embeds = []
         for coin in rows:
-            embed_kwargs = CryptoEmbeds.price_embed(coin, CRYPTO_CURRENCY)
+            embed_kwargs = self.crypto_embeds.coin_embed(coin, CRYPTO_CURRENCY)
             embed = embed_kwargs.get("embed")
             if embed is not None:
                 embeds.append(embed)
