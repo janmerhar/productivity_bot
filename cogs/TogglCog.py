@@ -12,6 +12,8 @@ import random
 import sys
 import aiohttp
 import inspect
+from embeds.TogglEmbeds import TogglEmbeds
+from config import env
 
 
 class TogglCog(commands.Cog):
@@ -198,4 +200,4 @@ class TogglCog(commands.Cog):
 
 
 async def setup(client):
-    await client.add_cog(TogglCog(client), guilds=[discord.Object(id=864242668066177044)])
+    await client.add_cog(TogglCog(client), guilds=[discord.Object(env["GUILD_ID"])])

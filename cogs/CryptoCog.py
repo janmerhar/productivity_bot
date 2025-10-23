@@ -4,6 +4,7 @@ from discord.ext import commands
 from discord import app_commands
 from classes.CryptoFunctions import CryptoFunctions
 from cogs.CryptoEmbeds import CryptoEmbeds
+from config import env
 
 
 class CryptoCog(commands.Cog):
@@ -60,6 +61,4 @@ class CryptoCog(commands.Cog):
 
 
 async def setup(client):
-    await client.add_cog(
-        CryptoCog(client), guilds=[discord.Object(id=864242668066177044)]
-    )
+    await client.add_cog(CryptoCog(client), guilds=[discord.Object(env["GUILD_ID"])])

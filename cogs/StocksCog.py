@@ -2,7 +2,7 @@ import asyncio
 import discord
 from discord.ext import commands
 from discord import app_commands
-from classes.StocksFunctions import StocksFunctions
+from config import env
 
 
 class StocksCog(commands.Cog):
@@ -98,6 +98,4 @@ class StocksCog(commands.Cog):
 
 
 async def setup(client):
-    await client.add_cog(
-        StocksCog(client), guilds=[discord.Object(id=864242668066177044)]
-    )
+    await client.add_cog(StocksCog(client), guilds=[discord.Object(env["GUILD_ID"])])

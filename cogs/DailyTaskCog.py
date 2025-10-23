@@ -10,6 +10,7 @@ import dateparser
 
 from classes.CryptoFunctions import CryptoFunctions
 from cogs.CryptoEmbeds import CryptoEmbeds
+from config import env
 
 
 def parse_time_string(raw: str) -> Optional[Tuple[int, int]]:
@@ -169,6 +170,4 @@ class DailyTaskCog(commands.Cog):
 
 
 async def setup(client: commands.Bot) -> None:
-    await client.add_cog(
-        DailyTaskCog(client), guilds=[discord.Object(id=864242668066177044)]
-    )
+    await client.add_cog(DailyTaskCog(client), guilds=[discord.Object(env["GUILD_ID"])])
