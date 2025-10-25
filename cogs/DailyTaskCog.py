@@ -10,6 +10,7 @@ import dateparser
 
 from classes.CryptoFunctions import CryptoFunctions
 from embeds.CryptoEmbeds import CryptoEmbeds
+from embeds.StocksEmbeds import StocksEmbeds
 from config import env
 
 
@@ -55,6 +56,7 @@ CRYPTO_TICKERS = ["bitcoin", "ethereum", "syrup"]
 CRYPTO_CURRENCY = "usd"
 CRYPTO_CHANGE_PERIODS = ("24h", "7d", "30d")
 CRYPTO_HEADER = "Daily crypto prices"
+STOCK_HEADER = "Daily stock prices"
 
 CRYPTO_DAILY_JOB = DailyJob(
     channel_id=CRYPTO_CHANNEL_ID,
@@ -71,6 +73,7 @@ class DailyTaskCog(commands.Cog):
         self.jobs: List[DailyJob] = []
         self.jobs.append(CRYPTO_DAILY_JOB)
         self.crypto_embeds = CryptoEmbeds()
+        self.stock_embeds = StocksEmbeds()
         self._runner.start()
 
     @commands.Cog.listener()
@@ -133,6 +136,14 @@ class DailyTaskCog(commands.Cog):
                     await self._send_crypto_embeds(
                         channel, job.data.get("tickers", CRYPTO_TICKERS)
                     )
+                elif job.type == "stock":
+                    embeds, error = self.stock_embeds.daily_embeds(
+                        job.data.get("tickers", [])
+                    )
+                    if error:
+                        await channel.send(error)
+                    else:
+                        await channel.send(content=STOCK_HEADER, embeds=embeds)
                 else:
                     await channel.send(job.data.get("message", ""))
                 job.last_run = today
@@ -168,7 +179,6 @@ class DailyTaskCog(commands.Cog):
             return
 
         await channel.send(content=CRYPTO_HEADER, embeds=embeds[:10])
-
 
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(DailyTaskCog(client), guilds=[discord.Object(env["GUILD_ID"])])

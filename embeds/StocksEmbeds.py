@@ -1,3 +1,5 @@
+from typing import List, Optional, Tuple
+
 import discord
 
 from classes.StocksFunctions import StocksFunctions
@@ -14,8 +16,23 @@ class StocksEmbeds:
         except Exception as exc:
             return {"content": f"• `{symbol}` lookup failed: {exc}", "embed": None}
 
-        if not quote or quote.get("price") is None:
+        quote["symbol"] = quote.get("symbol") or symbol
+
+        embed = self.stock_to_embed(quote)
+        if embed is None:
             return {"content": f"• No data returned for `{symbol}`.", "embed": None}
+
+        return {"content": None, "embed": embed}
+
+    def stock_to_embed(self, quote: dict) -> Optional[discord.Embed]:
+        if not quote:
+            return None
+
+        symbol = (quote.get("symbol") or "").upper()
+        price = quote.get("price")
+
+        if price is None:
+            return None
 
         price = quote["price"]
         currency_code = (quote.get("currency") or "").upper()
@@ -28,7 +45,7 @@ class StocksEmbeds:
 
         price_label = f"{price:,.2f}{f' {currency_code}' if currency_code else ''}"
         embed = discord.Embed(
-            title=quote["symbol"].upper(),
+            title=symbol or "Unknown",
             description=f"`{price_label}`",
             colour=self.yahoo_color,
             timestamp=discord.utils.utcnow(),
@@ -65,4 +82,29 @@ class StocksEmbeds:
 
         embed.set_footer(text="Source: Yahoo Finance")
 
-        return {"content": None, "embed": embed}
+        return embed
+
+    def daily_embeds(
+        self, tickers: List[str]
+    ) -> Tuple[List[discord.Embed], Optional[str]]:
+        if not tickers:
+            return [], "No stock tickers configured for this job."
+
+        try:
+            rows = StocksFunctions.fetchPrices(tickers)
+        except Exception as exc:
+            return [], f"Failed to fetch stock prices: {exc}"
+
+        if not rows:
+            return [], "No stock price data returned today."
+
+        embeds: List[discord.Embed] = []
+        for quote in rows:
+            embed = self.stock_to_embed(quote)
+            if embed is not None:
+                embeds.append(embed)
+
+        if not embeds:
+            return [], "No stock price data returned today."
+
+        return embeds[:10], None
