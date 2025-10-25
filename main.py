@@ -62,10 +62,10 @@ async def on_ready():
 async def load():
     extensions = [
         "cogs.AliasCog",
-        "cogs.Example",
-        "cogs.ExampleCog",
+        "cogs.DailyTaskCog",
         "cogs.TogglCog",
         "cogs.CryptoCog",
+        "cogs.StocksCog",
     ]
 
     if not tick_disabled:

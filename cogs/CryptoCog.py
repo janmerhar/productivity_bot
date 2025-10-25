@@ -2,13 +2,15 @@ import asyncio
 import discord
 from discord.ext import commands
 from discord import app_commands
-from classes.CryptoFunctions import CryptoFunctions
-from cogs.CryptoEmbeds import CryptoEmbeds
+
+from embeds.CryptoEmbeds import CryptoEmbeds
+from config import env
 
 
 class CryptoCog(commands.Cog):
     def __init__(self, client):
         self.client = client
+        self.embeds = CryptoEmbeds()
 
     # Events
 
@@ -27,39 +29,23 @@ class CryptoCog(commands.Cog):
     async def fetchCrypto(
         self, interaction: discord.Interaction, ticker: str, currency: str = "usd"
     ):
-        await interaction.response.send_message(
-            f"• Fetching `{ticker.upper()}` in {currency.upper()} ⏳"
+        await interaction.response.defer(thinking=True)
+        await interaction.edit_original_response(
+            content=f"• Fetching `{ticker.upper()}` in {currency.upper()} ⏳",
+            embed=None,
         )
 
-        async def _update_message():
-            try:
-                results = await asyncio.to_thread(
-                    CryptoFunctions.fetchPrices,
-                    [ticker.lower()],
-                    currency.lower(),
-                    ("24h", "7d", "30d"),
-                )
-            except Exception as exc:
-                await interaction.edit_original_response(
-                    content=f"• `{ticker.upper()}` lookup failed: {exc}", embed=None
-                )
-                return
+        response = await asyncio.to_thread(
+            self.embeds.price_embed,
+            ticker,
+            currency,
+        )
 
-            if not results:
-                await interaction.edit_original_response(
-                    content=f"• No data returned for `{ticker.upper()}` in {currency.upper()}.",
-                    embed=None,
-                )
-                return
-
-            coin = results[0]
-            embed_param = CryptoEmbeds.price_embed(coin, currency)
-            await interaction.edit_original_response(content=None, **embed_param)
-
-        asyncio.create_task(_update_message())
+        await interaction.edit_original_response(
+            content=response.get("content"),
+            embed=response.get("embed"),
+        )
 
 
 async def setup(client):
-    await client.add_cog(
-        CryptoCog(client), guilds=[discord.Object(id=864242668066177044)]
-    )
+    await client.add_cog(CryptoCog(client), guilds=[discord.Object(env["GUILD_ID"])])
