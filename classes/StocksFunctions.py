@@ -59,6 +59,34 @@ class StocksFunctions:
 
         return result
 
+    @staticmethod
+    def fetchPrices(tickers: list[str]):
+        quotes = []
+
+        for raw_ticker in tickers:
+            symbol = (raw_ticker or "").strip()
+            if not symbol:
+                continue
+
+            try:
+                quote = StocksFunctions.fetchPrice(symbol)
+            except Exception:
+                quote = {
+                    "symbol": symbol,
+                    "price": None,
+                    "change1D_pct": None,
+                    "change1W_pct": None,
+                    "change1M_pct": None,
+                    "currency": None,
+                }
+
+            if "symbol" not in quote or not quote["symbol"]:
+                quote["symbol"] = symbol
+
+            quotes.append(quote)
+
+        return quotes
+
 
 if __name__ == "__main__":
     tickers = ["VWCE.DE"]
