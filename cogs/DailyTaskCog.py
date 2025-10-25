@@ -1,5 +1,4 @@
 import datetime
-from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import discord
@@ -7,6 +6,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 import dateparser
+from classes.DailyTaskFunctions import DailyJob
 from embeds.CryptoEmbeds import CryptoEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
 from config.env import env
@@ -37,17 +37,6 @@ def parse_time_string(raw: str) -> Optional[Tuple[int, int]]:
             continue
 
     return None
-
-
-@dataclass
-class DailyJob:
-    channel_id: int
-    hour: int
-    minute: int
-    type: str
-    data: dict
-    last_run: Optional[datetime.date] = None
-
 
 CRYPTO_CHANNEL_ID = 1429530996000161938
 CRYPTO_TICKERS = ["bitcoin", "ethereum", "syrup"]
