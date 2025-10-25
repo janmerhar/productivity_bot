@@ -7,8 +7,6 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 import dateparser
-
-from classes.CryptoFunctions import CryptoFunctions
 from embeds.CryptoEmbeds import CryptoEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
 from config import env
@@ -99,19 +97,43 @@ class DailyTaskCog(commands.Cog):
             return
 
         hour, minute = parsed
+        payload = message.strip()
+        job_type = "message"
+        job_data = {"message": message}
+        confirmation = (
+            f"Got it! I'll post here every day at {hour:02d}:{minute:02d}."
+        )
+
+        if payload.lower().startswith("stock:"):
+            tickers = [
+                token.strip().upper()
+                for token in payload[6:].split(",")
+                if token.strip()
+            ]
+            if not tickers:
+                await interaction.response.send_message(
+                    "Please provide at least one stock ticker after `stock:`.",
+                    ephemeral=True,
+                )
+                return
+
+            job_type = "stock"
+            job_data = {"tickers": tickers}
+            quoted = ", ".join(f"`{ticker}`" for ticker in tickers)
+            confirmation = (
+                f"Got it! I'll post daily stock prices for {quoted} at "
+                f"{hour:02d}:{minute:02d}."
+            )
 
         job = DailyJob(
             channel_id=interaction.channel_id,
             hour=hour,
             minute=minute,
-            type="message",
-            data={"message": message},
+            type=job_type,
+            data=job_data,
         )
         self.jobs.append(job)
-        await interaction.response.send_message(
-            f"Got it! I'll post here every day at {hour:02d}:{minute:02d}.",
-            ephemeral=True,
-        )
+        await interaction.response.send_message(confirmation, ephemeral=True)
 
     @tasks.loop(minutes=1)
     async def _runner(self) -> None:
@@ -133,9 +155,15 @@ class DailyTaskCog(commands.Cog):
                 if channel is None:
                     channel = await self.bot.fetch_channel(job.channel_id)
                 if job.type == "crypto":
-                    await self._send_crypto_embeds(
-                        channel, job.data.get("tickers", CRYPTO_TICKERS)
+                    embeds, error = self.crypto_embeds.daily_embeds(
+                        job.data.get("tickers", CRYPTO_TICKERS),
+                        CRYPTO_CURRENCY,
+                        CRYPTO_CHANGE_PERIODS,
                     )
+                    if error:
+                        await channel.send(error)
+                    else:
+                        await channel.send(content=CRYPTO_HEADER, embeds=embeds)
                 elif job.type == "stock":
                     embeds, error = self.stock_embeds.daily_embeds(
                         job.data.get("tickers", [])
@@ -151,34 +179,6 @@ class DailyTaskCog(commands.Cog):
     @_runner.before_loop
     async def _before_runner(self) -> None:
         await self.bot.wait_until_ready()
-
-    async def _send_crypto_embeds(self, channel, tickers: List[str]) -> None:
-        try:
-            rows = CryptoFunctions.fetchPrices(
-                tickers,
-                CRYPTO_CURRENCY,
-                CRYPTO_CHANGE_PERIODS,
-            )
-        except Exception as exc:
-            await channel.send(f"Failed to fetch crypto prices: {exc}")
-            return
-
-        if not rows:
-            await channel.send("No crypto price data returned today.")
-            return
-
-        embeds = []
-        for coin in rows:
-            embed_kwargs = self.crypto_embeds.coin_embed(coin, CRYPTO_CURRENCY)
-            embed = embed_kwargs.get("embed")
-            if embed is not None:
-                embeds.append(embed)
-
-        if not embeds:
-            await channel.send("No crypto price data returned today.")
-            return
-
-        await channel.send(content=CRYPTO_HEADER, embeds=embeds[:10])
 
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(DailyTaskCog(client), guilds=[discord.Object(env["GUILD_ID"])])

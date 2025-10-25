@@ -1,3 +1,5 @@
+from typing import List, Optional, Tuple
+
 import discord
 
 from classes.CryptoFunctions import CryptoFunctions
@@ -95,3 +97,31 @@ class CryptoEmbeds:
         )
 
         return embed
+
+    def daily_embeds(
+        self,
+        tickers: List[str],
+        currency: str,
+        change_periods: Tuple[str, ...],
+    ) -> Tuple[List[discord.Embed], Optional[str]]:
+        if not tickers:
+            return [], "No crypto tickers configured for this job."
+
+        try:
+            rows = CryptoFunctions.fetchPrices(tickers, currency, change_periods)
+        except Exception as exc:
+            return [], f"Failed to fetch crypto prices: {exc}"
+
+        if not rows:
+            return [], "No crypto price data returned today."
+
+        embeds: List[discord.Embed] = []
+        for coin in rows:
+            embed = self._build_price_embed(coin, currency)
+            if embed is not None:
+                embeds.append(embed)
+
+        if not embeds:
+            return [], "No crypto price data returned today."
+
+        return embeds[:10], None
