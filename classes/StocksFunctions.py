@@ -27,7 +27,7 @@ class StocksFunctions:
         if price is None and not day_hist.empty:
             price = day_hist["Close"].iloc[-1]
 
-        hist = ticker_obj.history(period="2mo", interval="1d").dropna()
+        hist = ticker_obj.history(period="2y", interval="1d").dropna()
 
         result = {
             "symbol": ticker,
@@ -35,6 +35,7 @@ class StocksFunctions:
             "change1D_pct": None,
             "change1W_pct": None,
             "change1M_pct": None,
+            "change1Y_pct": None,
             "currency": currency,
         }
 
@@ -50,6 +51,7 @@ class StocksFunctions:
             "change1D_pct": 1,
             "change1W_pct": 5,
             "change1M_pct": 21,
+            "change1Y_pct": 252,
         }
 
         for key, steps in lookbacks.items():
@@ -77,6 +79,7 @@ class StocksFunctions:
                     "change1D_pct": None,
                     "change1W_pct": None,
                     "change1M_pct": None,
+                    "change1Y_pct": None,
                     "currency": None,
                 }
 

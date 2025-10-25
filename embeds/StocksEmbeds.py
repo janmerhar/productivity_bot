@@ -52,8 +52,8 @@ class StocksEmbeds:
         )
 
         embed.add_field(name="1D", value=fmt_change(quote.get("change1D_pct")))
-        embed.add_field(name="1W", value=fmt_change(quote.get("change1W_pct")))
         embed.add_field(name="1M", value=fmt_change(quote.get("change1M_pct")))
+        embed.add_field(name="1Y", value=fmt_change(quote.get("change1Y_pct")))
 
         prev_close = None
         if change_1d is not None:
