@@ -132,18 +132,9 @@ class DailyTaskCog(commands.Cog):
             return
 
         now = datetime.datetime.now()
-        current_hour = now.hour
-        current_minute = now.minute
-        today = now.date()
 
         for job in self.jobs:
-            schedule = job.schedule
-            if (
-                isinstance(schedule, DailySchedule)
-                and schedule.hour == current_hour
-                and schedule.minute == current_minute
-                and job.last_run != today
-            ):
+            if job.is_due(now):
                 channel = self.bot.get_channel(job.channel_id)
                 if channel is None:
                     channel = await self.bot.fetch_channel(job.channel_id)
@@ -167,7 +158,7 @@ class DailyTaskCog(commands.Cog):
                         await channel.send(content=STOCK_HEADER, embeds=embeds)
                 else:
                     await channel.send(job.data.get("message", ""))
-                job.last_run = today
+                job.mark_ran(now)
 
     @_runner.before_loop
     async def _before_runner(self) -> None:

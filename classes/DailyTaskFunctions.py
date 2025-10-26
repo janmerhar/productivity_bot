@@ -41,24 +41,14 @@ class DailyTaskFunctions:
 
     def run_due_tasks(self) -> None:
         now = datetime.datetime.now()
-        current_hour = now.hour
-        current_minute = now.minute
-        today = now.date()
 
         for job in self.tasks:
-            schedule = job.schedule
-            if (
-                isinstance(schedule, DailySchedule)
-                and schedule.hour == current_hour
-                and schedule.minute == current_minute
-                and job.last_run != today
-            ):
+            if job.is_due(now):
                 self.run_task(job)
 
     def run_task(self, job: DailyJob) -> None:
         # check if task has already been run (today)
-        # update last_run to this moment
-        pass
+        job.mark_ran(datetime.datetime.now())
 
 
 if __name__ == "__main__":

@@ -45,20 +45,23 @@ class DailyJob:
             payload["schedule"] = asdict(self.schedule)
         elif isinstance(self.schedule, Mapping):
             payload["schedule"] = dict(self.schedule)
+        else:
+            payload["schedule"] = None
         return payload
 
-    def __repr__(self) -> str:
-        return (
-            "DailyJob("
-            f"channel_id={self.channel_id!r}, "
-            f"type={self.type!r}, "
-            f"data={self.data!r}, "
-            f"schedule={self.schedule!r}, "
-            f"last_run={self.last_run!r}"
-            ")"
-        )
+    def is_due(self, moment: datetime.datetime) -> bool:
+        schedule = self.schedule
+        if not isinstance(schedule, DailySchedule):
+            return False
+        if schedule.hour != moment.hour or schedule.minute != moment.minute:
+            return False
+        return self.last_run != moment.date()
 
-    def from_document(cls, doc: Mapping[str, Any]) -> "DailyJob":
+    def mark_ran(self, moment: datetime.datetime) -> None:
+        self.last_run = moment.date()
+
+    @staticmethod
+    def from_document(doc: Mapping[str, Any]) -> "DailyJob":
         schedule = doc.get("schedule")
         if not schedule:
             hour = doc.get("hour")
@@ -66,7 +69,7 @@ class DailyJob:
             if hour is not None and minute is not None:
                 schedule = {"mode": "daily", "hour": hour, "minute": minute}
 
-        return cls(
+        return DailyJob(
             channel_id=doc["channel_id"],
             type=doc.get("type") or doc.get("kind", ""),
             data=doc.get("data", {}),
@@ -109,4 +112,3 @@ class DailyJob:
                 return CronSchedule(expression=str(expression))
 
         return None
-
