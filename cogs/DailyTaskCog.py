@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 from typing import List, Optional, Tuple
 
@@ -6,7 +7,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 import dateparser
-from classes.DailyTaskFunctions import DailyJob
+from classes.DailyTaskFunctions import DailyJob, DailyTaskFunctions
 from embeds.CryptoEmbeds import CryptoEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
 from config.env import env
@@ -38,6 +39,7 @@ def parse_time_string(raw: str) -> Optional[Tuple[int, int]]:
 
     return None
 
+
 CRYPTO_CHANNEL_ID = 1429530996000161938
 CRYPTO_TICKERS = ["bitcoin", "ethereum", "syrup"]
 CRYPTO_CURRENCY = "usd"
@@ -45,20 +47,12 @@ CRYPTO_CHANGE_PERIODS = ("24h", "7d", "30d")
 CRYPTO_HEADER = "Daily crypto prices"
 STOCK_HEADER = "Daily stock prices"
 
-CRYPTO_DAILY_JOB = DailyJob(
-    channel_id=CRYPTO_CHANNEL_ID,
-    hour=8,
-    minute=0,
-    type="crypto",
-    data={"tickers": CRYPTO_TICKERS},
-)
-
 
 class DailyTaskCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.jobs: List[DailyJob] = []
-        self.jobs.append(CRYPTO_DAILY_JOB)
+        self.task_functions = DailyTaskFunctions()
+        self.jobs: List[DailyJob] = self.task_functions.tasks
         self.crypto_embeds = CryptoEmbeds()
         self.stock_embeds = StocksEmbeds()
         self._runner.start()
@@ -119,8 +113,16 @@ class DailyTaskCog(commands.Cog):
             type=job_type,
             data=job_data,
         )
-        self.jobs.append(job)
-        await interaction.response.send_message(confirmation, ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
+        try:
+            await asyncio.to_thread(self.task_functions.insert_task, job)
+        except Exception:
+            await interaction.followup.send(
+                "Something went wrong while scheduling that task. Please try again.",
+                ephemeral=True,
+            )
+            return
+        await interaction.followup.send(confirmation, ephemeral=True)
 
     @tasks.loop(minutes=1)
     async def _runner(self) -> None:
