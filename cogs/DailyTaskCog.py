@@ -7,7 +7,8 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 import dateparser
-from classes.DailyTaskFunctions import DailyJob, DailyTaskFunctions, DailySchedule
+from classes.DailySchedule import DailyJob, DailySchedule
+from classes.DailyTaskFunctions import DailyTaskFunctions
 from embeds.CryptoEmbeds import CryptoEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
 from config.env import env
@@ -110,8 +111,6 @@ class DailyTaskCog(commands.Cog):
 
         job = DailyJob(
             channel_id=interaction.channel_id,
-            hour=hour,
-            minute=minute,
             type=job_type,
             data=job_data,
             schedule=job_schedule,
@@ -138,9 +137,11 @@ class DailyTaskCog(commands.Cog):
         today = now.date()
 
         for job in self.jobs:
+            schedule = job.schedule
             if (
-                job.hour == current_hour
-                and job.minute == current_minute
+                isinstance(schedule, DailySchedule)
+                and schedule.hour == current_hour
+                and schedule.minute == current_minute
                 and job.last_run != today
             ):
                 channel = self.bot.get_channel(job.channel_id)

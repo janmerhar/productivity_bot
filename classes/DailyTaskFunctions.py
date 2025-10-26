@@ -1,39 +1,16 @@
 import datetime
-from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Optional, Union, Literal
 import sys
 
 import pymongo
 
+if __name__ == "__main__":
+    ROOT_DIR = Path(__file__).resolve().parents[1]
+    if str(ROOT_DIR) not in sys.path:
+        sys.path.insert(0, str(ROOT_DIR))
+
+from classes.DailySchedule import DailyJob, DailySchedule
 from config import env
-
-
-@dataclass
-class DailySchedule:
-    hour: int
-    minute: int
-    mode: Literal["daily"] = "daily"
-
-
-@dataclass
-class CronSchedule:
-    expression: str
-    mode: Literal["cron"] = "cron"
-
-
-ScheduleConfig = Union[DailySchedule, CronSchedule]
-
-
-@dataclass
-class DailyJob:
-    channel_id: int
-    hour: int
-    minute: int
-    type: str
-    data: dict
-    schedule: Optional[ScheduleConfig] = None
-    last_run: Optional[datetime.date] = None
 
 
 class DailyTaskFunctions:
@@ -45,34 +22,8 @@ class DailyTaskFunctions:
 
         self.load_tasks()
 
-    @staticmethod
-    def get_schedule(data: Optional[dict]) -> Optional[ScheduleConfig]:
-        if not data:
-            return None
-
-        mode = data.get("mode")
-        if mode == "daily":
-            hour = data.get("hour")
-            minute = data.get("minute")
-            if hour is None or minute is None:
-                time_info = data.get("time")
-                if isinstance(time_info, dict):
-                    hour = time_info.get("hour")
-                    minute = time_info.get("minute")
-            if hour is None or minute is None:
-                return None
-            return DailySchedule(mode="daily", hour=hour, minute=minute)
-
-        if mode == "cron":
-            expression = data.get("expression") or data.get("cron")
-            if not expression:
-                return None
-            return CronSchedule(mode="cron", expression=expression)
-
-        return None
-
     def insert_task(self, job: DailyJob) -> DailyJob:
-        self.mongo_tasks.insert_one(asdict(job))
+        self.mongo_tasks.insert_one(job.to_dict())
         self.tasks.append(job)
 
         return job
@@ -80,17 +31,7 @@ class DailyTaskFunctions:
     def fetch_tasks(self) -> list[DailyJob]:
         tasks = []
         for doc in self.mongo_tasks.find({}):
-            job_type = doc.get("type") or doc.get("kind")
-            schedule = self.get_schedule(doc.get("schedule"))
-            job = DailyJob(
-                channel_id=doc["channel_id"],
-                hour=doc["hour"],
-                minute=doc["minute"],
-                type=job_type,
-                data=doc["data"],
-                schedule=schedule,
-                last_run=doc.get("last_run"),
-            )
+            job = DailyJob.from_document(doc)
             tasks.append(job)
         return tasks
 
@@ -105,9 +46,11 @@ class DailyTaskFunctions:
         today = now.date()
 
         for job in self.tasks:
+            schedule = job.schedule
             if (
-                job.hour == current_hour
-                and job.minute == current_minute
+                isinstance(schedule, DailySchedule)
+                and schedule.hour == current_hour
+                and schedule.minute == current_minute
                 and job.last_run != today
             ):
                 self.run_task(job)
@@ -122,8 +65,6 @@ if __name__ == "__main__":
     task_manager = DailyTaskFunctions()
     example_job = DailyJob(
         channel_id=1429429050086129814,
-        hour=9,
-        minute=30,
         type="message",
         data={"message": "Daily standup reminder"},
         schedule=DailySchedule(hour=9, minute=30),
