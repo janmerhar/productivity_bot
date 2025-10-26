@@ -22,7 +22,6 @@ ScheduleConfig = Union[DailySchedule, CronSchedule]
 class DailyJob:
     def __init__(
         self,
-        *,
         channel_id: int,
         type: str,
         data: Dict[str, Any],
@@ -59,7 +58,6 @@ class DailyJob:
             ")"
         )
 
-    @classmethod
     def from_document(cls, doc: Mapping[str, Any]) -> "DailyJob":
         schedule = doc.get("schedule")
         if not schedule:
@@ -112,10 +110,3 @@ class DailyJob:
 
         return None
 
-
-__all__ = [
-    "DailySchedule",
-    "CronSchedule",
-    "ScheduleConfig",
-    "DailyJob",
-]
