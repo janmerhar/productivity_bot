@@ -6,7 +6,7 @@ from discord.ext import commands
 from discord import app_commands
 
 from classes.AliasFunctions import AliasFunctions
-from config import env
+from config.env import env
 
 tick_disabled = env.get("TICK_DISABLED") == "true"
 

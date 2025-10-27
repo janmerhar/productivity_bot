@@ -13,7 +13,7 @@ import sys
 import aiohttp
 import inspect
 from embeds.TogglEmbeds import TogglEmbeds
-from config import env
+from config.env import env
 
 
 class TogglCog(commands.Cog):

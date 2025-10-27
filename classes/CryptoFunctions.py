@@ -1,15 +1,11 @@
-import pymongo
-from dotenv import dotenv_values
 import requests
 
-env = dotenv_values(".env")
+from config.db import mongo_db
 
 
 class CryptoFunctions:
     def __init__(self):
-        client = pymongo.MongoClient(env["MONGO_URI"])
-        # self.mongo_commands = client["productivity_bot"]["custom_commands"]
-        # self.mongo_aliases = client["productivity_bot"]["aliases"]
+        self.mongo_db = mongo_db
 
     # Insert into mongoDB
     def inserTracker(

@@ -2,10 +2,9 @@ from ticktick.oauth2 import OAuth2
 from ticktick.api import TickTickClient
 
 from abstract.FunctionsAbstract import FunctionsAbstract
-import pymongo
-from pymongo import MongoClient
 
-from config import env
+from config.env import env
+from config.db import mongo_db
 
 
 class TickTickFunctions(FunctionsAbstract):
@@ -16,9 +15,8 @@ class TickTickFunctions(FunctionsAbstract):
 
         self.client = TickTickClient(email, password, auth_client)
 
-        mongo_client = pymongo.MongoClient(env["MONGO_URI"])
-        self.mongo_commands = mongo_client["productivity_bot"]["custom_commands"]
-        self.mongo_aliases = mongo_client["productivity_bot"]["aliases"]
+        self.mongo_commands = mongo_db["custom_commands"]
+        self.mongo_aliases = mongo_db["aliases"]
 
     #
     # Tasks
@@ -274,7 +272,7 @@ class TickTickFunctions(FunctionsAbstract):
 
 
 if __name__ == "__main__":
-    from config import env
+    from config.env import env
     import json
 
     ticktick = TickTickFunctions(

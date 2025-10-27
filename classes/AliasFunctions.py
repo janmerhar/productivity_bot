@@ -1,19 +1,15 @@
-import pymongo
-
-from config import env
+from config.db import mongo_db
 
 
 class AliasFunctions:
     def __init__(self):
-        self._client = None
         self.mongo_commands = None
         self.mongo_aliases = None
 
     def _connect(self):
         if self.mongo_aliases is None:
-            self._client = pymongo.MongoClient(env["MONGO_URI"])
-            self.mongo_commands = self._client["productivity_bot"]["custom_commands"]
-            self.mongo_aliases = self._client["productivity_bot"]["aliases"]
+            self.mongo_commands = mongo_db["custom_commands"]
+            self.mongo_aliases = mongo_db["aliases"]
 
     def findAliases(self, identifier: str = "", n: int = 0):
         self._connect()

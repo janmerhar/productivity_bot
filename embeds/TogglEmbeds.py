@@ -8,7 +8,7 @@ import inspect
 from classes.TogglFunctions import TogglFunctions
 from abstract.EmbedsAbstract import EmbedsAbstract
 
-from config import env
+from config.env import env
 
 
 class TogglEmbeds(EmbedsAbstract):
