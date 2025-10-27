@@ -9,7 +9,7 @@ from discord.ext import commands, tasks
 import dateparser
 from embeds.CryptoEmbeds import CryptoEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
-from config import env
+from config.env import env
 
 
 def parse_time_string(raw: str) -> Optional[Tuple[int, int]]:
@@ -100,9 +100,7 @@ class DailyTaskCog(commands.Cog):
         payload = message.strip()
         job_type = "message"
         job_data = {"message": message}
-        confirmation = (
-            f"Got it! I'll post here every day at {hour:02d}:{minute:02d}."
-        )
+        confirmation = f"Got it! I'll post here every day at {hour:02d}:{minute:02d}."
 
         if payload.lower().startswith("stock:"):
             tickers = [
@@ -179,6 +177,7 @@ class DailyTaskCog(commands.Cog):
     @_runner.before_loop
     async def _before_runner(self) -> None:
         await self.bot.wait_until_ready()
+
 
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(DailyTaskCog(client), guilds=[discord.Object(env["GUILD_ID"])])

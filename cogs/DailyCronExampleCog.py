@@ -5,7 +5,7 @@ import discord
 from discord.ext import commands, tasks
 from zoneinfo import ZoneInfo
 
-from config import env
+from config.env import env
 
 RUN_AT = datetime.time(hour=8, tzinfo=ZoneInfo("Europe/Ljubljana"))
 MESSAGE = "Test message at 8 am"

@@ -8,7 +8,7 @@ import inspect
 from classes.TickTickFunctions import TickTickFunctions
 from abstract.EmbedsAbstract import EmbedsAbstract  # Se moram implemenetirati
 
-from config import env
+from config.env import env
 
 
 class TickTickEmbeds(EmbedsAbstract):

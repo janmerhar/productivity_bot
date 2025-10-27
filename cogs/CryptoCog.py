@@ -4,7 +4,7 @@ from discord.ext import commands
 from discord import app_commands
 
 from embeds.CryptoEmbeds import CryptoEmbeds
-from config import env
+from config.env import env
 
 
 class CryptoCog(commands.Cog):

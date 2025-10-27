@@ -1,6 +1,4 @@
 from ast import List
-import pymongo
-from pymongo import MongoClient
 from typing import Dict, Optional, Tuple, Union
 import requests
 from dateutil import parser
@@ -9,7 +7,8 @@ import time
 import json
 from bson.objectid import ObjectId
 
-from config import env
+from config.env import env
+from config.db import mongo_db
 
 
 class TogglFunctions:
@@ -20,9 +19,8 @@ class TogglFunctions:
         # and have functions to change them
 
         # add implementation for API_KEY and email:passwd authentications
-        client = pymongo.MongoClient(env["MONGO_URI"])
-        self.mongo_commands = client["productivity_bot"]["custom_commands"]
-        self.mongo_aliases = client["productivity_bot"]["aliases"]
+        self.mongo_commands = mongo_db["custom_commands"]
+        self.mongo_aliases = mongo_db["aliases"]
 
         self.custom_commands = []
         self.updateSavedTimers()

@@ -13,7 +13,7 @@ import aiohttp
 
 from embeds.AliasEmbeds import AliasEmbeds
 from embeds.TogglEmbeds import TogglEmbeds
-from config import env
+from config.env import env
 
 
 class AliasCog(commands.Cog):

@@ -6,7 +6,7 @@ import asyncio
 from typing import Optional
 from discord.ext import commands
 
-from config import env
+from config.env import env
 
 tick_disabled = env.get("TICK_DISABLED") == "true"
 sync_guild_id = env.get("GUILD_ID")
