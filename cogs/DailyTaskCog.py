@@ -7,7 +7,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 import dateparser
-from classes.DailySchedule import DailyJob, DailySchedule
+from classes.DailySchedule import DailyJob, OneTimeSchedule
 from classes.DailyTaskFunctions import DailyTaskFunctions
 from embeds.CryptoEmbeds import CryptoEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
@@ -84,7 +84,7 @@ class DailyTaskCog(commands.Cog):
         payload = message.strip()
         job_type = "message"
         job_data = {"message": message}
-        job_schedule = DailySchedule(hour=hour, minute=minute)
+        job_schedule = OneTimeSchedule(hour=hour, minute=minute)
         confirmation = f"Got it! I'll post here every day at {hour:02d}:{minute:02d}."
 
         if payload.lower().startswith("stock:"):
@@ -102,7 +102,7 @@ class DailyTaskCog(commands.Cog):
 
             job_type = "stock"
             job_data = {"tickers": tickers}
-            job_schedule = DailySchedule(hour=hour, minute=minute)
+            job_schedule = OneTimeSchedule(hour=hour, minute=minute)
             quoted = ", ".join(f"`{ticker}`" for ticker in tickers)
             confirmation = (
                 f"Got it! I'll post daily stock prices for {quoted} at "
@@ -110,6 +110,7 @@ class DailyTaskCog(commands.Cog):
             )
 
         job = DailyJob(
+            id=None,
             channel_id=interaction.channel_id,
             type=job_type,
             data=job_data,

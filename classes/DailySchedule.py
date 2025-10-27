@@ -4,10 +4,10 @@ from typing import Any, Dict, Literal, Mapping, Optional, Union
 
 
 @dataclass
-class DailySchedule:
+class OneTimeSchedule:
     hour: int
     minute: int
-    mode: Literal["daily"] = "daily"
+    mode: Literal["one-time"] = "one-time"
 
 
 @dataclass
@@ -16,18 +16,20 @@ class CronSchedule:
     mode: Literal["cron"] = "cron"
 
 
-ScheduleConfig = Union[DailySchedule, CronSchedule]
+ScheduleConfig = Union[OneTimeSchedule, CronSchedule]
 
 
 class DailyJob:
     def __init__(
         self,
+        id: Optional[Any],
         channel_id: int,
         type: str,
         data: Dict[str, Any],
         schedule: Optional[Union[ScheduleConfig, Mapping[str, Any]]] = None,
         last_run: Optional[datetime.date] = None,
     ) -> None:
+        self.id = id
         self.channel_id = channel_id
         self.type = type
         self.data = data
@@ -41,7 +43,9 @@ class DailyJob:
             "data": self.data,
             "last_run": self.last_run,
         }
-        if isinstance(self.schedule, (DailySchedule, CronSchedule)):
+        if self.id is not None:
+            payload["id"] = self.id
+        if isinstance(self.schedule, (OneTimeSchedule, CronSchedule)):
             payload["schedule"] = asdict(self.schedule)
         elif isinstance(self.schedule, Mapping):
             payload["schedule"] = dict(self.schedule)
@@ -51,7 +55,7 @@ class DailyJob:
 
     def is_due(self, moment: datetime.datetime) -> bool:
         schedule = self.schedule
-        if not isinstance(schedule, DailySchedule):
+        if not isinstance(schedule, OneTimeSchedule):
             return False
         if schedule.hour != moment.hour or schedule.minute != moment.minute:
             return False
@@ -67,9 +71,16 @@ class DailyJob:
             hour = doc.get("hour")
             minute = doc.get("minute")
             if hour is not None and minute is not None:
-                schedule = {"mode": "daily", "hour": hour, "minute": minute}
+                schedule = {"mode": "one-time", "hour": hour, "minute": minute}
+
+        doc_id = doc.get("id")
+        if doc_id is None:
+            mongo_id = doc.get("_id")
+            if mongo_id is not None:
+                doc_id = str(mongo_id)
 
         return DailyJob(
+            id=doc_id,
             channel_id=doc["channel_id"],
             type=doc.get("type") or doc.get("kind", ""),
             data=doc.get("data", {}),
@@ -84,13 +95,13 @@ class DailyJob:
         if raw_schedule is None:
             return None
 
-        if isinstance(raw_schedule, (DailySchedule, CronSchedule)):
+        if isinstance(raw_schedule, (OneTimeSchedule, CronSchedule)):
             return raw_schedule
 
         if isinstance(raw_schedule, Mapping):
             mode = raw_schedule.get("mode")
 
-            if mode == "daily":
+            if mode in ("one-time", "daily"):
                 hour = raw_schedule.get("hour")
                 minute = raw_schedule.get("minute")
                 if hour is None or minute is None:
@@ -101,7 +112,7 @@ class DailyJob:
                 if hour is None or minute is None:
                     return None
                 try:
-                    return DailySchedule(hour=int(hour), minute=int(minute))
+                    return OneTimeSchedule(hour=int(hour), minute=int(minute))
                 except (TypeError, ValueError):
                     return None
 

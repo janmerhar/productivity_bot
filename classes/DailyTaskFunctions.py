@@ -9,7 +9,7 @@ if __name__ == "__main__":
     if str(ROOT_DIR) not in sys.path:
         sys.path.insert(0, str(ROOT_DIR))
 
-from classes.DailySchedule import DailyJob, DailySchedule
+from classes.DailySchedule import DailyJob, OneTimeSchedule
 from config import env
 
 
@@ -23,7 +23,9 @@ class DailyTaskFunctions:
         self.load_tasks()
 
     def insert_task(self, job: DailyJob) -> DailyJob:
-        self.mongo_tasks.insert_one(job.to_dict())
+        result = self.mongo_tasks.insert_one(job.to_dict())
+        if job.id is None:
+            job.id = str(result.inserted_id)
         self.tasks.append(job)
 
         return job
@@ -54,10 +56,11 @@ class DailyTaskFunctions:
 if __name__ == "__main__":
     task_manager = DailyTaskFunctions()
     example_job = DailyJob(
+        id=None,
         channel_id=1429429050086129814,
         type="message",
         data={"message": "Daily standup reminder"},
-        schedule=DailySchedule(hour=9, minute=30),
+        schedule=OneTimeSchedule(hour=9, minute=30),
     )
     task_manager.insert_task(example_job)
     task_manager.load_tasks()
