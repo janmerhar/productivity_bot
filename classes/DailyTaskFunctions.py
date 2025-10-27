@@ -2,22 +2,18 @@ import datetime
 from pathlib import Path
 import sys
 
-import pymongo
-
 if __name__ == "__main__":
     ROOT_DIR = Path(__file__).resolve().parents[1]
     if str(ROOT_DIR) not in sys.path:
         sys.path.insert(0, str(ROOT_DIR))
 
-from classes.DailySchedule import DailyJob, OneTimeSchedule
-from config import env
+from classes.DailyJob import DailyJob, OneTimeSchedule
+from config.db import mongo_db
 
 
 class DailyTaskFunctions:
     def __init__(self):
-        client = pymongo.MongoClient(env["MONGO_URI"])
-        db_name = env.get("MONGO_DB", "productivity_bot")
-        self.mongo_tasks = client[db_name]["tasks"]
+        self.mongo_tasks = mongo_db["tasks"]
         self.tasks: list[DailyJob] = []
 
         self.load_tasks()

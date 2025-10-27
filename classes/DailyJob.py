@@ -2,6 +2,8 @@ import datetime
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, Literal, Mapping, Optional, Union
 
+from config.db import mongo_db
+
 
 @dataclass
 class OneTimeSchedule:

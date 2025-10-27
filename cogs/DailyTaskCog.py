@@ -7,7 +7,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 import dateparser
-from classes.DailySchedule import DailyJob, OneTimeSchedule
+from classes.DailyJob import DailyJob, OneTimeSchedule
 from classes.DailyTaskFunctions import DailyTaskFunctions
 from embeds.CryptoEmbeds import CryptoEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
