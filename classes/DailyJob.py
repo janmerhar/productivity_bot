@@ -126,4 +126,29 @@ class DailyJob:
 
         return None
 
+    def insert(
+        channel_id: int,
+        type: str,
+        data: dict,
+        schedule: dict = None,
+    ) -> "DailyJob":
+        document = {
+            "channel_id": channel_id,
+            "type": type,
+            "data": data,
+            "schedule": schedule,
+            "last_run": None,
+        }
+
+        collection = mongo_db["tasks"]
+        result = collection.insert_one(document)
+
+        return DailyJob(
+            id=str(result.inserted_id),
+            channel_id=channel_id,
+            type=type,
+            data=data,
+            schedule=schedule,
+            last_run=None,
+        )
 
