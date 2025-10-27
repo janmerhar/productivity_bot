@@ -13,6 +13,12 @@ class OneTimeSchedule:
 
 
 @dataclass
+class OneTimeSchedule2:
+    datetime: str
+    mode: Literal["one-time"] = "one-time"
+
+
+@dataclass
 class CronSchedule:
     expression: str
     mode: Literal["cron"] = "cron"
@@ -152,3 +158,33 @@ class DailyJob:
             last_run=None,
         )
 
+    def is_due(self, check_datetime: datetime.datetime) -> bool:
+        if isinstance(self.schedule, OneTimeSchedule2):
+            if self.last_run is not None:
+                return False
+
+            # check if datetime matches scheduled datetime
+            scheduled_dt = check_datetime.datetime.fromisoformat(self.schedule.datetime)
+            return (
+                check_datetime.year == scheduled_dt.year
+                and check_datetime.month == scheduled_dt.month
+                and check_datetime.day == scheduled_dt.day
+                and check_datetime.hour == scheduled_dt.hour
+                and check_datetime.minute == scheduled_dt.minute
+            )
+
+        elif isinstance(self.schedule, CronSchedule):
+            if not croniter.match(self.schedule.expression, check_datetime):
+                return False
+
+            run_minute = check_datetime.replace(second=0, microsecond=0)
+            last_run_value = self.last_run
+            last_run_minute = last_run_value.replace(second=0, microsecond=0)
+
+            if last_run_minute == run_minute:
+                return False
+
+            return True
+        # check if current time matches schedule
+
+        return False
