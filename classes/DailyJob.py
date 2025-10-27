@@ -123,3 +123,5 @@ class DailyJob:
                 return CronSchedule(expression=str(expression))
 
         return None
+
+
