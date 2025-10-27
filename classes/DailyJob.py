@@ -1,6 +1,8 @@
 import datetime
 from dataclasses import dataclass, asdict
-from typing import Any, Dict, Literal, Mapping, Optional, Union
+from typing import Any, Dict, List, Literal, Mapping, Optional, Union
+
+from croniter import CroniterBadCronError, croniter
 
 from config.db import mongo_db
 
@@ -188,3 +190,43 @@ class DailyJob:
         # check if current time matches schedule
 
         return False
+    @staticmethod
+    def fetch_cron_jobs() -> List["DailyJob"]:
+        collection = mongo_db["task"]
+        cursor = collection.find({"schedule.mode": "cron"})
+        jobs: List[DailyJob] = []
+
+        for doc in cursor:
+            jobs.append(
+                DailyJob(
+                    id=doc.get("id"),
+                    channel_id=doc["channel_id"],
+                    type=doc.get("type", ""),
+                    data=doc.get("data", {}),
+                    schedule=doc.get("schedule"),
+                    last_run=doc.get("last_run"),
+                )
+            )
+
+        return jobs
+
+    @staticmethod
+    def fetch_one_time_jobs() -> List["DailyJob"]:
+        collection = mongo_db["task"]
+        cursor = collection.find({"schedule.mode": "one-time", "last_run": None})
+
+        jobs: List[DailyJob] = []
+
+        for doc in cursor:
+            jobs.append(
+                DailyJob(
+                    id=doc.get("id"),
+                    channel_id=doc["channel_id"],
+                    type=doc.get("type", ""),
+                    data=doc.get("data", {}),
+                    schedule=doc.get("schedule"),
+                    last_run=doc.get("last_run"),
+                )
+            )
+
+        return jobs
