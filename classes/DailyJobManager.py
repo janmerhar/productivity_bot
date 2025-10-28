@@ -22,3 +22,13 @@ class DailyJobManager:
     def fetch_jobs(self):
         self.cron_jobs = DailyJob.fetch_cron_jobs()
         self.one_time_jobs = DailyJob.fetch_one_time_jobs()
+
+    def insert_job(
+        self,
+        channel_id: int,
+        type: str,
+        data: dict,
+        schedule: dict = None,
+    ):
+        DailyJob.insert(channel_id, type, data, schedule)
+        self.fetch_jobs()
