@@ -1,3 +1,4 @@
+import datetime
 from typing import List, Optional
 from classes.DailyJob import DailyJob
 
@@ -32,3 +33,17 @@ class DailyJobManager:
     ):
         DailyJob.insert(channel_id, type, data, schedule)
         self.fetch_jobs()
+
+    def get_due_jobs(self) -> List[DailyJob]:
+        now = datetime.datetime.now()
+        due_jobs: List[DailyJob] = []
+
+        for job in self.cron_jobs:
+            if job.is_due(now):
+                due_jobs.append(job)
+
+        for job in self.one_time_jobs:
+            if job.is_due(now):
+                due_jobs.append(job)
+
+        return due_jobs
