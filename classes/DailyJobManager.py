@@ -1,5 +1,5 @@
 import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from classes.DailyJob import DailyJob
 
 
@@ -48,14 +48,14 @@ class DailyJobManager:
 
         return due_jobs
 
-    def run_due_jobs(self) -> List[Dict[str, Any]]:
-        payloads: List[Dict[str, Any]] = []
+    def run_due_jobs(self) -> List[Tuple[DailyJob, Dict[str, Any]]]:
+        runs: List[Tuple[DailyJob, Dict[str, Any]]] = []
         due_jobs = self.get_due_jobs()
 
         for job in due_jobs:
-            payloads.append(job.run())
+            runs.append((job, job.run()))
 
         if due_jobs:
             self.fetch_jobs()
 
-        return payloads
+        return runs
