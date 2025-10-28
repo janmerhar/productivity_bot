@@ -1,6 +1,8 @@
 import datetime
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Literal, Mapping, Optional, Union
+from embeds.CryptoEmbeds import CryptoEmbeds
+from embeds.StocksEmbeds import StocksEmbeds
 
 from croniter import CroniterBadCronError, croniter
 
@@ -190,6 +192,37 @@ class DailyJob:
         # check if current time matches schedule
 
         return False
+
+    def run(self) -> Dict[str, Any]:
+        if self.type == "message":
+            return {"content": self.data.get("message", "")}
+
+        if self.type == "crypto":
+            tickers = self.data["tickers"]
+            currency = self.data.get("currency", "usd")
+            raw_periods = self.data.get("change_periods", ("24h", "7d", "30d"))
+
+            embeds, error = CryptoEmbeds().daily_embeds(tickers, currency, raw_periods)
+
+            payload = {"embeds": embeds}
+            header = self.data.get("header")
+            if header:
+                payload["content"] = header
+            return payload
+
+        if self.type == "stock":
+            ticker = self.data["ticker"]
+            embeds, error = StocksEmbeds().daily_embeds(ticker)
+
+            payload = {"embeds": embeds}
+            header = self.data.get("header")
+            if header:
+                payload["content"] = header
+
+            return payload
+
+        return {}
+
     @staticmethod
     def fetch_cron_jobs() -> List["DailyJob"]:
         collection = mongo_db["task"]
