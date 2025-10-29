@@ -10,13 +10,6 @@ from config.db import mongo_db
 
 
 @dataclass
-class OneTimeSchedule:
-    hour: int
-    minute: int
-    mode: Literal["one-time"] = "one-time"
-
-
-@dataclass
 class OneTimeSchedule2:
     datetime: str
     mode: Literal["one-time"] = "one-time"
@@ -28,7 +21,7 @@ class CronSchedule:
     mode: Literal["cron"] = "cron"
 
 
-ScheduleConfig = Union[OneTimeSchedule, CronSchedule]
+ScheduleConfig = Union[OneTimeSchedule2, CronSchedule]
 
 
 class DailyJob:
@@ -187,5 +180,4 @@ class DailyJob:
                 )
             )
 
-        print("one-time-jobs", jobs)
         return jobs
