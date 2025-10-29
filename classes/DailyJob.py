@@ -75,33 +75,42 @@ class DailyJob:
         )
 
     def is_due(self, check_datetime: datetime.datetime) -> bool:
-        if isinstance(self.schedule, OneTimeSchedule2):
+        schedule = self.schedule
+
+        if isinstance(schedule, Mapping):
+            mode = schedule.get("mode")
+        else:
+            mode = getattr(schedule, "mode", None)
+
+        if mode == "one-time":
             if self.last_run is not None:
                 return False
 
-            # check if datetime matches scheduled datetime
-            scheduled_dt = check_datetime.datetime.fromisoformat(self.schedule.datetime)
-            return (
-                check_datetime.year == scheduled_dt.year
-                and check_datetime.month == scheduled_dt.month
-                and check_datetime.day == scheduled_dt.day
-                and check_datetime.hour == scheduled_dt.hour
-                and check_datetime.minute == scheduled_dt.minute
-            )
+            scheduled_dt = datetime.datetime.fromisoformat(schedule["datetime"])
 
-        elif isinstance(self.schedule, CronSchedule):
-            if not croniter.match(self.schedule.expression, check_datetime):
+            return scheduled_dt.replace(
+                second=0, microsecond=0
+            ) == check_datetime.replace(second=0, microsecond=0)
+
+        if mode == "cron":
+            expression = schedule["expression"]
+
+            if not croniter.match(expression, check_datetime):
                 return False
 
             run_minute = check_datetime.replace(second=0, microsecond=0)
             last_run_value = self.last_run
+
+            if last_run_value is None:
+                return True
+
+            last_run_value = datetime.datetime.fromisoformat(last_run_value)
             last_run_minute = last_run_value.replace(second=0, microsecond=0)
 
             if last_run_minute == run_minute:
                 return False
 
             return True
-        # check if current time matches schedule
 
         return False
 
@@ -178,4 +187,5 @@ class DailyJob:
                 )
             )
 
+        print("one-time-jobs", jobs)
         return jobs
