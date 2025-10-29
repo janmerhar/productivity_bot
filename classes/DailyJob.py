@@ -48,31 +48,6 @@ class DailyJob:
         self.schedule = self._normalize_schedule(schedule)
         self.last_run = last_run
 
-    def to_dict(self) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
-            "channel_id": self.channel_id,
-            "type": self.type,
-            "data": self.data,
-            "last_run": self.last_run,
-        }
-        if self.id is not None:
-            payload["id"] = self.id
-        if isinstance(self.schedule, (OneTimeSchedule, CronSchedule)):
-            payload["schedule"] = asdict(self.schedule)
-        elif isinstance(self.schedule, Mapping):
-            payload["schedule"] = dict(self.schedule)
-        else:
-            payload["schedule"] = None
-        return payload
-
-    def is_due(self, moment: datetime.datetime) -> bool:
-        schedule = self.schedule
-        if not isinstance(schedule, OneTimeSchedule):
-            return False
-        if schedule.hour != moment.hour or schedule.minute != moment.minute:
-            return False
-        return self.last_run != moment.date()
-
     def mark_ran(self, moment: datetime.datetime) -> None:
         self.last_run = moment.date()
 
