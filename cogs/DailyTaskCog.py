@@ -1,22 +1,23 @@
 import asyncio
 import datetime
-from typing import Optional, Tuple
+from typing import Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
 import dateparser
-from classes.DailyJob import DailyJob, OneTimeSchedule
+from classes.DailyJob import OneTimeSchedule2
 from classes.DailyJobManager import DailyJobManager
-from classes.DailyTaskFunctions import DailyTaskFunctions
 from config.env import env
 
 
-def parse_time_string(raw: str) -> Optional[Tuple[int, int]]:
+def parse_time_string(raw: str) -> Optional[datetime.datetime]:
     text = raw.strip()
     if not text:
         return None
+
+    now = datetime.datetime.now()
 
     dt = dateparser.parse(
         text,
@@ -27,15 +28,11 @@ def parse_time_string(raw: str) -> Optional[Tuple[int, int]]:
         },
     )
 
-    if text is not None:
-        return dt.hour, dt.minute
-
-    for fmt in ("%H:%M", "%H%M", "%I:%M%p", "%I%p", "%H"):
-        try:
-            dt = datetime.datetime.strptime(text, fmt)
-            return dt.hour, dt.minute
-        except ValueError:
-            continue
+    if dt is not None:
+        dt = dt.replace(second=0, microsecond=0)
+        if dt <= now:
+            dt += datetime.timedelta(days=1)
+        return dt
 
     return None
 
@@ -43,7 +40,6 @@ def parse_time_string(raw: str) -> Optional[Tuple[int, int]]:
 class DailyTaskCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.task_functions = DailyTaskFunctions()
         self._runner.start()
 
     @commands.Cog.listener()
@@ -60,20 +56,20 @@ class DailyTaskCog(commands.Cog):
     async def daily_task(
         self, interaction: discord.Interaction, time: str, message: str
     ) -> None:
-        parsed = parse_time_string(time)
-        if parsed is None:
+        scheduled_dt = parse_time_string(time)
+        if scheduled_dt is None:
             await interaction.response.send_message(
                 "I couldn't understand that time. Try '08:30', '8pm', or similar.",
                 ephemeral=True,
             )
             return
 
-        hour, minute = parsed
+        job_schedule = OneTimeSchedule2(datetime=scheduled_dt.isoformat())
         payload = message.strip()
         job_type = "message"
         job_data = {"message": message}
-        job_schedule = OneTimeSchedule(hour=hour, minute=minute)
-        confirmation = f"Got it! I'll post here every day at {hour:02d}:{minute:02d}."
+        confirmation_time = scheduled_dt.strftime("%H:%M")
+        confirmation = f"Got it! I'll post here every day at {confirmation_time}."
 
         if payload.lower().startswith("stock:"):
             tickers = [
@@ -90,23 +86,22 @@ class DailyTaskCog(commands.Cog):
 
             job_type = "stock"
             job_data = {"tickers": tickers}
-            job_schedule = OneTimeSchedule(hour=hour, minute=minute)
             quoted = ", ".join(f"`{ticker}`" for ticker in tickers)
             confirmation = (
                 f"Got it! I'll post daily stock prices for {quoted} at "
-                f"{hour:02d}:{minute:02d}."
+                f"{confirmation_time}."
             )
 
-        job = DailyJob(
-            id=None,
-            channel_id=interaction.channel_id,
-            type=job_type,
-            data=job_data,
-            schedule=job_schedule,
-        )
         await interaction.response.defer(ephemeral=True)
+        manager = DailyJobManager()
         try:
-            await asyncio.to_thread(self.task_functions.insert_task, job)
+            await asyncio.to_thread(
+                manager.insert_job,
+                interaction.channel_id,
+                job_type,
+                job_data,
+                job_schedule,
+            )
         except Exception:
             await interaction.followup.send(
                 "Something went wrong while scheduling that task. Please try again.",
