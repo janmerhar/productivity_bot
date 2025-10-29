@@ -34,18 +34,18 @@ ScheduleConfig = Union[OneTimeSchedule, CronSchedule]
 class DailyJob:
     def __init__(
         self,
-        id: Optional[Any],
+        id: Any,
         channel_id: int,
         type: str,
         data: Dict[str, Any],
-        schedule: Optional[Union[ScheduleConfig, Mapping[str, Any]]] = None,
+        schedule: Optional[Union[ScheduleConfig, Mapping[str, Any]]],
         last_run: Optional[datetime.date] = None,
     ) -> None:
         self.id = id
         self.channel_id = channel_id
         self.type = type
         self.data = data
-        self.schedule = self._normalize_schedule(schedule)
+        self.schedule = schedule
         self.last_run = last_run
 
     def insert(
