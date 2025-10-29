@@ -1,21 +1,23 @@
+import asyncio
 import datetime
-from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
 import dateparser
-from embeds.CryptoEmbeds import CryptoEmbeds
-from embeds.StocksEmbeds import StocksEmbeds
+from classes.DailyJob import OneTimeSchedule2
+from classes.DailyJobManager import DailyJobManager
 from config.env import env
 
 
-def parse_time_string(raw: str) -> Optional[Tuple[int, int]]:
+def parse_time_string(raw: str) -> Optional[datetime.datetime]:
     text = raw.strip()
     if not text:
         return None
+
+    now = datetime.datetime.now()
 
     dt = dateparser.parse(
         text,
@@ -26,52 +28,18 @@ def parse_time_string(raw: str) -> Optional[Tuple[int, int]]:
         },
     )
 
-    if text is not None:
-        return dt.hour, dt.minute
-
-    for fmt in ("%H:%M", "%H%M", "%I:%M%p", "%I%p", "%H"):
-        try:
-            dt = datetime.datetime.strptime(text, fmt)
-            return dt.hour, dt.minute
-        except ValueError:
-            continue
+    if dt is not None:
+        dt = dt.replace(second=0, microsecond=0)
+        if dt <= now:
+            dt += datetime.timedelta(days=1)
+        return dt
 
     return None
-
-
-@dataclass
-class DailyJob:
-    channel_id: int
-    hour: int
-    minute: int
-    type: str
-    data: dict
-    last_run: Optional[datetime.date] = None
-
-
-CRYPTO_CHANNEL_ID = 1429530996000161938
-CRYPTO_TICKERS = ["bitcoin", "ethereum", "syrup"]
-CRYPTO_CURRENCY = "usd"
-CRYPTO_CHANGE_PERIODS = ("24h", "7d", "30d")
-CRYPTO_HEADER = "Daily crypto prices"
-STOCK_HEADER = "Daily stock prices"
-
-CRYPTO_DAILY_JOB = DailyJob(
-    channel_id=CRYPTO_CHANNEL_ID,
-    hour=8,
-    minute=0,
-    type="crypto",
-    data={"tickers": CRYPTO_TICKERS},
-)
 
 
 class DailyTaskCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.jobs: List[DailyJob] = []
-        self.jobs.append(CRYPTO_DAILY_JOB)
-        self.crypto_embeds = CryptoEmbeds()
-        self.stock_embeds = StocksEmbeds()
         self._runner.start()
 
     @commands.Cog.listener()
@@ -88,19 +56,20 @@ class DailyTaskCog(commands.Cog):
     async def daily_task(
         self, interaction: discord.Interaction, time: str, message: str
     ) -> None:
-        parsed = parse_time_string(time)
-        if parsed is None:
+        scheduled_dt = parse_time_string(time)
+        if scheduled_dt is None:
             await interaction.response.send_message(
                 "I couldn't understand that time. Try '08:30', '8pm', or similar.",
                 ephemeral=True,
             )
             return
 
-        hour, minute = parsed
+        job_schedule = OneTimeSchedule2(datetime=scheduled_dt.isoformat())
         payload = message.strip()
         job_type = "message"
         job_data = {"message": message}
-        confirmation = f"Got it! I'll post here every day at {hour:02d}:{minute:02d}."
+        confirmation_time = scheduled_dt.strftime("%H:%M")
+        confirmation = f"Got it! I'll post here every day at {confirmation_time}."
 
         if payload.lower().startswith("stock:"):
             tickers = [
@@ -120,59 +89,46 @@ class DailyTaskCog(commands.Cog):
             quoted = ", ".join(f"`{ticker}`" for ticker in tickers)
             confirmation = (
                 f"Got it! I'll post daily stock prices for {quoted} at "
-                f"{hour:02d}:{minute:02d}."
+                f"{confirmation_time}."
             )
 
-        job = DailyJob(
-            channel_id=interaction.channel_id,
-            hour=hour,
-            minute=minute,
-            type=job_type,
-            data=job_data,
-        )
-        self.jobs.append(job)
-        await interaction.response.send_message(confirmation, ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
+        manager = DailyJobManager()
+        try:
+            await asyncio.to_thread(
+                manager.insert_job,
+                interaction.channel_id,
+                job_type,
+                job_data,
+                job_schedule,
+            )
+        except Exception:
+            await interaction.followup.send(
+                "Something went wrong while scheduling that task. Please try again.",
+                ephemeral=True,
+            )
+            return
+        await interaction.followup.send(confirmation, ephemeral=True)
 
     @tasks.loop(minutes=1)
     async def _runner(self) -> None:
-        if not self.jobs:
+        manager = DailyJobManager()
+        manager.get_due_jobs()
+        runs = await asyncio.to_thread(manager.run_due_jobs)
+
+        print("RUN DUE JOBS:", runs)
+        if not runs:
             return
 
-        now = datetime.datetime.now()
-        current_hour = now.hour
-        current_minute = now.minute
-        today = now.date()
+        for job, payload in runs:
+            if not payload:
+                continue
 
-        for job in self.jobs:
-            if (
-                job.hour == current_hour
-                and job.minute == current_minute
-                and job.last_run != today
-            ):
-                channel = self.bot.get_channel(job.channel_id)
-                if channel is None:
-                    channel = await self.bot.fetch_channel(job.channel_id)
-                if job.type == "crypto":
-                    embeds, error = self.crypto_embeds.daily_embeds(
-                        job.data.get("tickers", CRYPTO_TICKERS),
-                        CRYPTO_CURRENCY,
-                        CRYPTO_CHANGE_PERIODS,
-                    )
-                    if error:
-                        await channel.send(error)
-                    else:
-                        await channel.send(content=CRYPTO_HEADER, embeds=embeds)
-                elif job.type == "stock":
-                    embeds, error = self.stock_embeds.daily_embeds(
-                        job.data.get("tickers", [])
-                    )
-                    if error:
-                        await channel.send(error)
-                    else:
-                        await channel.send(content=STOCK_HEADER, embeds=embeds)
-                else:
-                    await channel.send(job.data.get("message", ""))
-                job.last_run = today
+            channel = self.bot.get_channel(job.channel_id)
+            if channel is None:
+                channel = await self.bot.fetch_channel(job.channel_id)
+
+            await channel.send(**payload)
 
     @_runner.before_loop
     async def _before_runner(self) -> None:
