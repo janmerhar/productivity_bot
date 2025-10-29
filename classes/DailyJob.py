@@ -1,6 +1,7 @@
 import datetime
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Literal, Mapping, Optional, Union
+from bson.objectid import ObjectId
 from embeds.CryptoEmbeds import CryptoEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
 
@@ -27,7 +28,7 @@ ScheduleConfig = Union[OneTimeSchedule2, CronSchedule]
 class DailyJob:
     def __init__(
         self,
-        id: Any,
+        id: ObjectId,
         channel_id: int,
         type: str,
         data: Dict[str, Any],
