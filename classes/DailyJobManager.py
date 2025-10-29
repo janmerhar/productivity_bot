@@ -1,6 +1,6 @@
 import datetime
-from typing import Any, Dict, List, Optional, Tuple
-from classes.DailyJob import DailyJob
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
+from classes.DailyJob import DailyJob, ScheduleConfig
 
 
 class DailyJobManager:
@@ -29,7 +29,7 @@ class DailyJobManager:
         channel_id: int,
         type: str,
         data: dict,
-        schedule: dict = None,
+        schedule: Optional[Union[ScheduleConfig, Mapping[str, Any]]] = None,
     ):
         DailyJob.insert(channel_id, type, data, schedule)
         self.fetch_jobs()
