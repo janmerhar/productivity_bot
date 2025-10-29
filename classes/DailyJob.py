@@ -225,7 +225,7 @@ class DailyJob:
 
     @staticmethod
     def fetch_cron_jobs() -> List["DailyJob"]:
-        collection = mongo_db["task"]
+        collection = mongo_db["tasks"]
         cursor = collection.find({"schedule.mode": "cron"})
         jobs: List[DailyJob] = []
 
@@ -245,7 +245,7 @@ class DailyJob:
 
     @staticmethod
     def fetch_one_time_jobs() -> List["DailyJob"]:
-        collection = mongo_db["task"]
+        collection = mongo_db["tasks"]
         cursor = collection.find({"schedule.mode": "one-time", "last_run": None})
 
         jobs: List[DailyJob] = []
