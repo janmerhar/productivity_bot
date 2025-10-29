@@ -232,12 +232,12 @@ class DailyJob:
         for doc in cursor:
             jobs.append(
                 DailyJob(
-                    id=doc.get("id"),
+                    id=doc["_id"],
                     channel_id=doc["channel_id"],
-                    type=doc.get("type", ""),
-                    data=doc.get("data", {}),
-                    schedule=doc.get("schedule"),
-                    last_run=doc.get("last_run"),
+                    type=doc["type"],
+                    data=doc["data"],
+                    schedule=doc["schedule"],
+                    last_run=doc["last_run"],
                 )
             )
 
@@ -253,12 +253,12 @@ class DailyJob:
         for doc in cursor:
             jobs.append(
                 DailyJob(
-                    id=doc.get("id"),
+                    id=doc["_id"],
                     channel_id=doc["channel_id"],
-                    type=doc.get("type", ""),
-                    data=doc.get("data", {}),
-                    schedule=doc.get("schedule"),
-                    last_run=doc.get("last_run"),
+                    type=doc["type"],
+                    data=doc["data"],
+                    schedule=doc["schedule"],
+                    last_run=doc["last_run"],
                 )
             )
 
