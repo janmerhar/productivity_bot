@@ -170,8 +170,8 @@ class DailyJob:
 
     def run(self) -> Dict[str, Any]:
         now = datetime.datetime.utcnow()
-        filter_query = {"_id": ObjectId(self.id)}
-        update = mongo_db["tasks"].update_one(filter_query, {"$set": {"last_run": now}})
+        filter_query = {"_id": self.id}
+        mongo_db["tasks"].update_one(filter_query, {"$set": {"last_run": now}})
 
         if self.type == "message":
             return {"content": self.data.get("message", "")}
