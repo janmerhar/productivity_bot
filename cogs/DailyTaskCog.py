@@ -50,10 +50,8 @@ class DailyTaskCog(commands.Cog):
         if self._runner.is_running():
             self._runner.cancel()
 
-    @app_commands.command(
-        name="dailytask", description="Send a message every day at the given time"
-    )
-    async def daily_task(
+    @app_commands.command(name="reminder", description="Set a one time reminder for")
+    async def reminder(
         self, interaction: discord.Interaction, time: str, message: str
     ) -> None:
         scheduled_dt = parse_time_string(time)
