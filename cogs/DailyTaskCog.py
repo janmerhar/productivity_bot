@@ -116,7 +116,6 @@ class DailyTaskCog(commands.Cog):
         manager.get_due_jobs()
         runs = await asyncio.to_thread(manager.run_due_jobs)
 
-        print("RUN DUE JOBS:", runs)
         if not runs:
             return
 
