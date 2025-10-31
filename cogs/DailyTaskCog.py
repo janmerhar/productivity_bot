@@ -1,15 +1,17 @@
 import asyncio
 import datetime
-from typing import Optional
+import json
+from typing import Any, Dict, Optional
 
 import discord
+import dateparser
 from discord import app_commands
 from discord.ext import commands, tasks
 
-import dateparser
-from classes.DailyJob import OneTimeSchedule2
+from classes.DailyJob import CronSchedule, OneTimeSchedule2
 from classes.DailyJobManager import DailyJobManager
 from config.env import env
+from services.cron_schedule import CronConversionError, resolve_cron_expression
 
 
 def parse_time_string(raw: str) -> Optional[datetime.datetime]:
@@ -107,6 +109,68 @@ class DailyTaskCog(commands.Cog):
             )
             return
         await interaction.followup.send(confirmation, ephemeral=True)
+
+    @app_commands.command(name="job", description="Set a recurring job")
+    @app_commands.describe(
+        schedule="Cron expression or natural language schedule",
+        type="Type of the job to create",
+        data="JSON payload for the job; plain text allowed for message jobs",
+    )
+    @app_commands.choices(
+        type=[
+            app_commands.Choice(name="Crypto", value="crypto"),
+            app_commands.Choice(name="Stock", value="stock"),
+            app_commands.Choice(name="Message", value="message"),
+        ]
+    )
+    async def job(
+        self,
+        interaction: discord.Interaction,
+        schedule: str,
+        type: app_commands.Choice[str],
+        data: str,
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            cron_expression = await asyncio.to_thread(resolve_cron_expression, schedule)
+        except CronConversionError as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+
+        job_type = type.value
+        raw_data = data.strip()
+
+        if job_type == "message":
+            payload: Dict[str, Any] = {"message": raw_data}
+        else:
+            payload = json.loads(raw_data) if raw_data else {}
+
+        manager = DailyJobManager()
+        schedule_config = CronSchedule(expression=cron_expression)
+
+        try:
+            await asyncio.to_thread(
+                manager.insert_job,
+                interaction.channel_id,
+                job_type,
+                payload,
+                schedule_config,
+            )
+        except Exception:
+            await interaction.followup.send(
+                "Something went wrong while storing that job. Please try again.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.followup.send(
+            (
+                f"Scheduled `{job_type}` job to run on `{schedule}`. "
+                f"(Cron: `{cron_expression}`)"
+            ),
+            ephemeral=True,
+        )
 
     @tasks.loop(minutes=1)
     async def _runner(self) -> None:
