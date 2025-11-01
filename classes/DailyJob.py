@@ -130,7 +130,7 @@ class DailyJob:
             return payload
 
         if self.type == "stock":
-            ticker = self.data["ticker"]
+            ticker = self.data["tickers"]
             embeds, error = StocksEmbeds().daily_embeds(ticker)
 
             payload = {"embeds": embeds}
