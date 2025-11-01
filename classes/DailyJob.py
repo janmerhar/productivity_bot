@@ -98,7 +98,9 @@ class DailyJob:
             if last_run_value is None:
                 return True
 
-            last_run_value = datetime.datetime.fromisoformat(last_run_value)
+            if not isinstance(last_run_value, datetime.datetime):
+                return True
+
             last_run_minute = last_run_value.replace(second=0, microsecond=0)
 
             if last_run_minute == run_minute:
@@ -130,7 +132,7 @@ class DailyJob:
             return payload
 
         if self.type == "stock":
-            ticker = self.data["ticker"]
+            ticker = self.data["tickers"]
             embeds, error = StocksEmbeds().daily_embeds(ticker)
 
             payload = {"embeds": embeds}

@@ -1,38 +1,20 @@
 # https://www.youtube.com/watch?v=-D2CvmHTqbE
-import logging.handlers
 import logging
 import discord
 import asyncio
-from typing import Optional
 from discord.ext import commands
 
 from config.env import env
+from config.logger import setup_logging
 
 tick_disabled = env.get("TICK_DISABLED") == "true"
 sync_guild_id = env.get("GUILD_ID")
 
+setup_logging()
+
 intents = discord.Intents.default()
 # intents.message_content = True
 bot = commands.Bot(command_prefix=".", intents=intents)
-
-logger = logging.getLogger("discord")
-logger.setLevel(logging.DEBUG)
-logging.getLogger("discord.http").setLevel(logging.WARNING)
-
-file_handler = logging.handlers.RotatingFileHandler(
-    filename="discord.log",
-    encoding="utf-8",
-    maxBytes=32 * 1024 * 1024,  # 32 MiB
-    backupCount=5,  # Rotate through 5 files
-)
-dt_fmt = "%Y-%m-%d %H:%M:%S"
-formatter = logging.Formatter(
-    "[{asctime}] [{levelname:<8}] {name}: {message}", dt_fmt, style="{"
-)
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-
-discord.utils.setup_logging(formatter=formatter)
 
 _sync_done = False
 
