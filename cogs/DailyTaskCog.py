@@ -143,8 +143,10 @@ class DailyTaskCog(commands.Cog):
 
         if job_type == "message":
             payload: Dict[str, Any] = {"message": raw_data}
-        else:
-            payload = json.loads(raw_data) if raw_data else {}
+        elif job_type == "crypto":
+            payload: Dict[str, Any] = {"tickers": [raw_data]}
+        elif job_type == "stock":
+            payload: Dict[str, Any] = {"tickers": [raw_data]}
 
         manager = DailyJobManager()
         schedule_config = CronSchedule(expression=cron_expression)
