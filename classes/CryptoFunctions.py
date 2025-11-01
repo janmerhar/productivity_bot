@@ -31,7 +31,6 @@ class CryptoFunctions:
         }
 
         response = requests.get(url, params=params)
-        print(f"fetchCryptoPrice request URL: {response.url}")
         data = response.json()
 
         return data
