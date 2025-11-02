@@ -2,7 +2,7 @@ cogs/*/
 google/*/
 token.json
 __pycache__/
-.env
+.env*
 .token-oauth
 
 # GCSA authentication files
