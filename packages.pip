@@ -5,11 +5,10 @@ google-auth-httplib2
 google-auth-oauthlib
 gcsa
 parsedatetime
-python-dotenv
+python-dotenv>=1.0.1
 ticktick-py
 pymongo
 dnspython
-dotenv
 feedparser
 openai
 dateparser

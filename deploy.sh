@@ -37,6 +37,14 @@ ensure_venv() {
   if [[ ! -d "$VENV_PATH" ]]; then
     log "Creating virtual environment at $VENV_PATH"
     "$python_bin" -m venv "$VENV_PATH"
+  elif [[ ! -f "$VENV_PATH/bin/activate" ]]; then
+    if [[ -z "$VENV_PATH" || "$VENV_PATH" == "/" ]]; then
+      log "ERROR: Refusing to recreate virtual environment; invalid VENV_PATH='$VENV_PATH'."
+      exit 1
+    fi
+    log "Virtual environment at $VENV_PATH is incomplete; recreating."
+    rm -rf "$VENV_PATH"
+    "$python_bin" -m venv "$VENV_PATH"
   fi
 
   # shellcheck disable=SC1090
@@ -51,10 +59,19 @@ install_dependencies() {
   fi
 
   log "Upgrading pip in virtual environment"
-  python -m pip install --upgrade pip
+  if ! python -m pip install --upgrade pip; then
+    log "WARNING: Failed to upgrade pip; continuing with existing version."
+  fi
 
   log "Installing dependencies from $REQUIREMENTS_FILE"
   python -m pip install -r "$REQUIREMENTS_FILE"
+
+  if python -m pip show dotenv >/dev/null 2>&1; then
+    log "Removing incompatible 'dotenv' package"
+    if ! python -m pip uninstall -y dotenv; then
+      log "WARNING: Failed to remove 'dotenv'; python-dotenv may still be shadowed."
+    fi
+  fi
 }
 
 restart_services() {
@@ -70,8 +87,17 @@ restart_services() {
 
   if [[ -n "${PM2_PROCESS:-}" ]]; then
     if command -v pm2 >/dev/null 2>&1; then
-      log "Restarting pm2 process $PM2_PROCESS"
-      pm2 restart "$PM2_PROCESS"
+      if pm2 describe "$PM2_PROCESS" >/dev/null 2>&1; then
+        log "Restarting pm2 process $PM2_PROCESS"
+        pm2 restart "$PM2_PROCESS"
+      else
+        if [[ -n "${PM2_START_COMMAND:-}" ]]; then
+          log "PM2 process $PM2_PROCESS not found; starting with PM2_START_COMMAND"
+          eval "$PM2_START_COMMAND"
+        else
+          log "PM2 process $PM2_PROCESS not found and PM2_START_COMMAND not set; skipping."
+        fi
+      fi
     else
       log "pm2 not found; cannot restart $PM2_PROCESS"
     fi
