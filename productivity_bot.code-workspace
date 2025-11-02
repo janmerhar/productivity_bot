@@ -1,0 +1,26 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    "python.analysis.typeCheckingMode": "strict"
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Python: Run Discord Bot",
+        "type": "debugpy",
+        "request": "launch",
+        "program": "${workspaceFolder}/main.py",
+        "console": "integratedTerminal",
+        "justMyCode": false,
+        "cwd": "${workspaceFolder}",
+        "envFile": "${workspaceFolder}/.env"
+      }
+    ]
+  }
+}
