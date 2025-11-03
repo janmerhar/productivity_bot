@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.git
+.gitignore
+discord.log
+tmp/
+Nacrti/
