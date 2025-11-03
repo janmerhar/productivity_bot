@@ -23,12 +23,19 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
-          envs: DEPLOY_PATH,ENV_FILE,DEPLOY_COMMAND
+          envs: DEPLOY_PATH,ENV_FILE,DEPLOY_COMMAND,GITHUB_REPOSITORY,GITHUB_REF_NAME
           script: |
             set -Eeuo pipefail
+            mkdir -p "${DEPLOY_PATH}"
             cd "${DEPLOY_PATH}"
-            git fetch --all --prune
-            git reset --hard origin/master
+            BRANCH="${GITHUB_REF_NAME}"
+            if [ ! -d .git ]; then
+              git clone --depth 1 --branch "${BRANCH}" "git@github.com:${GITHUB_REPOSITORY}.git" .
+            else
+              git fetch --all --prune
+              git checkout "${BRANCH}"
+              git reset --hard "origin/${BRANCH}"
+            fi
             if [ -n "${ENV_FILE:-}" ]; then
               printf '%s' "${ENV_FILE}" > .env
               chmod 600 .env
