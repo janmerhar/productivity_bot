@@ -3,6 +3,7 @@ name: Deploy to VPS
 on:
   push:
     branches:
+      - develop
       - master
 
 jobs:
