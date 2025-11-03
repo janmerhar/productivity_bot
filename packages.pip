@@ -1,4 +1,4 @@
-discord.py
+discord.py[voice]
 aiohttp
 google-api-python-client
 google-auth-httplib2
