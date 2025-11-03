@@ -30,7 +30,11 @@ jobs:
             cd "${DEPLOY_PATH}"
             BRANCH="${GITHUB_REF_NAME}"
             if [ ! -d .git ]; then
-              git clone --depth 1 --branch "${BRANCH}" "git@github.com:${GITHUB_REPOSITORY}.git" .
+              find . -mindepth 1 -delete
+              git init
+              git remote add origin "git@github.com:${GITHUB_REPOSITORY}.git"
+              git fetch --depth 1 origin "${BRANCH}"
+              git checkout -B "${BRANCH}" "origin/${BRANCH}"
             else
               git fetch --all --prune
               git checkout "${BRANCH}"
