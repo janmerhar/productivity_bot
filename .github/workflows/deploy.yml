@@ -29,8 +29,19 @@ jobs:
             mkdir -p "${DEPLOY_PATH}"
             cd "${DEPLOY_PATH}"
             BRANCH="${GITHUB_REF_NAME}"
+            SSH_DIR="${HOME}/.ssh"
+            mkdir -p "${SSH_DIR}"
+            chmod 700 "${SSH_DIR}"
+            if ! ssh-keygen -F github.com >/dev/null 2>&1; then
+              ssh-keyscan -H github.com >> "${SSH_DIR}/known_hosts"
+              chmod 600 "${SSH_DIR}/known_hosts"
+            fi
+
             if [ ! -d .git ]; then
-              find . -mindepth 1 -delete
+              find . -mindepth 1 \
+                -not -path "./.ssh" \
+                -not -path "./.ssh/*" \
+                -delete
               git init
               git remote add origin "git@github.com:${GITHUB_REPOSITORY}.git"
               git fetch --depth 1 origin "${BRANCH}"
