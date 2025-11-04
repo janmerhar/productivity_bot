@@ -3,48 +3,75 @@ name: Deploy to VPS
 on:
   push:
     branches:
+      # - develop
       - master
-  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Load SSH key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
-
-      - name: Trust VPS host key
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-
-      - name: Sync project to VPS
-        run: |
-          set -euo pipefail
-          rsync -az --delete \
-            --exclude '.git/' \
-            --exclude '.github/' \
-            --exclude '__pycache__/' \
-            --exclude '.env' \
-            ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH"
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-
-      - name: Run remote deploy script
-        run: |
-          ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_PATH' && ${DEPLOY_COMMAND:-./deploy.sh}"
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          ENV_FILE: ${{ secrets.ENV_FILE }}
           DEPLOY_COMMAND: ${{ secrets.DEPLOY_COMMAND }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          envs: DEPLOY_PATH,ENV_FILE,DEPLOY_COMMAND,GITHUB_REPOSITORY,GITHUB_REF_NAME
+          script: |
+            set -Eeuo pipefail
+            ORIGINAL_PWD="$(pwd)"
+            mkdir -p "${DEPLOY_PATH}"
+            cd "${DEPLOY_PATH}"
+            BRANCH="${GITHUB_REF_NAME}"
+            SSH_DIR="${HOME}/.ssh"
+            mkdir -p "${SSH_DIR}"
+            chmod 700 "${SSH_DIR}"
+            if ! ssh-keygen -F github.com >/dev/null 2>&1; then
+              ssh-keyscan -H github.com >> "${SSH_DIR}/known_hosts"
+              chmod 600 "${SSH_DIR}/known_hosts"
+            fi
+
+            if [ ! -d .git ]; then
+              find . -mindepth 1 \
+                -not -path "./.ssh" \
+                -not -path "./.ssh/*" \
+                -delete
+              git init
+              git remote add origin "git@github.com:${GITHUB_REPOSITORY}.git"
+              git fetch --depth 1 origin "${BRANCH}"
+              git checkout -B "${BRANCH}" "origin/${BRANCH}"
+            else
+              git fetch --all --prune
+              git checkout "${BRANCH}"
+              git reset --hard "origin/${BRANCH}"
+            fi
+            if [ -n "${ENV_FILE:-}" ]; then
+              ENV_SOURCE="${ENV_FILE}"
+              case "${ENV_SOURCE}" in
+                "~"|"~/"*)
+                  ENV_SOURCE="${HOME}${ENV_SOURCE#"~"}"
+                  ;;
+              esac
+              if [ "${ENV_SOURCE#/}" = "${ENV_SOURCE}" ]; then
+                if [ -f "${ENV_SOURCE}" ]; then
+                  :
+                elif [ -f "${ORIGINAL_PWD}/${ENV_SOURCE}" ]; then
+                  ENV_SOURCE="${ORIGINAL_PWD}/${ENV_SOURCE}"
+                fi
+              fi
+              if [ ! -f "${ENV_SOURCE}" ]; then
+                echo "ERROR: ENV_FILE '${ENV_FILE}' does not exist or is not a file." >&2
+                exit 1
+              fi
+              cp "${ENV_SOURCE}" .env
+              chmod 600 .env
+            fi
+            docker compose down --remove-orphans || true
+            docker compose up --build -d
