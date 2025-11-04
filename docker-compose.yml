@@ -7,4 +7,10 @@ services:
       - .env
     restart: unless-stopped
     volumes:
-      - ./discord.log:/app/discord.log
+      # - type: bind
+        # source: ./discord-docker.log
+        # target: /app/discord.log
+      - type: bind
+        source: ./.env
+        target: /app/.env
+        read_only: true
