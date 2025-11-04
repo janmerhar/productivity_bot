@@ -26,6 +26,7 @@ jobs:
           envs: DEPLOY_PATH,ENV_FILE,DEPLOY_COMMAND,GITHUB_REPOSITORY,GITHUB_REF_NAME
           script: |
             set -Eeuo pipefail
+            ORIGINAL_PWD="$(pwd)"
             mkdir -p "${DEPLOY_PATH}"
             cd "${DEPLOY_PATH}"
             BRANCH="${GITHUB_REF_NAME}"
@@ -52,12 +53,25 @@ jobs:
               git reset --hard "origin/${BRANCH}"
             fi
             if [ -n "${ENV_FILE:-}" ]; then
-              printf '%s' "${ENV_FILE}" > .env
+              ENV_SOURCE="${ENV_FILE}"
+              case "${ENV_SOURCE}" in
+                "~"|"~/"*)
+                  ENV_SOURCE="${HOME}${ENV_SOURCE#"~"}"
+                  ;;
+              esac
+              if [ "${ENV_SOURCE#/}" = "${ENV_SOURCE}" ]; then
+                if [ -f "${ENV_SOURCE}" ]; then
+                  :
+                elif [ -f "${ORIGINAL_PWD}/${ENV_SOURCE}" ]; then
+                  ENV_SOURCE="${ORIGINAL_PWD}/${ENV_SOURCE}"
+                fi
+              fi
+              if [ ! -f "${ENV_SOURCE}" ]; then
+                echo "ERROR: ENV_FILE '${ENV_FILE}' does not exist or is not a file." >&2
+                exit 1
+              fi
+              cp "${ENV_SOURCE}" .env
               chmod 600 .env
             fi
-            if [ -n "${DEPLOY_COMMAND:-}" ]; then
-              eval "${DEPLOY_COMMAND}"
-            else
-              docker compose down --remove-orphans || true
-              docker compose up --build -d
-            fi
+            docker compose down --remove-orphans || true
+            docker compose up --build -d
