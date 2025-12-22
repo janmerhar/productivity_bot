@@ -7,6 +7,8 @@ With the productivity bot, users can:
 - Track their time entries with Toggl. Users can start, stop, and view their time entries on Toggl, a time tracking app that helps users monitor their work hours and productivity.
 - Manage their tasks and lists with TickTick. Users can create, delete, and view their tasks and lists on TickTick, a task management app that helps users organize their to-do lists and deadlines.
 - Schedule and view their events and calendars with Google Calendar. Users can create, delete, and view their events and calendars on Google Calendar, a calendar app that helps users plan their meetings and appointments.
+- Check crypto and stock prices on demand.
+- Schedule one-time reminders or recurring jobs in cron or natural language that can post messages or daily market updates.
 
 ## Built with
 
@@ -27,6 +29,7 @@ To get started you need to complete the following steps.
 - Discord bot token
 - Google Calendar API credentials
 - TickTick API credentials
+- OpenAI API key (optional - natural language schedule parsing)
 
 ## Installation
 
@@ -37,6 +40,8 @@ In order to provide API access to the bot, you need to create a `.env` file in t
 ```bash
 DISCORD_TOKEN
 
+GUILD_ID
+
 TOGGL_TOKEN
 
 TICK_ID
@@ -46,6 +51,8 @@ TICK_EMAIL
 TICK_PASSWORD
 
 MONGO_URI
+
+OPENAI_API_KEY
 ```
 
 ### Setup
@@ -81,7 +88,7 @@ Toggl commands:
 - `getproject` Returns a Toggl project by its ID.
 - `createalias` Creates an alias for a Toggl command with optional arguments.
 
-TickTick coommands:
+TickTick commands:
 
 - `newtask` Adds a new task to TickTick with optional parameters. This command takes several optional parameters, including project_id, content, desc, start_date, due_date, time_zone, reminders, repeat, priority, sort_order, and items.
 - `newsubtask` Adds a new subtask to an existing task in TickTick with optional parameters. This command takes several optional parameters, including parent, project_id, content, desc, start_date, due_date, time_zone, reminders, repeat, priority, sort_order, and items.
@@ -99,6 +106,19 @@ Alias commands:
 - `usealias` Shortcuts use alias. This command takes one required parameter: alias (the alias of the command to be used).
 - `findaliases` Shortcuts find aliases. This command takes one required parameter: alias (the alias of the command to be found).
 - `popularalias` Most popular aliases. This command takes one optional parameter: n (the number of most popular aliases to display).
+
+Crypto commands:
+
+- `crypto` Returns the current price and recent change information for a cryptocurrency.
+
+Stocks commands:
+
+- `stock` Returns the current price and recent change information for a stock or ETF.
+
+Reminders and scheduled jobs:
+
+- `reminder` Schedules a one-time reminder
+- `job` Schedules a recurring job using a cron expression or natural language schedule for a `message`, `crypto`, or `stock`.
 
 ### Demo
 
