@@ -68,6 +68,15 @@ class DailyJob:
             last_run=None,
         )
 
+    @staticmethod
+    def delete(job_id: ObjectId, channel_id: Optional[int] = None) -> bool:
+        filter_query: Dict[str, Any] = {"_id": job_id}
+        if channel_id is not None:
+            filter_query["channel_id"] = channel_id
+
+        result = mongo_db["tasks"].delete_one(filter_query)
+        return result.deleted_count > 0
+
     def is_due(self, check_datetime: datetime.datetime) -> bool:
         schedule = self.schedule
 
