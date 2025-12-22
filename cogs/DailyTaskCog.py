@@ -8,7 +8,7 @@ import dateparser
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from classes.DailyJob import CronSchedule, OneTimeSchedule2
+from classes.DailyJob import CronSchedule, DailyJob, OneTimeSchedule2
 from classes.DailyJobManager import DailyJobManager
 from config.env import env
 from services.cron_schedule import CronConversionError, resolve_cron_expression
@@ -40,6 +40,8 @@ def parse_time_string(raw: str) -> Optional[datetime.datetime]:
 
 
 class DailyTaskCog(commands.Cog):
+    jobs = app_commands.Group(name="jobs", description="Manage scheduled jobs")
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._runner.start()
@@ -196,6 +198,79 @@ class DailyTaskCog(commands.Cog):
     @_runner.before_loop
     async def _before_runner(self) -> None:
         await self.bot.wait_until_ready()
+
+    @staticmethod
+    def _truncate(text: str, limit: int = 60) -> str:
+        if len(text) <= limit:
+            return text
+        return f"{text[: limit - 3]}..."
+
+    def _format_job(self, job: DailyJob) -> str:
+        schedule_label = "unscheduled"
+        schedule = job.schedule
+
+        if isinstance(schedule, dict):
+            mode = schedule.get("mode")
+            if mode == "one-time":
+                schedule_label = f"once at {schedule.get('datetime')}"
+            elif mode == "cron":
+                schedule_label = f"cron `{schedule.get('expression')}`"
+
+        data_label = ""
+        if job.type == "message":
+            message = self._truncate(job.data.get("message", "").strip())
+            data_label = f"message: {message}" if message else "message"
+        elif job.type in ("crypto", "stock"):
+            tickers = job.data.get("tickers", [])
+            if isinstance(tickers, list):
+                joined = ", ".join(tickers)
+            else:
+                joined = str(tickers)
+            data_label = f"{job.type}: {joined}" if joined else job.type
+        else:
+            data_label = job.type
+
+        return f"- `{job.id}` {data_label} ({schedule_label})"
+
+    @jobs.command(name="list", description="List scheduled jobs for this channel")
+    async def jobs_list(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        manager = DailyJobManager()
+        jobs = await asyncio.to_thread(manager.list_jobs)
+
+        if not jobs:
+            await interaction.followup.send(
+                "No scheduled jobs for this channel.", ephemeral=True
+            )
+            return
+
+        lines = [self._format_job(job) for job in jobs]
+        content = "Scheduled jobs:\n" + "\n".join(lines)
+        await interaction.followup.send(content, ephemeral=True)
+
+    @jobs.command(name="cancel", description="Cancel a scheduled job")
+    @app_commands.describe(job_id="Job id from /jobs list")
+    async def jobs_cancel(self, interaction: discord.Interaction, job_id: str) -> None:
+        await interaction.response.defer(ephemeral=True)
+        manager = DailyJobManager()
+
+        try:
+            deleted = await asyncio.to_thread(
+                manager.delete_job, job_id.strip(), interaction.channel_id
+            )
+        except ValueError:
+            await interaction.followup.send("That job id is invalid.", ephemeral=True)
+            return
+
+        if deleted:
+            await interaction.followup.send(
+                f"Cancelled job `{job_id}`.", ephemeral=True
+            )
+            return
+
+        await interaction.followup.send(
+            "No job found with that id in this channel.", ephemeral=True
+        )
 
 
 async def setup(client: commands.Bot) -> None:
