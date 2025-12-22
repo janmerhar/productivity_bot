@@ -11,6 +11,7 @@ from discord.ext import commands, tasks
 from classes.DailyJob import CronSchedule, DailyJob, OneTimeSchedule2
 from classes.DailyJobManager import DailyJobManager
 from config.env import env
+from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from services.cron_schedule import CronConversionError, resolve_cron_expression
 
 
@@ -44,6 +45,7 @@ class DailyTaskCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.embeds = DailyTaskEmbeds()
         self._runner.start()
 
     @commands.Cog.listener()
@@ -61,8 +63,11 @@ class DailyTaskCog(commands.Cog):
         scheduled_dt = parse_time_string(time)
         if scheduled_dt is None:
             await interaction.response.send_message(
-                "I couldn't understand that time. Try '08:30', '8pm', or similar.",
                 ephemeral=True,
+                **self.embeds.reminder_embed(
+                    "I couldn't understand that time. Try '08:30', '8pm', or similar.",
+                    ok=False,
+                ),
             )
             return
 
@@ -71,7 +76,7 @@ class DailyTaskCog(commands.Cog):
         job_type = "message"
         job_data = {"message": message}
         confirmation_time = scheduled_dt.strftime("%H:%M")
-        confirmation = f"Got it! I'll post here every day at {confirmation_time}."
+        confirmation = f"Got it! I'll post here at {confirmation_time}."
 
         if payload.lower().startswith("stock:"):
             tickers = [
@@ -81,8 +86,11 @@ class DailyTaskCog(commands.Cog):
             ]
             if not tickers:
                 await interaction.response.send_message(
-                    "Please provide at least one stock ticker after `stock:`.",
                     ephemeral=True,
+                    **self.embeds.reminder_embed(
+                        "Please provide at least one stock ticker after `stock:`.",
+                        ok=False,
+                    ),
                 )
                 return
 
@@ -106,11 +114,16 @@ class DailyTaskCog(commands.Cog):
             )
         except Exception:
             await interaction.followup.send(
-                "Something went wrong while scheduling that task. Please try again.",
                 ephemeral=True,
+                **self.embeds.reminder_embed(
+                    "Something went wrong while scheduling that task. Please try again.",
+                    ok=False,
+                ),
             )
             return
-        await interaction.followup.send(confirmation, ephemeral=True)
+        await interaction.followup.send(
+            ephemeral=True, **self.embeds.reminder_embed(confirmation, ok=True)
+        )
 
     @app_commands.command(name="job", description="Set a recurring job")
     @app_commands.describe(
@@ -137,7 +150,9 @@ class DailyTaskCog(commands.Cog):
         try:
             cron_expression = await asyncio.to_thread(resolve_cron_expression, schedule)
         except CronConversionError as exc:
-            await interaction.followup.send(str(exc), ephemeral=True)
+            await interaction.followup.send(
+                ephemeral=True, **self.embeds.job_embed(str(exc), ok=False)
+            )
             return
 
         job_type = type.value
@@ -163,17 +178,23 @@ class DailyTaskCog(commands.Cog):
             )
         except Exception:
             await interaction.followup.send(
-                "Something went wrong while storing that job. Please try again.",
                 ephemeral=True,
+                **self.embeds.job_embed(
+                    "Something went wrong while storing that job. Please try again.",
+                    ok=False,
+                ),
             )
             return
 
         await interaction.followup.send(
-            (
-                f"Scheduled `{job_type}` job to run on `{schedule}`. "
-                f"(Cron: `{cron_expression}`)"
-            ),
             ephemeral=True,
+            **self.embeds.job_embed(
+                (
+                    f"Scheduled `{job_type}` job to run on `{schedule}`. "
+                    f"(Cron: `{cron_expression}`)"
+                ),
+                ok=True,
+            ),
         )
 
     @tasks.loop(minutes=1)
@@ -238,15 +259,10 @@ class DailyTaskCog(commands.Cog):
         manager = DailyJobManager()
         jobs = await asyncio.to_thread(manager.list_jobs)
 
-        if not jobs:
-            await interaction.followup.send(
-                "No scheduled jobs for this channel.", ephemeral=True
-            )
-            return
-
         lines = [self._format_job(job) for job in jobs]
-        content = "Scheduled jobs:\n" + "\n".join(lines)
-        await interaction.followup.send(content, ephemeral=True)
+        await interaction.followup.send(
+            ephemeral=True, **self.embeds.jobs_list_embed(lines)
+        )
 
     @jobs.command(name="cancel", description="Cancel a scheduled job")
     @app_commands.describe(job_id="Job id from /jobs list")
@@ -259,17 +275,24 @@ class DailyTaskCog(commands.Cog):
                 manager.delete_job, job_id.strip(), interaction.channel_id
             )
         except ValueError:
-            await interaction.followup.send("That job id is invalid.", ephemeral=True)
+            await interaction.followup.send(
+                ephemeral=True,
+                **self.embeds.jobs_cancel_embed("That job id is invalid.", ok=False),
+            )
             return
 
         if deleted:
             await interaction.followup.send(
-                f"Cancelled job `{job_id}`.", ephemeral=True
+                ephemeral=True,
+                **self.embeds.jobs_cancel_embed(f"Cancelled job `{job_id}`.", ok=True),
             )
             return
 
         await interaction.followup.send(
-            "No job found with that id in this channel.", ephemeral=True
+            ephemeral=True,
+            **self.embeds.jobs_cancel_embed(
+                "No job found with that id in this channel.", ok=False
+            ),
         )
 
 
