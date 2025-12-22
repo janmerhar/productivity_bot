@@ -1,5 +1,8 @@
 import datetime
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
+
+from bson.errors import InvalidId
+from bson.objectid import ObjectId
 from classes.DailyJob import DailyJob, ScheduleConfig
 
 
@@ -33,6 +36,28 @@ class DailyJobManager:
     ):
         DailyJob.insert(channel_id, type, data, schedule)
         self.fetch_jobs()
+
+    def list_jobs(self, channel_id: Optional[int] = None) -> List[DailyJob]:
+        self.fetch_jobs()
+        jobs = self.cron_jobs + self.one_time_jobs
+
+        if channel_id is None:
+            return jobs
+
+        return [job for job in jobs if job.channel_id == channel_id]
+
+    def delete_job(self, job_id: str, channel_id: Optional[int] = None) -> bool:
+        try:
+            object_id = ObjectId(job_id)
+        except InvalidId:
+            raise ValueError("Invalid job id.")
+
+        deleted = DailyJob.delete(object_id, channel_id=channel_id)
+
+        if deleted:
+            self.fetch_jobs()
+
+        return deleted
 
     def get_due_jobs(self) -> List[DailyJob]:
         now = datetime.datetime.now()
