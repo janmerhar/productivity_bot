@@ -17,7 +17,7 @@ class AliasEmbeds:
     @staticmethod
     def usealias_embed(alias: str):
         # Iskanje, ce alias obstaja
-        find_alias = AliasFunctions().findAliases(identifier=alias)
+        find_alias = AliasFunctions.findAliases(identifier=alias)
 
         if len(find_alias) > 0:
             find_alias = find_alias[0]
@@ -63,7 +63,7 @@ class AliasEmbeds:
 
     @staticmethod
     def findaliases_embed(alias: str = ""):
-        found_aliases = AliasFunctions().findAliases(identifier=alias)
+        found_aliases = AliasFunctions.findAliases(identifier=alias)
 
         embed = discord.Embed(
             title=f"Found {len(found_aliases)} aliases",
@@ -74,7 +74,7 @@ class AliasEmbeds:
 
     @staticmethod
     def popularalias_embed(n: int = 5):
-        found_aliases = AliasFunctions().findAliases(identifier="", n=n)
+        found_aliases = AliasFunctions.findAliases(identifier="", n=n)
 
         embed = discord.Embed(
             title=f"Top {len(found_aliases)} aliases",
