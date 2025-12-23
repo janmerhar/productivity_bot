@@ -60,7 +60,7 @@ class PomodoroCog(commands.Cog):
 
         await interaction.followup.send(
             ephemeral=True,
-            **PomodoroEmbeds().insert_timer_embed(
+            **PomodoroEmbeds.insert_timer_embed(
                 mode.value,
                 resolved_duration,
                 end_time,
