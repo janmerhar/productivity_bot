@@ -46,8 +46,6 @@ class DailyTaskCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.embeds = DailyTaskEmbeds()
-        self.pomodoro = PomodoroFunctions()
         self._runner.start()
 
     @commands.Cog.listener()
@@ -66,7 +64,7 @@ class DailyTaskCog(commands.Cog):
         if scheduled_dt is None:
             await interaction.response.send_message(
                 ephemeral=True,
-                **self.embeds.reminder_embed(
+                **DailyTaskEmbeds.reminder_embed(
                     "I couldn't understand that time. Try '08:30', '8pm', or similar.",
                     ok=False,
                 ),
@@ -89,7 +87,7 @@ class DailyTaskCog(commands.Cog):
             if not tickers:
                 await interaction.response.send_message(
                     ephemeral=True,
-                    **self.embeds.reminder_embed(
+                    **DailyTaskEmbeds.reminder_embed(
                         "Please provide at least one stock ticker after `stock:`.",
                         ok=False,
                     ),
@@ -117,14 +115,14 @@ class DailyTaskCog(commands.Cog):
         except Exception:
             await interaction.followup.send(
                 ephemeral=True,
-                **self.embeds.reminder_embed(
+                **DailyTaskEmbeds.reminder_embed(
                     "Something went wrong while scheduling that task. Please try again.",
                     ok=False,
                 ),
             )
             return
         await interaction.followup.send(
-            ephemeral=True, **self.embeds.reminder_embed(confirmation, ok=True)
+            ephemeral=True, **DailyTaskEmbeds.reminder_embed(confirmation, ok=True)
         )
 
     @app_commands.command(name="job", description="Set a recurring job")
@@ -153,7 +151,7 @@ class DailyTaskCog(commands.Cog):
             cron_expression = await asyncio.to_thread(resolve_cron_expression, schedule)
         except CronConversionError as exc:
             await interaction.followup.send(
-                ephemeral=True, **self.embeds.job_embed(str(exc), ok=False)
+                ephemeral=True, **DailyTaskEmbeds.job_embed(str(exc), ok=False)
             )
             return
 
@@ -181,7 +179,7 @@ class DailyTaskCog(commands.Cog):
         except Exception:
             await interaction.followup.send(
                 ephemeral=True,
-                **self.embeds.job_embed(
+                **DailyTaskEmbeds.job_embed(
                     "Something went wrong while storing that job. Please try again.",
                     ok=False,
                 ),
@@ -190,7 +188,7 @@ class DailyTaskCog(commands.Cog):
 
         await interaction.followup.send(
             ephemeral=True,
-            **self.embeds.job_embed(
+            **DailyTaskEmbeds.job_embed(
                 (
                     f"Scheduled `{job_type}` job to run on `{schedule}`. "
                     f"(Cron: `{cron_expression}`)"
@@ -213,7 +211,7 @@ class DailyTaskCog(commands.Cog):
                 channel = self.bot.get_channel(job.channel_id)
                 if channel is None:
                     channel = await self.bot.fetch_channel(job.channel_id)
-                pomodoro_payload = self.pomodoro.pomodoro_payload(job)
+                pomodoro_payload = PomodoroFunctions.pomodoro_payload(job)
                 await channel.send(**pomodoro_payload)
                 continue
 
@@ -271,7 +269,7 @@ class DailyTaskCog(commands.Cog):
 
         lines = [self._format_job(job) for job in jobs]
         await interaction.followup.send(
-            ephemeral=True, **self.embeds.jobs_list_embed(lines)
+            ephemeral=True, **DailyTaskEmbeds.jobs_list_embed(lines)
         )
 
     @jobs.command(name="cancel", description="Cancel a scheduled job")
@@ -287,20 +285,20 @@ class DailyTaskCog(commands.Cog):
         except ValueError:
             await interaction.followup.send(
                 ephemeral=True,
-                **self.embeds.jobs_cancel_embed("That job id is invalid.", ok=False),
+                **DailyTaskEmbeds.jobs_cancel_embed("That job id is invalid.", ok=False),
             )
             return
 
         if deleted:
             await interaction.followup.send(
                 ephemeral=True,
-                **self.embeds.jobs_cancel_embed(f"Cancelled job `{job_id}`.", ok=True),
+                **DailyTaskEmbeds.jobs_cancel_embed(f"Cancelled job `{job_id}`.", ok=True),
             )
             return
 
         await interaction.followup.send(
             ephemeral=True,
-            **self.embeds.jobs_cancel_embed(
+            **DailyTaskEmbeds.jobs_cancel_embed(
                 "No job found with that id in this channel.", ok=False
             ),
         )
