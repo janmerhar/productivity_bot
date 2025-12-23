@@ -45,6 +45,7 @@ async def load():
     extensions = [
         "cogs.AliasCog",
         "cogs.DailyTaskCog",
+        "cogs.PomodoroCog",
         "cogs.TogglCog",
         "cogs.CryptoCog",
         "cogs.StocksCog",
