@@ -7,8 +7,8 @@ from classes.DailyJob import DailyJob
 
 
 class PomodoroFunctions:
+    @staticmethod
     def insert_timer(
-        self,
         channel_id: int,
         mode: str,
         duration: Optional[int],
@@ -38,12 +38,13 @@ class PomodoroFunctions:
         except ValueError:
             return None
 
-    def pomodoro_payload(self, job: DailyJob) -> Dict[str, Any]:
+    @staticmethod
+    def pomodoro_payload(job: DailyJob) -> Dict[str, Any]:
         data = job.data or {}
         mode = str(data.get("mode", "focus")).lower()
         duration = data.get("duration", "")
         user_id = data.get("user")
-        end_time = self.parse_schedule_datetime(job.schedule)
+        end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
 
         return PomodoroEmbeds.timer_complete_embed(
             mode=mode,
