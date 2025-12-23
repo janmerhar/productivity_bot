@@ -13,7 +13,8 @@ class CryptoEmbeds:
         arrow = "▲" if value >= 0 else "▼"
         return f"{arrow} {value:.2f}%"
 
-    def price_embed(self, ticker: str, currency: str = "usd") -> dict:
+    @staticmethod
+    def price_embed(ticker: str, currency: str = "usd") -> dict:
         coin_id = ticker.strip()
         vs_currency = currency.strip().lower()
 
@@ -36,16 +37,18 @@ class CryptoEmbeds:
         coin = results[0]
         return {
             "content": None,
-            "embed": self._build_price_embed(coin, vs_currency),
+            "embed": CryptoEmbeds._build_price_embed(coin, vs_currency),
         }
 
-    def coin_embed(self, coin_data: dict, currency: str) -> dict:
+    @staticmethod
+    def coin_embed(coin_data: dict, currency: str) -> dict:
         return {
             "content": None,
-            "embed": self._build_price_embed(coin_data, currency),
+            "embed": CryptoEmbeds._build_price_embed(coin_data, currency),
         }
 
-    def _build_price_embed(self, coin_data: dict, currency: str) -> discord.Embed:
+    @staticmethod
+    def _build_price_embed(coin_data: dict, currency: str) -> discord.Embed:
         coin_id = coin_data.get("id", "-")
         name = coin_data.get("name", coin_id)
         image_url = coin_data.get("image")
@@ -72,17 +75,17 @@ class CryptoEmbeds:
         )
         embed.add_field(
             name="24h Change",
-            value=self._fmt_change(change_24h),
+            value=CryptoEmbeds._fmt_change(change_24h),
             inline=True,
         )
         embed.add_field(
             name="7d Change",
-            value=self._fmt_change(change_7d),
+            value=CryptoEmbeds._fmt_change(change_7d),
             inline=True,
         )
         embed.add_field(
             name="30d Change",
-            value=self._fmt_change(change_30d),
+            value=CryptoEmbeds._fmt_change(change_30d),
             inline=True,
         )
         embed.add_field(
@@ -98,8 +101,8 @@ class CryptoEmbeds:
 
         return embed
 
+    @staticmethod
     def daily_embeds(
-        self,
         tickers: List[str],
         currency: str,
         change_periods: Tuple[str, ...],
@@ -117,7 +120,7 @@ class CryptoEmbeds:
 
         embeds: List[discord.Embed] = []
         for coin in rows:
-            embed = self._build_price_embed(coin, currency)
+            embed = CryptoEmbeds._build_price_embed(coin, currency)
             if embed is not None:
                 embeds.append(embed)
 
