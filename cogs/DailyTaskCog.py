@@ -10,6 +10,7 @@ from discord.ext import commands, tasks
 
 from classes.DailyJob import CronSchedule, DailyJob, OneTimeSchedule2
 from classes.DailyJobManager import DailyJobManager
+from classes.PomodoroFunctions import PomodoroFunctions
 from config.env import env
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from services.cron_schedule import CronConversionError, resolve_cron_expression
@@ -46,6 +47,7 @@ class DailyTaskCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.embeds = DailyTaskEmbeds()
+        self.pomodoro = PomodoroFunctions()
         self._runner.start()
 
     @commands.Cog.listener()
@@ -207,6 +209,14 @@ class DailyTaskCog(commands.Cog):
             return
 
         for job, payload in runs:
+            if job.type == "pomodoro":
+                channel = self.bot.get_channel(job.channel_id)
+                if channel is None:
+                    channel = await self.bot.fetch_channel(job.channel_id)
+                pomodoro_payload = self.pomodoro.pomodoro_payload(job)
+                await channel.send(**pomodoro_payload)
+                continue
+
             if not payload:
                 continue
 
