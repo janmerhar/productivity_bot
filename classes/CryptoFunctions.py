@@ -1,15 +1,10 @@
 import requests
 
-from config.db import mongo_db
-
 
 class CryptoFunctions:
-    def __init__(self):
-        self.mongo_db = mongo_db
-
     # Insert into mongoDB
+    @staticmethod
     def inserTracker(
-        self,  # for mongodb
         ticker: str,
         change_periods,
         currency: str,
@@ -18,6 +13,7 @@ class CryptoFunctions:
     ):
         pass
 
+    @staticmethod
     def fetchPrices(
         tickers: list[str],
         currency: str,

@@ -11,8 +11,8 @@ class PomodoroEmbeds:
             return "soon"
         return end_time.strftime("%H:%M")
 
+    @staticmethod
     def insert_timer_embed(
-        self,
         mode: str,
         duration_minutes: Union[int, str],
         end_time: Optional[datetime.datetime],
@@ -27,13 +27,15 @@ class PomodoroEmbeds:
             name="Duration", value=f"{duration_minutes} minutes", inline=True
         )
         embed.add_field(
-            name="Ends at", value=self._format_end_time(end_time), inline=True
+            name="Ends at",
+            value=PomodoroEmbeds._format_end_time(end_time),
+            inline=True,
         )
 
         return {"embed": embed}
 
+    @staticmethod
     def timer_complete_embed(
-        self,
         mode: str,
         duration_minutes: Union[int, str],
         end_time: Optional[datetime.datetime],
@@ -49,7 +51,9 @@ class PomodoroEmbeds:
             name="Duration", value=f"{duration_minutes} minutes", inline=True
         )
         embed.add_field(
-            name="Ends at", value=self._format_end_time(end_time), inline=True
+            name="Ends at",
+            value=PomodoroEmbeds._format_end_time(end_time),
+            inline=True,
         )
 
         payload = {"embed": embed}

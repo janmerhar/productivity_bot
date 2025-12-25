@@ -10,7 +10,6 @@ from config.env import env
 class CryptoCog(commands.Cog):
     def __init__(self, client):
         self.client = client
-        self.embeds = CryptoEmbeds()
 
     # Events
 
@@ -36,7 +35,7 @@ class CryptoCog(commands.Cog):
         )
 
         response = await asyncio.to_thread(
-            self.embeds.price_embed,
+            CryptoEmbeds.price_embed,
             ticker,
             currency,
         )

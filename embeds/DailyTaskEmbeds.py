@@ -4,7 +4,8 @@ import discord
 
 
 class DailyTaskEmbeds:
-    def reminder_embed(self, message: str, ok: bool) -> dict:
+    @staticmethod
+    def reminder_embed(message: str, ok: bool) -> dict:
         embed = discord.Embed(
             title="Reminder",
             description=message,
@@ -12,7 +13,8 @@ class DailyTaskEmbeds:
         )
         return {"embed": embed}
 
-    def job_embed(self, message: str, ok: bool) -> dict:
+    @staticmethod
+    def job_embed(message: str, ok: bool) -> dict:
         embed = discord.Embed(
             title="Scheduled Job",
             description=message,
@@ -20,7 +22,8 @@ class DailyTaskEmbeds:
         )
         return {"embed": embed}
 
-    def jobs_list_embed(self, lines: List[str]) -> dict:
+    @staticmethod
+    def jobs_list_embed(lines: List[str]) -> dict:
         embed = discord.Embed(
             title="Scheduled Jobs",
             color=discord.Colour.blurple(),
@@ -36,7 +39,8 @@ class DailyTaskEmbeds:
 
         return {"embed": embed}
 
-    def jobs_cancel_embed(self, message: str, ok: bool) -> dict:
+    @staticmethod
+    def jobs_cancel_embed(message: str, ok: bool) -> dict:
         embed = discord.Embed(
             title="Cancel Job",
             description=message,

@@ -7,18 +7,15 @@ from classes.DailyJob import DailyJob
 
 
 class PomodoroFunctions:
-    def __init__(self) -> None:
-        self.manager = DailyJobManager()
-        self.embeds = PomodoroEmbeds()
-
+    @staticmethod
     def insert_timer(
-        self,
         channel_id: int,
         mode: str,
         duration: Optional[int],
         user_id: Union[int, str],
     ) -> Tuple[datetime.datetime, int]:
-        end_time, duration_minutes = self.manager.insert_pomodoro_timer(
+        manager = DailyJobManager()
+        end_time, duration_minutes = manager.insert_pomodoro_timer(
             channel_id=channel_id,
             mode=mode,
             duration_minutes=duration,
@@ -41,14 +38,15 @@ class PomodoroFunctions:
         except ValueError:
             return None
 
-    def pomodoro_payload(self, job: DailyJob) -> Dict[str, Any]:
+    @staticmethod
+    def pomodoro_payload(job: DailyJob) -> Dict[str, Any]:
         data = job.data or {}
         mode = str(data.get("mode", "focus")).lower()
         duration = data.get("duration", "")
         user_id = data.get("user")
-        end_time = self.parse_schedule_datetime(job.schedule)
+        end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
 
-        return self.embeds.timer_complete_embed(
+        return PomodoroEmbeds.timer_complete_embed(
             mode=mode,
             duration_minutes=duration,
             end_time=end_time,

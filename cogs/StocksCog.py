@@ -10,7 +10,6 @@ from config.env import env
 class StocksCog(commands.Cog):
     def __init__(self, client):
         self.client = client
-        self.embeds = StocksEmbeds()
 
     # Events
 
@@ -29,7 +28,7 @@ class StocksCog(commands.Cog):
             content=f"• Fetching `{ticker.upper()}` ⏳", embed=None
         )
 
-        response = await asyncio.to_thread(self.embeds.stock_embed, ticker)
+        response = await asyncio.to_thread(StocksEmbeds.stock_embed, ticker)
 
         await interaction.edit_original_response(
             content=response.get("content"),

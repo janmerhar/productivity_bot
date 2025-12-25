@@ -132,7 +132,7 @@ class DailyJob:
             currency = self.data.get("currency", "usd")
             raw_periods = self.data.get("change_periods", ("24h", "7d", "30d"))
 
-            embeds, error = CryptoEmbeds().daily_embeds(tickers, currency, raw_periods)
+            embeds, error = CryptoEmbeds.daily_embeds(tickers, currency, raw_periods)
 
             payload = {"embeds": embeds}
             header = self.data.get("header")
@@ -142,7 +142,7 @@ class DailyJob:
 
         if self.type == "stock":
             ticker = self.data["tickers"]
-            embeds, error = StocksEmbeds().daily_embeds(ticker)
+            embeds, error = StocksEmbeds.daily_embeds(ticker)
 
             payload = {"embeds": embeds}
             header = self.data.get("header")

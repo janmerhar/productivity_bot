@@ -12,16 +12,12 @@ import sys
 import aiohttp
 
 from embeds.AliasEmbeds import AliasEmbeds
-from embeds.TogglEmbeds import TogglEmbeds
 from config.env import env
 
 
 class AliasCog(commands.Cog):
     def __init__(self, client):
         self.client = client
-        self.embeds = AliasEmbeds()
-
-        self.embeds_classes = {"toggl": TogglEmbeds}
 
     # Events
 
@@ -49,7 +45,7 @@ class AliasCog(commands.Cog):
         alias="Alias of a command to be used",
     )
     async def usealias(self, interaction: discord.Interaction, alias: str):
-        param = self.embeds.usealias_embed(alias=alias)
+        param = AliasEmbeds.usealias_embed(alias=alias)
 
         await interaction.response.send_message(**param)
 
@@ -61,7 +57,7 @@ class AliasCog(commands.Cog):
         print(AliasCog.getFunctionByName(AliasCog, "usealias"))
         print(AliasCog.getDefaultParameters(
             AliasCog.getFunctionByName(AliasCog, "usealias")))
-        param = self.embeds.findaliases_embed(alias=alias)
+        param = AliasEmbeds.findaliases_embed(alias=alias)
 
         await interaction.response.send_message(**param)
 
@@ -70,7 +66,7 @@ class AliasCog(commands.Cog):
         n="Number of most popular aliases to be displayed"
     )
     async def popularalias(self, interaction: discord.Interaction, n: int = 5):
-        param = self.embeds.popularalias_embed(n=n)
+        param = AliasEmbeds.popularalias_embed(n=n)
 
         await interaction.response.send_message(**param)
 

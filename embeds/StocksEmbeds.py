@@ -8,7 +8,8 @@ from classes.StocksFunctions import StocksFunctions
 class StocksEmbeds:
     yahoo_color = 0x6001D2
 
-    def stock_embed(self, ticker: str) -> dict:
+    @staticmethod
+    def stock_embed(ticker: str) -> dict:
         symbol = ticker.upper().strip()
 
         try:
@@ -18,13 +19,14 @@ class StocksEmbeds:
 
         quote["symbol"] = quote.get("symbol") or symbol
 
-        embed = self.stock_to_embed(quote)
+        embed = StocksEmbeds.stock_to_embed(quote)
         if embed is None:
             return {"content": f"• No data returned for `{symbol}`.", "embed": None}
 
         return {"content": None, "embed": embed}
 
-    def stock_to_embed(self, quote: dict) -> Optional[discord.Embed]:
+    @staticmethod
+    def stock_to_embed(quote: dict) -> Optional[discord.Embed]:
         if not quote:
             return None
 
@@ -47,7 +49,7 @@ class StocksEmbeds:
         embed = discord.Embed(
             title=symbol or "Unknown",
             description=f"`{price_label}`",
-            colour=self.yahoo_color,
+            colour=StocksEmbeds.yahoo_color,
             timestamp=discord.utils.utcnow(),
         )
 
@@ -84,9 +86,8 @@ class StocksEmbeds:
 
         return embed
 
-    def daily_embeds(
-        self, tickers: List[str]
-    ) -> Tuple[List[discord.Embed], Optional[str]]:
+    @staticmethod
+    def daily_embeds(tickers: List[str]) -> Tuple[List[discord.Embed], Optional[str]]:
         if not tickers:
             return [], "No stock tickers configured for this job."
 
@@ -100,7 +101,7 @@ class StocksEmbeds:
 
         embeds: List[discord.Embed] = []
         for quote in rows:
-            embed = self.stock_to_embed(quote)
+            embed = StocksEmbeds.stock_to_embed(quote)
             if embed is not None:
                 embeds.append(embed)
 
