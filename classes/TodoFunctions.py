@@ -1,6 +1,6 @@
 import datetime
 import json
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, List
 
 from openai import APIError, OpenAI
 
@@ -117,3 +117,18 @@ class TodoFunctions:
         document["_id"] = result.inserted_id
 
         return document, due_dt
+
+    @staticmethod
+    def list_todos(
+        channel_id: int,
+        mode: str = "channel",
+        sort: str = "descending",
+    ) -> List[Dict[str, Any]]:
+        query: Dict[str, Any] = {"state": "todo"}
+        if mode != "all":
+            query["channel_id"] = channel_id
+
+        sort_direction = -1 if sort == "descending" else 1
+        cursor = mongo_db["todos"].find(query).sort("_id", sort_direction)
+
+        return list(cursor)
