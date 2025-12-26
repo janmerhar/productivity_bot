@@ -6,7 +6,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from classes.TodoFunctions import TodoFunctions
-from embeds.TodoEmbeds import TodoEmbeds
+from embeds.TodoEmbeds import TodoEmbeds, TodoListView
 from config.env import env
 
 
@@ -107,14 +107,18 @@ class TodoCog(commands.Cog):
             )
             return
 
-        await interaction.followup.send(
-            ephemeral=True,
-            **TodoEmbeds.list_todos_embed(
-                todos=todos,
-                mode=mode_value,
-                sort=sort_value,
-            ),
+        payload = TodoEmbeds.list_todos_embed(
+            todos=todos,
+            mode=mode_value,
+            sort=sort_value,
         )
+        view = TodoListView(todos, mode_value, sort_value) if todos else None
+
+        if view is None:
+            await interaction.followup.send(ephemeral=True, **payload)
+            return
+
+        await interaction.followup.send(ephemeral=True, view=view, **payload)
 
 
 async def setup(client: commands.Bot) -> None:
