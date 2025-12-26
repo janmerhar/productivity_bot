@@ -3,6 +3,7 @@ import json
 from typing import Optional, Tuple, Dict, Any, List
 
 from openai import APIError, OpenAI
+from bson.objectid import ObjectId
 
 from config.db import mongo_db
 from config.env import env
@@ -132,3 +133,17 @@ class TodoFunctions:
         cursor = mongo_db["todos"].find(query).sort("_id", sort_direction)
 
         return list(cursor)
+
+    @staticmethod
+    def complete_todo(todo_id: str) -> bool:
+        try:
+            object_id = ObjectId(todo_id)
+        except Exception:
+            return False
+
+        result = mongo_db["todos"].update_one(
+            {"_id": object_id},
+            {"$set": {"state": "done"}},
+        )
+
+        return result.modified_count > 0
