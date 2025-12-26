@@ -7,6 +7,28 @@ from classes.DailyJob import DailyJob, OneTimeSchedule2
 
 class PomodoroFunctions:
     @staticmethod
+    def create_timer(
+        channel_id: int,
+        mode: str,
+        duration_minutes: Optional[int],
+        user_id: Union[int, str],
+    ) -> Tuple[datetime.datetime, int]:
+        from classes.DailyJobManager import DailyJobManager
+
+        end_time, resolved_duration, data, schedule = (
+            PomodoroFunctions.insert_pomodoro_timer(
+                channel_id=channel_id,
+                mode=mode,
+                duration_minutes=duration_minutes,
+                user_id=user_id,
+            )
+        )
+        manager = DailyJobManager()
+        manager.insert_job(channel_id, "pomodoro", data, schedule)
+
+        return end_time, resolved_duration
+
+    @staticmethod
     def insert_timer(
         channel_id: int,
         mode: str,
