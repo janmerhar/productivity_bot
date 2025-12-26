@@ -1,9 +1,8 @@
 import datetime
 from typing import Any, Dict, Mapping, Optional, Tuple, Union
 
-from classes.DailyJobManager import DailyJobManager
 from embeds.PomodoroEmbeds import PomodoroEmbeds
-from classes.DailyJob import DailyJob
+from classes.DailyJob import DailyJob, OneTimeSchedule2
 
 
 class PomodoroFunctions:
@@ -13,16 +12,48 @@ class PomodoroFunctions:
         mode: str,
         duration: Optional[int],
         user_id: Union[int, str],
-    ) -> Tuple[datetime.datetime, int]:
-        manager = DailyJobManager()
-        end_time, duration_minutes = manager.insert_pomodoro_timer(
-            channel_id=channel_id,
-            mode=mode,
-            duration_minutes=duration,
-            user_id=user_id,
+    ) -> Tuple[datetime.datetime, int, Dict[str, str], OneTimeSchedule2]:
+        end_time, duration_minutes, data, schedule = (
+            PomodoroFunctions.insert_pomodoro_timer(
+                channel_id=channel_id,
+                mode=mode,
+                duration_minutes=duration,
+                user_id=user_id,
+            )
         )
 
-        return end_time, duration_minutes
+        return end_time, duration_minutes, data, schedule
+
+    @staticmethod
+    def insert_pomodoro_timer(
+        channel_id: int,
+        mode: str,
+        duration_minutes: Optional[int],
+        user_id: Union[int, str],
+    ) -> Tuple[datetime.datetime, int, Dict[str, str], OneTimeSchedule2]:
+        normalized_mode = mode.lower()
+        if normalized_mode not in ("focus", "break"):
+            raise ValueError("Invalid pomodoro mode.")
+
+        resolved_duration = duration_minutes
+        if resolved_duration is None:
+            resolved_duration = 50 if normalized_mode == "focus" else 20
+
+        if resolved_duration <= 0:
+            raise ValueError("Pomodoro duration must be greater than zero.")
+
+        end_time = (
+            datetime.datetime.now() + datetime.timedelta(minutes=resolved_duration)
+        ).replace(second=0, microsecond=0)
+
+        schedule = OneTimeSchedule2(datetime=end_time.isoformat())
+        data = {
+            "mode": normalized_mode,
+            "duration": str(resolved_duration),
+            "user": str(user_id),
+        }
+
+        return end_time, resolved_duration, data, schedule
 
     @staticmethod
     def parse_schedule_datetime(

@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 from bson.errors import InvalidId
 from bson.objectid import ObjectId
-from classes.DailyJob import DailyJob, OneTimeSchedule2, ScheduleConfig
+from classes.DailyJob import DailyJob, ScheduleConfig
 
 
 class DailyJobManager:
@@ -36,39 +36,6 @@ class DailyJobManager:
     ):
         DailyJob.insert(channel_id, type, data, schedule)
         self.fetch_jobs()
-
-    def insert_pomodoro_timer(
-        self,
-        channel_id: int,
-        mode: str,
-        duration_minutes: Optional[int],
-        user_id: Union[int, str],
-    ) -> Tuple[datetime.datetime, int]:
-        normalized_mode = mode.lower()
-        if normalized_mode not in ("focus", "break"):
-            raise ValueError("Invalid pomodoro mode.")
-
-        resolved_duration = duration_minutes
-        if resolved_duration is None:
-            resolved_duration = 50 if normalized_mode == "focus" else 20
-
-        if resolved_duration <= 0:
-            raise ValueError("Pomodoro duration must be greater than zero.")
-
-        end_time = (
-            datetime.datetime.now() + datetime.timedelta(minutes=resolved_duration)
-        ).replace(second=0, microsecond=0)
-
-        schedule = OneTimeSchedule2(datetime=end_time.isoformat())
-        data = {
-            "mode": normalized_mode,
-            "duration": str(resolved_duration),
-            "user": str(user_id),
-        }
-
-        self.insert_job(channel_id, "pomodoro", data, schedule)
-
-        return end_time, resolved_duration
 
     def list_jobs(self, channel_id: Optional[int] = None) -> List[DailyJob]:
         self.fetch_jobs()
