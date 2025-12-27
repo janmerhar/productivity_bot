@@ -5,6 +5,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from classes.DailyJobManager import DailyJobManager
 from classes.PomodoroFunctions import PomodoroFunctions
 from embeds.PomodoroEmbeds import PomodoroEmbeds
 from config.env import env
@@ -43,14 +44,26 @@ class PomodoroCog(commands.Cog):
 
         await interaction.response.defer(ephemeral=True)
 
-        try:
-            end_time, resolved_duration = await asyncio.to_thread(
-                PomodoroFunctions.insert_timer,
-                interaction.channel_id,
-                mode.value,
-                duration,
-                interaction.user.id,
+        channel_id = interaction.channel_id
+        mode_value = mode.value
+        duration_value = duration
+        user_id = interaction.user.id
+
+        def create_timer() -> tuple:
+            end_time, resolved_duration, data, schedule = (
+                PomodoroFunctions.insert_pomodoro_timer(
+                    channel_id=channel_id,
+                    mode=mode_value,
+                    duration_minutes=duration_value,
+                    user_id=user_id,
+                )
             )
+            manager = DailyJobManager()
+            manager.insert_job(channel_id, "pomodoro", data, schedule)
+            return end_time, resolved_duration
+
+        try:
+            end_time, resolved_duration = await asyncio.to_thread(create_timer)
         except Exception:
             await interaction.followup.send(
                 ephemeral=True,
@@ -61,7 +74,7 @@ class PomodoroCog(commands.Cog):
         await interaction.followup.send(
             ephemeral=True,
             **PomodoroEmbeds.insert_timer_embed(
-                mode.value,
+                mode_value,
                 resolved_duration,
                 end_time,
             ),
