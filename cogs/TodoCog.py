@@ -58,14 +58,28 @@ class TodoCog(commands.Cog):
             )
             return
 
-        await interaction.followup.send(
-            ephemeral=True,
-            **TodoEmbeds.insert_todo_embed(
-                name=document["name"],
-                description=document.get("description"),
-                due=due_dt,
-            ),
+        reminder_failed = False
+        if due_dt:
+            try:
+                await asyncio.to_thread(
+                    TodoFunctions.insert_todo_task,
+                    document,
+                    due_dt,
+                )
+            except Exception:
+                reminder_failed = True
+
+        payload = TodoEmbeds.insert_todo_embed(
+            name=document["name"],
+            description=document.get("description"),
+            due=due_dt,
         )
+        if reminder_failed:
+            payload["content"] = (
+                "Todo created, but I couldn't schedule the due reminder."
+            )
+
+        await interaction.followup.send(ephemeral=True, **payload)
 
     @app_commands.command(name="todolist", description="List todo items")
     @app_commands.describe(

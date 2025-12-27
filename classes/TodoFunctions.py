@@ -5,6 +5,7 @@ from typing import Optional, Tuple, Dict, Any, List
 from openai import APIError, OpenAI
 from bson.objectid import ObjectId
 
+from classes.DailyJob import OneTimeSchedule2
 from config.db import mongo_db
 from config.env import env
 
@@ -13,6 +14,23 @@ DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 
 
 class TodoFunctions:
+    @staticmethod
+    def insert_todo_task(
+        todo: Dict[str, Any],
+        due_dt: datetime.datetime,
+    ) -> None:
+        from classes.DailyJobManager import DailyJobManager
+
+        schedule = OneTimeSchedule2(datetime=due_dt.isoformat())
+        task_id = str(todo.get("_id"))
+        manager = DailyJobManager()
+        manager.insert_job(
+            channel_id=todo["channel_id"],
+            type="todo",
+            data={"task_id": task_id},
+            schedule=schedule,
+        )
+
     @staticmethod
     def convert_due_to_timestamp(
         due: str,
@@ -133,6 +151,15 @@ class TodoFunctions:
         cursor = mongo_db["todos"].find(query).sort("_id", sort_direction)
 
         return list(cursor)
+
+    @staticmethod
+    def fetch_todo(todo_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            object_id = ObjectId(todo_id)
+        except Exception:
+            return None
+
+        return mongo_db["todos"].find_one({"_id": object_id})
 
     @staticmethod
     def complete_todo(todo_id: str) -> bool:

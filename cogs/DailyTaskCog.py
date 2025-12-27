@@ -11,8 +11,10 @@ from discord.ext import commands, tasks
 from classes.DailyJob import CronSchedule, DailyJob, OneTimeSchedule2
 from classes.DailyJobManager import DailyJobManager
 from classes.PomodoroFunctions import PomodoroFunctions
+from classes.TodoFunctions import TodoFunctions
 from config.env import env
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
+from embeds.TodoEmbeds import TodoEmbeds
 from services.cron_schedule import CronConversionError, resolve_cron_expression
 
 
@@ -214,7 +216,19 @@ class DailyTaskCog(commands.Cog):
                 pomodoro_payload = PomodoroFunctions.pomodoro_payload(job)
                 await channel.send(**pomodoro_payload)
                 continue
+            if job.type == "todo":
+                task_id = job.data.get("task_id")
+                todo = TodoFunctions.fetch_todo(task_id)
+                if not todo or todo.get("state") != "todo":
+                    continue
 
+                channel = self.bot.get_channel(job.channel_id)
+                if channel is None:
+                    channel = await self.bot.fetch_channel(job.channel_id)
+
+                todo_payload = TodoEmbeds.todo_reminder_payload(todo)
+                await channel.send(**todo_payload)
+                continue
             if not payload:
                 continue
 
@@ -285,14 +299,18 @@ class DailyTaskCog(commands.Cog):
         except ValueError:
             await interaction.followup.send(
                 ephemeral=True,
-                **DailyTaskEmbeds.jobs_cancel_embed("That job id is invalid.", ok=False),
+                **DailyTaskEmbeds.jobs_cancel_embed(
+                    "That job id is invalid.", ok=False
+                ),
             )
             return
 
         if deleted:
             await interaction.followup.send(
                 ephemeral=True,
-                **DailyTaskEmbeds.jobs_cancel_embed(f"Cancelled job `{job_id}`.", ok=True),
+                **DailyTaskEmbeds.jobs_cancel_embed(
+                    f"Cancelled job `{job_id}`.", ok=True
+                ),
             )
             return
 
