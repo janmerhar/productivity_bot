@@ -124,6 +124,35 @@ class TodoListView(discord.ui.View):
         self.add_item(next_button)
 
 
+class TodoReminderView(discord.ui.View):
+    def __init__(self, todo_id: str, todo_name: str) -> None:
+        super().__init__(timeout=3600)
+        self.todo_id = todo_id
+        self.todo_name = todo_name
+
+        button = discord.ui.Button(
+            label="Complete",
+            style=discord.ButtonStyle.success,
+            custom_id=f"todo_reminder_complete:{todo_id}",
+        )
+        button.callback = self._on_complete
+        self.add_item(button)
+
+    async def _on_complete(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        updated = await asyncio.to_thread(TodoFunctions.complete_todo, self.todo_id)
+        if not updated:
+            await interaction.followup.send(
+                ephemeral=True,
+                content=f"Couldn't complete '{self.todo_name}'.",
+            )
+            return
+        await interaction.followup.send(
+            ephemeral=True,
+            content=f"Marked '{self.todo_name}' as done.",
+        )
+
+
 class TodoEmbeds:
     @staticmethod
     def _number_emoji(value: int) -> str:
@@ -179,6 +208,37 @@ class TodoEmbeds:
         )
 
         return {"embed": embed}
+
+    @staticmethod
+    def todo_reminder_payload(todo: Dict[str, Any]) -> dict:
+        name = str(todo.get("name") or "Todo")
+        description = todo.get("description")
+        due = todo.get("due")
+        user_id = todo.get("user_id")
+        todo_id = str(todo.get("_id") or "")
+
+        embed = discord.Embed(
+            title="Todo Reminder",
+            color=discord.Colour.orange(),
+        )
+        lines = []
+        if description:
+            lines.append(str(description))
+        if due:
+            lines.append(f"Due: {TodoEmbeds._format_due(due)}")
+
+        embed.add_field(
+            name=name,
+            value="\n".join(lines) if lines else "No details",
+            inline=False,
+        )
+
+        payload: Dict[str, Any] = {"embed": embed}
+        if user_id:
+            payload["content"] = f"<@{user_id}>"
+        if todo_id:
+            payload["view"] = TodoReminderView(todo_id, name)
+        return payload
 
     @staticmethod
     def list_todos_embed(
