@@ -1,8 +1,19 @@
+import asyncio
 import datetime
+from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional, Tuple, Union
 
 from embeds.PomodoroEmbeds import PomodoroEmbeds
 from classes.DailyJob import DailyJob, OneTimeSchedule2
+from classes.DailyJobManager import DailyJobManager
+from classes.PomodoroVoiceManager import PomodoroVoiceManager
+import discord
+
+
+@dataclass
+class PomodoroStopResult:
+    ok: bool
+    message: str
 
 
 class PomodoroFunctions:
@@ -105,3 +116,68 @@ class PomodoroFunctions:
             end_time=end_time,
             user_id=user_id,
         )
+
+    @staticmethod
+    async def stop_user_pomodoro(
+        interaction: discord.Interaction,
+    ) -> PomodoroStopResult:
+        manager = DailyJobManager()
+
+        try:
+            jobs = await asyncio.to_thread(manager.list_jobs, interaction.channel_id)
+        except Exception:
+            return PomodoroStopResult(
+                ok=False,
+                message="Something went wrong while fetching pomodoros.",
+            )
+
+        user_id = str(interaction.user.id)
+        user_jobs = [
+            job
+            for job in jobs
+            if job.type == "pomodoro" and str(job.data.get("user")) == user_id
+        ]
+
+        if not user_jobs:
+            return PomodoroStopResult(
+                ok=False,
+                message="You don't have an active pomodoro in this channel.",
+            )
+
+        deleted_count = 0
+        for job in user_jobs:
+            try:
+                deleted = await asyncio.to_thread(
+                    manager.delete_job, str(job.id), interaction.channel_id
+                )
+            except Exception:
+                continue
+            if deleted:
+                deleted_count += 1
+
+        if deleted_count == 0:
+            return PomodoroStopResult(
+                ok=False,
+                message="I couldn't stop that pomodoro. Please try again.",
+            )
+
+        remaining_jobs = await asyncio.to_thread(
+            manager.list_jobs, interaction.channel_id
+        )
+        remaining_pomodoros = [job for job in remaining_jobs if job.type == "pomodoro"]
+
+        audio_stopped = False
+        if interaction.guild is not None and not remaining_pomodoros:
+            await PomodoroVoiceManager.stop_for_guild(
+                interaction.guild.id,
+                force=True,
+            )
+            audio_stopped = True
+
+        message = f"Stopped {deleted_count} pomodoro timer(s)."
+        if audio_stopped:
+            message += " Left the voice channel."
+        elif interaction.guild is not None:
+            message += " Voice stays connected while other pomodoros run."
+
+        return PomodoroStopResult(ok=True, message=message)

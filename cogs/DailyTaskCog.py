@@ -15,6 +15,8 @@ from classes.TodoFunctions import TodoFunctions
 from config.env import env
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from embeds.TodoEmbeds import TodoEmbeds
+from classes.PomodoroVoiceManager import PomodoroVoiceManager
+from views.PomodoroRestartView import PomodoroRestartView
 from services.cron_schedule import CronConversionError, resolve_cron_expression
 
 
@@ -214,7 +216,12 @@ class DailyTaskCog(commands.Cog):
                 if channel is None:
                     channel = await self.bot.fetch_channel(job.channel_id)
                 pomodoro_payload = PomodoroFunctions.pomodoro_payload(job)
+                pomodoro_payload["view"] = PomodoroRestartView()
                 await channel.send(**pomodoro_payload)
+
+                end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
+                guild = getattr(channel, "guild", None)
+                await PomodoroVoiceManager.stop_for_guild(guild.id, end_time)
                 continue
             if job.type == "todo":
                 task_id = job.data.get("task_id")
