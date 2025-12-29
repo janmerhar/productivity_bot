@@ -104,6 +104,13 @@ class PomodoroCog(commands.Cog):
         if voice_error:
             await interaction.followup.send(ephemeral=True, content=voice_error)
 
+    @app_commands.command(
+        name="pomodorostop", description="Stop your active pomodoro timer"
+    )
+    async def pomodoro_stop(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        result = await PomodoroFunctions.stop_user_pomodoro(interaction)
+        await interaction.followup.send(ephemeral=True, content=result.message)
 
 
 async def setup(client: commands.Bot) -> None:
