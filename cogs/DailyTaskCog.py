@@ -16,7 +16,7 @@ from config.env import env
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from embeds.TodoEmbeds import TodoEmbeds
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
-from embeds.PomodoroEmbeds import PomodoroRestartView
+from views.PomodoroRestartView import PomodoroRestartView
 from services.cron_schedule import CronConversionError, resolve_cron_expression
 
 
