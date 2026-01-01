@@ -14,9 +14,11 @@ from classes.PomodoroFunctions import PomodoroFunctions
 from classes.TodoFunctions import TodoFunctions
 from config.env import env
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
+from embeds.HabitEmbeds import HabitEmbeds
 from embeds.TodoEmbeds import TodoEmbeds
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from views.PomodoroRestartView import PomodoroRestartView
+from classes.HabitFunctions import HabitFunctions
 from services.cron_schedule import CronConversionError, resolve_cron_expression
 
 
@@ -235,6 +237,21 @@ class DailyTaskCog(commands.Cog):
 
                 todo_payload = TodoEmbeds.todo_reminder_payload(todo)
                 await channel.send(**todo_payload)
+                continue
+            if job.type == "habit":
+                habit_id = job.data.get("habit_id")
+                habit = HabitFunctions.fetch_habit(habit_id)
+                if not habit:
+                    continue
+                if not HabitFunctions.needs_completion_today(habit):
+                    continue
+
+                channel = self.bot.get_channel(job.channel_id)
+                if channel is None:
+                    channel = await self.bot.fetch_channel(job.channel_id)
+
+                habit_payload = HabitEmbeds.habit_reminder_payload(habit)
+                await channel.send(**habit_payload)
                 continue
             if not payload:
                 continue
