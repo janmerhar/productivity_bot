@@ -25,7 +25,6 @@ class AliasCog(commands.Cog):
     async def on_ready(self):
         print("Alias cog loaded")
 
-
     def getFunctionByName(obj, name):
         try:
             fn = getattr(obj, f"{name}")
@@ -37,7 +36,8 @@ class AliasCog(commands.Cog):
         return {
             param.name: param.default
             for param in cog_fn.parameters
-            if param.default is not None and type(param.default) != discord.utils._MissingSentinel
+            if param.default is not None
+            and type(param.default) != discord.utils._MissingSentinel
         }
 
     @app_commands.command(name="usealias", description="Shortcuts use alias")
@@ -45,7 +45,11 @@ class AliasCog(commands.Cog):
         alias="Alias of a command to be used",
     )
     async def usealias(self, interaction: discord.Interaction, alias: str):
-        param = AliasEmbeds.usealias_embed(alias=alias)
+        param = AliasEmbeds.usealias_embed(
+            alias=alias,
+            guild_id=interaction.guild_id,
+            user_id=interaction.user.id,
+        )
 
         await interaction.response.send_message(**param)
 
@@ -55,18 +59,27 @@ class AliasCog(commands.Cog):
     )
     async def findalias(self, interaction: discord.Interaction, alias: str):
         print(AliasCog.getFunctionByName(AliasCog, "usealias"))
-        print(AliasCog.getDefaultParameters(
-            AliasCog.getFunctionByName(AliasCog, "usealias")))
-        param = AliasEmbeds.findaliases_embed(alias=alias)
+        print(
+            AliasCog.getDefaultParameters(
+                AliasCog.getFunctionByName(AliasCog, "usealias")
+            )
+        )
+        param = AliasEmbeds.findaliases_embed(
+            alias=alias,
+            guild_id=interaction.guild_id,
+            user_id=interaction.user.id,
+        )
 
         await interaction.response.send_message(**param)
 
     @app_commands.command(name="popularalias", description="Most popular aliases")
-    @app_commands.describe(
-        n="Number of most popular aliases to be displayed"
-    )
+    @app_commands.describe(n="Number of most popular aliases to be displayed")
     async def popularalias(self, interaction: discord.Interaction, n: int = 5):
-        param = AliasEmbeds.popularalias_embed(n=n)
+        param = AliasEmbeds.popularalias_embed(
+            n=n,
+            guild_id=interaction.guild_id,
+            user_id=interaction.user.id,
+        )
 
         await interaction.response.send_message(**param)
 

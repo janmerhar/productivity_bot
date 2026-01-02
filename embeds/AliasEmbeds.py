@@ -15,9 +15,13 @@ class AliasEmbeds:
         pass
 
     @staticmethod
-    def usealias_embed(alias: str):
+    def usealias_embed(alias: str, guild_id: int, user_id: int):
         # Iskanje, ce alias obstaja
-        find_alias = AliasFunctions.findAliases(identifier=alias)
+        find_alias = AliasFunctions.findAliases(
+            guild_id=guild_id,
+            user_id=user_id,
+            identifier=alias,
+        )
 
         if len(find_alias) > 0:
             find_alias = find_alias[0]
@@ -40,12 +44,20 @@ class AliasEmbeds:
                 return {"embeds": [embed_disabled]}
 
             if application == "toggl":
-                return TogglEmbeds.usealias_embed(alias=alias)
+                return TogglEmbeds().usealias_embed(
+                    alias=alias,
+                    guild_id=guild_id,
+                    user_id=user_id,
+                )
 
             if application == "ticktick":
                 from embeds.TickTickEmbeds import TickTickEmbeds
 
-                return TickTickEmbeds().usealias_embed(alias=alias)
+                return TickTickEmbeds().usealias_embed(
+                    alias=alias,
+                    guild_id=guild_id,
+                    user_id=user_id,
+                )
 
         # Nismo nasli alias
         # tukaj bom samo na koncu narredi en embed return
@@ -62,8 +74,12 @@ class AliasEmbeds:
         return {"embeds": [embed_no_found]}
 
     @staticmethod
-    def findaliases_embed(alias: str = ""):
-        found_aliases = AliasFunctions.findAliases(identifier=alias)
+    def findaliases_embed(alias: str, guild_id: int, user_id: int):
+        found_aliases = AliasFunctions.findAliases(
+            guild_id=guild_id,
+            user_id=user_id,
+            identifier=alias,
+        )
 
         embed = discord.Embed(
             title=f"Found {len(found_aliases)} aliases",
@@ -73,8 +89,13 @@ class AliasEmbeds:
         return {"embeds": [AliasEmbeds.aliasesToEmbed(found_aliases, embed)]}
 
     @staticmethod
-    def popularalias_embed(n: int = 5):
-        found_aliases = AliasFunctions.findAliases(identifier="", n=n)
+    def popularalias_embed(n: int, guild_id: int, user_id: int):
+        found_aliases = AliasFunctions.findAliases(
+            guild_id=guild_id,
+            user_id=user_id,
+            identifier="",
+            n=n,
+        )
 
         embed = discord.Embed(
             title=f"Top {len(found_aliases)} aliases",

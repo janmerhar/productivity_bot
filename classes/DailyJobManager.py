@@ -29,30 +29,51 @@ class DailyJobManager:
 
     def insert_job(
         self,
+        guild_id: Optional[int],
         channel_id: int,
         type: str,
         data: dict,
         schedule: Optional[Union[ScheduleConfig, Mapping[str, Any]]] = None,
     ):
-        DailyJob.insert(channel_id, type, data, schedule)
+        DailyJob.insert(guild_id, channel_id, type, data, schedule)
         self.fetch_jobs()
 
-    def list_jobs(self, channel_id: Optional[int] = None) -> List[DailyJob]:
+    def list_jobs(
+        self,
+        channel_id: Optional[int] = None,
+        guild_id: Optional[int] = None,
+    ) -> List[DailyJob]:
         self.fetch_jobs()
         jobs = self.cron_jobs + self.one_time_jobs
 
-        if channel_id is None:
+        if channel_id is None and guild_id is None:
             return jobs
 
-        return [job for job in jobs if job.channel_id == channel_id]
+        filtered: List[DailyJob] = []
+        for job in jobs:
+            if channel_id is not None and job.channel_id != channel_id:
+                continue
+            if guild_id is not None and job.guild_id != guild_id:
+                continue
+            filtered.append(job)
+        return filtered
 
-    def delete_job(self, job_id: str, channel_id: Optional[int] = None) -> bool:
+    def delete_job(
+        self,
+        job_id: str,
+        channel_id: Optional[int] = None,
+        guild_id: Optional[int] = None,
+    ) -> bool:
         try:
             object_id = ObjectId(job_id)
         except InvalidId:
             raise ValueError("Invalid job id.")
 
-        deleted = DailyJob.delete(object_id, channel_id=channel_id)
+        deleted = DailyJob.delete(
+            object_id,
+            channel_id=channel_id,
+            guild_id=guild_id,
+        )
 
         if deleted:
             self.fetch_jobs()

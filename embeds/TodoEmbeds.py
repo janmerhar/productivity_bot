@@ -56,7 +56,7 @@ class TodoListView(discord.ui.View):
             ) -> None:
                 await interaction.response.defer(ephemeral=True)
                 updated = await asyncio.to_thread(
-                    TodoFunctions.complete_todo, todo_object_id
+                    TodoFunctions.complete_todo, todo_object_id, interaction.guild_id
                 )
                 if not updated:
                     await interaction.followup.send(
@@ -140,7 +140,11 @@ class TodoReminderView(discord.ui.View):
 
     async def _on_complete(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
-        updated = await asyncio.to_thread(TodoFunctions.complete_todo, self.todo_id)
+        updated = await asyncio.to_thread(
+            TodoFunctions.complete_todo,
+            self.todo_id,
+            interaction.guild_id,
+        )
         if not updated:
             await interaction.followup.send(
                 ephemeral=True,

@@ -113,6 +113,7 @@ class DailyTaskCog(commands.Cog):
         try:
             await asyncio.to_thread(
                 manager.insert_job,
+                interaction.guild_id,
                 interaction.channel_id,
                 job_type,
                 job_data,
@@ -177,6 +178,7 @@ class DailyTaskCog(commands.Cog):
         try:
             await asyncio.to_thread(
                 manager.insert_job,
+                interaction.guild_id,
                 interaction.channel_id,
                 job_type,
                 payload,
@@ -227,7 +229,7 @@ class DailyTaskCog(commands.Cog):
                 continue
             if job.type == "todo":
                 task_id = job.data.get("task_id")
-                todo = TodoFunctions.fetch_todo(task_id)
+                todo = TodoFunctions.fetch_todo(task_id, job.guild_id)
                 if not todo or todo.get("state") != "todo":
                     continue
 
@@ -240,7 +242,7 @@ class DailyTaskCog(commands.Cog):
                 continue
             if job.type == "habit":
                 habit_id = job.data.get("habit_id")
-                habit = HabitFunctions.fetch_habit(habit_id)
+                habit = HabitFunctions.fetch_habit(habit_id, job.guild_id)
                 if not habit:
                     continue
                 if not HabitFunctions.needs_completion_today(habit):
@@ -303,7 +305,11 @@ class DailyTaskCog(commands.Cog):
     async def jobs_list(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         manager = DailyJobManager()
-        jobs = await asyncio.to_thread(manager.list_jobs)
+        jobs = await asyncio.to_thread(
+            manager.list_jobs,
+            interaction.channel_id,
+            interaction.guild_id,
+        )
 
         lines = [self._format_job(job) for job in jobs]
         await interaction.followup.send(
@@ -318,7 +324,10 @@ class DailyTaskCog(commands.Cog):
 
         try:
             deleted = await asyncio.to_thread(
-                manager.delete_job, job_id.strip(), interaction.channel_id
+                manager.delete_job,
+                job_id.strip(),
+                interaction.channel_id,
+                interaction.guild_id,
             )
         except ValueError:
             await interaction.followup.send(

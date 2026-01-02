@@ -57,6 +57,7 @@ class PomodoroCog(commands.Cog):
         try:
             end_time, resolved_duration = await asyncio.to_thread(
                 PomodoroFunctions.create_timer,
+                interaction.guild_id,
                 channel_id,
                 mode_value,
                 duration_value,

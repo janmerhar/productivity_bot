@@ -4,11 +4,24 @@ from abc import ABC, abstractmethod
 
 class FunctionsAbstract(ABC):
     @abstractmethod
-    def saveShortcut2(self, command: str, alias: str, param: object = {}):
+    def saveShortcut2(
+        self,
+        guild_id: int,
+        user_id: int,
+        command: str,
+        alias: str,
+        param: object = {},
+    ):
         pass
 
-    def findSavedShortcut(self, alias: str):
-        saved_shortcut = self.mongo_aliases.find_one({"alias": alias})
+    def findSavedShortcut(self, alias: str, guild_id: int, user_id: int):
+        saved_shortcut = self.mongo_aliases.find_one(
+            {
+                "alias": alias,
+                "guild_id": guild_id,
+                "user_id": user_id,
+            }
+        )
 
         return saved_shortcut
 

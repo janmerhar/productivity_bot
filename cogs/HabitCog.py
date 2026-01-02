@@ -44,6 +44,7 @@ class HabitCog(commands.Cog):
         try:
             document, reminder_time = await asyncio.to_thread(
                 HabitFunctions.insert_habit,
+                interaction.guild_id,
                 interaction.user.id,
                 interaction.channel_id,
                 name,
@@ -101,6 +102,7 @@ class HabitCog(commands.Cog):
         try:
             habits = await asyncio.to_thread(
                 HabitFunctions.list_habits,
+                interaction.guild_id,
                 interaction.user.id,
                 interaction.channel_id,
                 mode_value,
