@@ -31,6 +31,7 @@ class HabitActionView(discord.ui.View):
         updated = await asyncio.to_thread(
             HabitFunctions.add_completion,
             self.habit_id,
+            interaction.guild_id,
             mode,
         )
 

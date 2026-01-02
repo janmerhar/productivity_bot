@@ -24,8 +24,10 @@ class HabitFunctions:
         expression = f"{reminder_time.minute} {reminder_time.hour} * * *"
         schedule = CronSchedule(expression=expression)
         habit_id = str(habit.get("_id"))
+        guild_id = habit.get("guild_id")
         manager = DailyJobManager()
         manager.insert_job(
+            guild_id=guild_id,
             channel_id=habit["channel_id"],
             type="habit",
             data={"habit_id": habit_id},
@@ -90,6 +92,7 @@ class HabitFunctions:
 
     @staticmethod
     def insert_habit(
+        guild_id: int,
         user_id: int,
         channel_id: int,
         name: str,
@@ -120,6 +123,7 @@ class HabitFunctions:
                 )
 
         document: Dict[str, Any] = {
+            "guild_id": guild_id,
             "user_id": user_id,
             "channel_id": channel_id,
             "name": cleaned_name,
@@ -135,11 +139,13 @@ class HabitFunctions:
 
     @staticmethod
     def list_habits(
+        guild_id: int,
         user_id: int,
         channel_id: int,
         mode: str = "all",
     ) -> List[Dict[str, Any]]:
         query: Dict[str, Any] = {
+            "guild_id": guild_id,
             "user_id": user_id,
             "channel_id": channel_id,
         }
@@ -154,16 +160,16 @@ class HabitFunctions:
         return habits
 
     @staticmethod
-    def fetch_habit(habit_id: str) -> Optional[Dict[str, Any]]:
+    def fetch_habit(habit_id: str, guild_id: int) -> Optional[Dict[str, Any]]:
         try:
             object_id = ObjectId(habit_id)
         except Exception:
             return None
 
-        return mongo_db["habits"].find_one({"_id": object_id})
+        return mongo_db["habits"].find_one({"_id": object_id, "guild_id": guild_id})
 
     @staticmethod
-    def add_completion(habit_id: str, mode: str) -> bool:
+    def add_completion(habit_id: str, guild_id: int, mode: str) -> bool:
         if mode not in {"complete", "skip", "incomplete"}:
             return False
 
@@ -178,7 +184,7 @@ class HabitFunctions:
         }
 
         result = mongo_db["habits"].update_one(
-            {"_id": object_id},
+            {"_id": object_id, "guild_id": guild_id},
             {"$push": {"completitions": entry}},
         )
 
