@@ -23,8 +23,10 @@ class TodoFunctions:
 
         schedule = OneTimeSchedule2(datetime=due_dt.isoformat())
         task_id = str(todo.get("_id"))
+        guild_id = todo.get("guild_id")
         manager = DailyJobManager()
         manager.insert_job(
+            guild_id=guild_id,
             channel_id=todo["channel_id"],
             type="todo",
             data={"task_id": task_id},
@@ -97,6 +99,7 @@ class TodoFunctions:
 
     @staticmethod
     def insert_todo(
+        guild_id: int,
         user_id: int,
         channel_id: int,
         name: str,
@@ -124,6 +127,7 @@ class TodoFunctions:
                 )
 
         document: Dict[str, Any] = {
+            "guild_id": guild_id,
             "user_id": user_id,
             "channel_id": channel_id,
             "name": cleaned_name,
@@ -139,11 +143,12 @@ class TodoFunctions:
 
     @staticmethod
     def list_todos(
+        guild_id: int,
         channel_id: int,
         mode: str = "channel",
         sort: str = "descending",
     ) -> List[Dict[str, Any]]:
-        query: Dict[str, Any] = {"state": "todo"}
+        query: Dict[str, Any] = {"state": "todo", "guild_id": guild_id}
         if mode != "all":
             query["channel_id"] = channel_id
 
@@ -153,23 +158,23 @@ class TodoFunctions:
         return list(cursor)
 
     @staticmethod
-    def fetch_todo(todo_id: str) -> Optional[Dict[str, Any]]:
+    def fetch_todo(todo_id: str, guild_id: int) -> Optional[Dict[str, Any]]:
         try:
             object_id = ObjectId(todo_id)
         except Exception:
             return None
 
-        return mongo_db["todos"].find_one({"_id": object_id})
+        return mongo_db["todos"].find_one({"_id": object_id, "guild_id": guild_id})
 
     @staticmethod
-    def complete_todo(todo_id: str) -> bool:
+    def complete_todo(todo_id: str, guild_id: int) -> bool:
         try:
             object_id = ObjectId(todo_id)
         except Exception:
             return False
 
         result = mongo_db["todos"].update_one(
-            {"_id": object_id},
+            {"_id": object_id, "guild_id": guild_id},
             {"$set": {"state": "done"}},
         )
 

@@ -42,6 +42,7 @@ class TodoCog(commands.Cog):
         try:
             document, due_dt = await asyncio.to_thread(
                 TodoFunctions.insert_todo,
+                interaction.guild_id,
                 interaction.user.id,
                 interaction.channel_id,
                 name,
@@ -110,6 +111,7 @@ class TodoCog(commands.Cog):
         try:
             todos = await asyncio.to_thread(
                 TodoFunctions.list_todos,
+                interaction.guild_id,
                 interaction.channel_id,
                 mode_value,
                 sort_value,
