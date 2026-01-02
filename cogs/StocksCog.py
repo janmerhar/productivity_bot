@@ -4,7 +4,6 @@ from discord.ext import commands
 from discord import app_commands
 
 from embeds.StocksEmbeds import StocksEmbeds
-from config.env import env
 
 
 class StocksCog(commands.Cog):
@@ -37,4 +36,4 @@ class StocksCog(commands.Cog):
 
 
 async def setup(client):
-    await client.add_cog(StocksCog(client), guilds=[discord.Object(env["GUILD_ID"])])
+    await client.add_cog(StocksCog(client))

@@ -5,7 +5,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from config.env import env
 from embeds.HabitEmbeds import HabitEmbeds
 from classes.HabitFunctions import HabitFunctions
 from views.HabitActionView import HabitActionView
@@ -132,4 +131,4 @@ class HabitCog(commands.Cog):
 
 
 async def setup(client: commands.Bot) -> None:
-    await client.add_cog(HabitCog(client), guilds=[discord.Object(env["GUILD_ID"])])
+    await client.add_cog(HabitCog(client))

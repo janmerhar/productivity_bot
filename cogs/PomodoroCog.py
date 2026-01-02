@@ -7,7 +7,6 @@ from discord.ext import commands
 
 from classes.PomodoroFunctions import PomodoroFunctions
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
-from config.env import env
 from embeds.PomodoroEmbeds import PomodoroEmbeds
 from views.PomodoroStartView import PomodoroStartView
 
@@ -115,4 +114,4 @@ class PomodoroCog(commands.Cog):
 
 
 async def setup(client: commands.Bot) -> None:
-    await client.add_cog(PomodoroCog(client), guilds=[discord.Object(env["GUILD_ID"])])
+    await client.add_cog(PomodoroCog(client))

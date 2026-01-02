@@ -12,7 +12,6 @@ import sys
 import aiohttp
 
 from embeds.AliasEmbeds import AliasEmbeds
-from config.env import env
 
 
 class AliasCog(commands.Cog):
@@ -85,4 +84,4 @@ class AliasCog(commands.Cog):
 
 
 async def setup(client):
-    await client.add_cog(AliasCog(client), guilds=[discord.Object(env["GUILD_ID"])])
+    await client.add_cog(AliasCog(client))

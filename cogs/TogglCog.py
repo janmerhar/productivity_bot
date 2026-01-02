@@ -7,7 +7,6 @@ from discord import app_commands
 
 from embeds.TogglEmbeds import TogglEmbeds
 from classes.TogglCredentials import TogglCredentials
-from config.env import env
 
 
 class TogglCog(commands.Cog):
@@ -322,4 +321,4 @@ class TogglCog(commands.Cog):
 
 
 async def setup(client):
-    await client.add_cog(TogglCog(client), guilds=[discord.Object(env["GUILD_ID"])])
+    await client.add_cog(TogglCog(client))

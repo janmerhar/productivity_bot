@@ -40,7 +40,8 @@ In order to provide API access to the bot, you need to create a `.env` file in t
 ```bash
 DISCORD_TOKEN
 
-GUILD_ID
+DEV_MODE
+DEV_GUILD_ID
 
 TOGGL_TOKEN
 
@@ -53,6 +54,10 @@ TICK_PASSWORD
 MONGO_URI
 
 OPENAI_API_KEY
+
+POMODORO_AUDIO_PATH
+POMODORO_BREAK_AUDIO_PATH
+POMODORO_AUDIO_VOLUME
 ```
 
 ### Setup

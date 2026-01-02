@@ -7,7 +7,6 @@ from discord.ext import commands
 
 from classes.TodoFunctions import TodoFunctions
 from embeds.TodoEmbeds import TodoEmbeds, TodoListView
-from config.env import env
 
 
 class TodoCog(commands.Cog):
@@ -138,4 +137,4 @@ class TodoCog(commands.Cog):
 
 
 async def setup(client: commands.Bot) -> None:
-    await client.add_cog(TodoCog(client), guilds=[discord.Object(env["GUILD_ID"])])
+    await client.add_cog(TodoCog(client))
