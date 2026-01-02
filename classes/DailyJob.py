@@ -29,6 +29,7 @@ class DailyJob:
     def __init__(
         self,
         id: ObjectId,
+        guild_id: Optional[int],
         channel_id: int,
         type: str,
         data: Dict[str, Any],
@@ -36,6 +37,7 @@ class DailyJob:
         last_run: Optional[datetime.date] = None,
     ) -> None:
         self.id = id
+        self.guild_id = guild_id
         self.channel_id = channel_id
         self.type = type
         self.data = data
@@ -43,12 +45,14 @@ class DailyJob:
         self.last_run = last_run
 
     def insert(
+        guild_id: Optional[int],
         channel_id: int,
         type: str,
         data: dict,
         schedule: dict = None,
     ) -> "DailyJob":
         document = {
+            "guild_id": guild_id,
             "channel_id": channel_id,
             "type": type,
             "data": data,
@@ -61,6 +65,7 @@ class DailyJob:
 
         return DailyJob(
             id=result.inserted_id,
+            guild_id=guild_id,
             channel_id=channel_id,
             type=type,
             data=data,
@@ -69,10 +74,16 @@ class DailyJob:
         )
 
     @staticmethod
-    def delete(job_id: ObjectId, channel_id: Optional[int] = None) -> bool:
+    def delete(
+        job_id: ObjectId,
+        channel_id: Optional[int] = None,
+        guild_id: Optional[int] = None,
+    ) -> bool:
         filter_query: Dict[str, Any] = {"_id": job_id}
         if channel_id is not None:
             filter_query["channel_id"] = channel_id
+        if guild_id is not None:
+            filter_query["guild_id"] = guild_id
 
         result = mongo_db["tasks"].delete_one(filter_query)
         return result.deleted_count > 0
@@ -163,6 +174,7 @@ class DailyJob:
             jobs.append(
                 DailyJob(
                     id=doc["_id"],
+                    guild_id=doc.get("guild_id"),
                     channel_id=doc["channel_id"],
                     type=doc["type"],
                     data=doc["data"],
@@ -184,6 +196,7 @@ class DailyJob:
             jobs.append(
                 DailyJob(
                     id=doc["_id"],
+                    guild_id=doc.get("guild_id"),
                     channel_id=doc["channel_id"],
                     type=doc["type"],
                     data=doc["data"],
