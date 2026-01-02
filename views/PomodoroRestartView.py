@@ -21,6 +21,7 @@ class PomodoroRestartView(discord.ui.View):
         try:
             end_time, resolved_duration = await asyncio.to_thread(
                 PomodoroFunctions.create_timer,
+                interaction.guild_id,
                 interaction.channel_id,
                 mode,
                 None,

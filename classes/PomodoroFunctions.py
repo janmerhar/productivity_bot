@@ -19,6 +19,7 @@ class PomodoroStopResult:
 class PomodoroFunctions:
     @staticmethod
     def create_timer(
+        guild_id: Optional[int],
         channel_id: int,
         mode: str,
         duration_minutes: Optional[int],
@@ -35,7 +36,7 @@ class PomodoroFunctions:
             )
         )
         manager = DailyJobManager()
-        manager.insert_job(channel_id, "pomodoro", data, schedule)
+        manager.insert_job(guild_id, channel_id, "pomodoro", data, schedule)
 
         return end_time, resolved_duration
 
@@ -122,9 +123,14 @@ class PomodoroFunctions:
         interaction: discord.Interaction,
     ) -> PomodoroStopResult:
         manager = DailyJobManager()
+        guild_id = interaction.guild_id
 
         try:
-            jobs = await asyncio.to_thread(manager.list_jobs, interaction.channel_id)
+            jobs = await asyncio.to_thread(
+                manager.list_jobs,
+                interaction.channel_id,
+                guild_id,
+            )
         except Exception:
             return PomodoroStopResult(
                 ok=False,
@@ -148,7 +154,10 @@ class PomodoroFunctions:
         for job in user_jobs:
             try:
                 deleted = await asyncio.to_thread(
-                    manager.delete_job, str(job.id), interaction.channel_id
+                    manager.delete_job,
+                    str(job.id),
+                    interaction.channel_id,
+                    guild_id,
                 )
             except Exception:
                 continue
@@ -162,7 +171,9 @@ class PomodoroFunctions:
             )
 
         remaining_jobs = await asyncio.to_thread(
-            manager.list_jobs, interaction.channel_id
+            manager.list_jobs,
+            interaction.channel_id,
+            guild_id,
         )
         remaining_pomodoros = [job for job in remaining_jobs if job.type == "pomodoro"]
 
