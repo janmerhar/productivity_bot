@@ -8,7 +8,8 @@ from config.env import env
 from config.logger import setup_logging
 
 tick_disabled = env.get("TICK_DISABLED") == "true"
-sync_guild_id = env.get("GUILD_ID")
+dev_mode = env.get("DEV_MODE") == "true"
+dev_guild_id = env.get("DEV_GUILD_ID")
 
 setup_logging()
 
@@ -23,20 +24,38 @@ _sync_done = False
 async def on_ready():
     global _sync_done
     if not _sync_done:
-        guild_object = discord.Object(id=sync_guild_id) if sync_guild_id else None
+        did_sync = False
         try:
-            bot.tree.clear_commands(guild=None)
-            await bot.tree.sync(guild=None)
-            if guild_object is not None:
-                await bot.tree.sync(guild=guild_object)
+            if dev_mode:
+                if not dev_guild_id:
+                    logging.getLogger(__name__).warning(
+                        "DEV_MODE is true but DEV_GUILD_ID is not set; skipping sync."
+                    )
+                else:
+                    try:
+                        guild_object = discord.Object(id=int(dev_guild_id))
+                    except ValueError:
+                        logging.getLogger(__name__).warning(
+                            "DEV_GUILD_ID must be an integer; skipping sync."
+                        )
+                    else:
+                        await bot.tree.sync(guild=guild_object)
+                        did_sync = True
+                        logging.getLogger(__name__).info(
+                            "Synced dev guild application commands for guild %s.",
+                            dev_guild_id,
+                        )
+            else:
+                await bot.tree.sync()
+                did_sync = True
+                logging.getLogger(__name__).info(
+                    "Synced global application commands."
+                )
         except Exception:
             logging.getLogger(__name__).exception("Failed to sync application commands")
         else:
-            _sync_done = True
-            logging.getLogger(__name__).info(
-                "Synced application commands%s.",
-                f" for guild {sync_guild_id}" if guild_object is not None else "",
-            )
+            if did_sync:
+                _sync_done = True
 
     print("Online")
 
