@@ -184,13 +184,31 @@ class TogglEmbeds(EmbedsAbstract):
     - Add project color of embed, if applicable
     """
 
-    def savetimer_embed(self, command: str, workspace_id: int = None, billable: str = None, description: str = None,
-                        pid: int = None, tags: str = None, tid: int = None,):
+    def savetimer_embed(
+        self,
+        guild_id: int,
+        user_id: int,
+        command: str,
+        workspace_id: int = None,
+        billable: str = None,
+        description: str = None,
+        pid: int = None,
+        tags: str = None,
+        tid: int = None,
+    ):
 
         inserted_id = self.toggl.saveTimer(
-            command=command, workspace_id=workspace_id, billable=billable, description=description, project=pid, tid=tid)
+            guild_id=guild_id,
+            user_id=user_id,
+            command=command,
+            workspace_id=workspace_id,
+            billable=billable,
+            description=description,
+            project=pid,
+            tid=tid,
+        )
 
-        timer = self.toggl.findSavedTimer(inserted_id)
+        timer = self.toggl.findSavedTimer(inserted_id, guild_id, user_id)
 
         embed = discord.Embed(
             title=":stopwatch: Toggl Insert Timer",
@@ -210,8 +228,8 @@ class TogglEmbeds(EmbedsAbstract):
 
         return {"embeds": [embed]}
 
-    def removetimer_embed(self, identifier: str):
-        timer = self.toggl.findSavedTimer(identifier)
+    def removetimer_embed(self, identifier: str, guild_id: int, user_id: int):
+        timer = self.toggl.findSavedTimer(identifier, guild_id, user_id)
 
         if timer is None:
             embed = discord.Embed(
@@ -226,7 +244,7 @@ class TogglEmbeds(EmbedsAbstract):
 
             return {"embeds": [embed]}
         else:
-            self.toggl.removeSavedTimer(identifier)
+            self.toggl.removeSavedTimer(identifier, guild_id, user_id)
 
             embed = discord.Embed(
                 title=":stopwatch: Toggl Delete Timer",
@@ -252,7 +270,7 @@ class TogglEmbeds(EmbedsAbstract):
     - Active timer will be stopped regardless if the saved command exist in database
     """
 
-    def startsaved_embed(self, identifier: str):
+    def startsaved_embed(self, identifier: str, guild_id: int, user_id: int):
         embeds = []
 
         active_timer = self.toggl.getCurrentTimeEntry()
@@ -262,7 +280,7 @@ class TogglEmbeds(EmbedsAbstract):
 
             embeds.append(stopped_embed["embed"])
 
-        timer = self.toggl.startSavedTimer(identifier)
+        timer = self.toggl.startSavedTimer(identifier, guild_id, user_id)
 
         if timer is None:
             embed = discord.Embed(
@@ -298,16 +316,25 @@ class TogglEmbeds(EmbedsAbstract):
 
             return {"embeds": embeds}
 
-    def startsaved_autocomplete_embed(self, current: str = ""):
+    def startsaved_autocomplete_embed(
+        self,
+        current: str,
+        guild_id: int,
+        user_id: int,
+    ):
         res = [
             app_commands.Choice(name=timer["command"], value=timer["command"])
-            for timer in self.toggl.findSavedTimersLike(current)
+            for timer in self.toggl.findSavedTimersLike(
+                current,
+                guild_id,
+                user_id,
+            )
         ]
 
         return res
 
-    def populartimers_embed(self, n: int):
-        timers = self.toggl.mostCommonlyUsedTimers(n)
+    def populartimers_embed(self, n: int, guild_id: int, user_id: int):
+        timers = self.toggl.mostCommonlyUsedTimers(n, guild_id, user_id)
 
         embed = discord.Embed(
             title=":stopwatch: Toggl Stop Timer",
@@ -476,7 +503,15 @@ class TogglEmbeds(EmbedsAbstract):
     # Shortcuts
     #
 
-    def createalias_embed(self, command: str,  alias: str, arguments: str = "", cog_param: object = {}) -> dict:
+    def createalias_embed(
+        self,
+        guild_id: int,
+        user_id: int,
+        command: str,
+        alias: str,
+        arguments: str = "",
+        cog_param: object = {},
+    ) -> dict:
         alias_fn = self.getFunctionByName(name=command)
 
         if alias_fn is None:
@@ -495,7 +530,12 @@ class TogglEmbeds(EmbedsAbstract):
             cog_param.update(insert_args)
 
             inserted_data = self.toggl.saveShortcut2(
-                command=command, alias=alias, param=cog_param)
+                guild_id=guild_id,
+                user_id=user_id,
+                command=command,
+                alias=alias,
+                param=cog_param,
+            )
 
             embed = discord.Embed(
                 title=":stopwatch: Toggl New Shortcut",
@@ -526,8 +566,18 @@ class TogglEmbeds(EmbedsAbstract):
     - Add argument for passing alias_data as querying will not be needed with AliasCog.py implementation
     """
 
-    def usealias_embed(self, alias: str):
-        alias_data = self.toggl.findSavedShortcut(alias=alias)
+    def usealias_embed(self, alias: str, guild_id: int, user_id: int):
+        alias_data = self.toggl.findSavedShortcut(alias, guild_id, user_id)
+        if alias_data is None:
+            embed = discord.Embed(
+                title=":stopwatch: Toggl Shortcut",
+                color=discord.Colour.from_str("#552d4f"),
+                description="Alias not found",
+            )
+            embed.set_thumbnail(
+                url="https://i.imgur.com/Cmjl4Kb.png"
+            )
+            return {"embeds": [embed]}
 
         fn_embed = self.getFunctionByName(alias_data["command"])
 
