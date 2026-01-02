@@ -12,7 +12,6 @@ from classes.DailyJob import CronSchedule, DailyJob, OneTimeSchedule2
 from classes.DailyJobManager import DailyJobManager
 from classes.PomodoroFunctions import PomodoroFunctions
 from classes.TodoFunctions import TodoFunctions
-from config.env import env
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from embeds.HabitEmbeds import HabitEmbeds
 from embeds.TodoEmbeds import TodoEmbeds
@@ -356,4 +355,4 @@ class DailyTaskCog(commands.Cog):
 
 
 async def setup(client: commands.Bot) -> None:
-    await client.add_cog(DailyTaskCog(client), guilds=[discord.Object(env["GUILD_ID"])])
+    await client.add_cog(DailyTaskCog(client))
