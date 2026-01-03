@@ -31,13 +31,6 @@ class HabitFunctions:
         )
 
     @staticmethod
-    def convert_reminder_to_time(
-        reminder: str,
-        api_key: Optional[str] = None,
-    ) -> Optional[datetime.time]:
-        return OpenAIFunctions.parse_reminder_time(reminder, api_key=api_key)
-
-    @staticmethod
     def insert_habit(
         guild_id: int,
         user_id: int,
@@ -60,7 +53,7 @@ class HabitFunctions:
             api_key = env.get("OPENAI_API_KEY")
             if not api_key:
                 raise ValueError("OpenAI API key is not configured.")
-            reminder_time = HabitFunctions.convert_reminder_to_time(
+            reminder_time = OpenAIFunctions.parse_reminder_time(
                 reminder_text,
                 api_key=api_key,
             )
