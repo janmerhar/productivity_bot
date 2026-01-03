@@ -39,18 +39,18 @@ async def on_ready():
                             "DEV_GUILD_ID must be an integer; skipping sync."
                         )
                     else:
-                        await bot.tree.sync(guild=guild_object)
+                        bot.tree.copy_global_to(guild=guild_object)
+                        synced = await bot.tree.sync(guild=guild_object)
                         did_sync = True
                         logging.getLogger(__name__).info(
-                            "Synced dev guild application commands for guild %s.",
+                            "Synced %d dev guild application commands for guild %s.",
+                            len(synced),
                             dev_guild_id,
                         )
             else:
                 await bot.tree.sync()
                 did_sync = True
-                logging.getLogger(__name__).info(
-                    "Synced global application commands."
-                )
+                logging.getLogger(__name__).info("Synced global application commands.")
         except Exception:
             logging.getLogger(__name__).exception("Failed to sync application commands")
         else:
