@@ -1,16 +1,12 @@
 import datetime
-import json
 from typing import Optional, Tuple, Dict, Any, List
 
 from bson.objectid import ObjectId
-from openai import APIError, OpenAI
 
 from classes.DailyJob import CronSchedule
+from classes.OpenAIFunctions import OpenAIFunctions
 from config.db import mongo_db
 from config.env import env
-
-
-DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 
 
 class HabitFunctions:
@@ -39,56 +35,7 @@ class HabitFunctions:
         reminder: str,
         api_key: Optional[str] = None,
     ) -> Optional[datetime.time]:
-        text = reminder.strip()
-        if not text:
-            return None
-
-        api_key = api_key or env.get("OPENAI_API_KEY")
-        if not api_key:
-            return None
-
-        now = datetime.datetime.now()
-        client = OpenAI(api_key=api_key)
-        system_prompt = (
-            "You convert natural language reminder times into 24-hour local times. "
-            "Return JSON with a single key 'time' whose value is in HH:MM format. "
-            "If the input cannot be understood, set 'time' to null. "
-            "Ignore any dates and return the time only."
-        )
-        user_prompt = (
-            f"Current local datetime: {now.strftime('%Y-%m-%d %H:%M')}\n"
-            f"Input: {text}"
-        )
-
-        try:
-            response = client.chat.completions.create(
-                model=DEFAULT_OPENAI_MODEL,
-                temperature=0,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                response_format={"type": "json_object"},
-            )
-        except APIError:
-            return None
-
-        message = response.choices[0].message.content or ""
-        try:
-            payload = json.loads(message)
-        except json.JSONDecodeError:
-            return None
-
-        time_value = payload.get("time")
-        if not time_value:
-            return None
-
-        try:
-            parsed = datetime.datetime.strptime(time_value.strip(), "%H:%M")
-        except ValueError:
-            return None
-
-        return datetime.time(hour=parsed.hour, minute=parsed.minute)
+        return OpenAIFunctions.parse_reminder_time(reminder, api_key=api_key)
 
     @staticmethod
     def insert_habit(
