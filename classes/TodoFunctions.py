@@ -1,16 +1,12 @@
 import datetime
-import json
 from typing import Optional, Tuple, Dict, Any, List
 
-from openai import APIError, OpenAI
 from bson.objectid import ObjectId
 
 from classes.DailyJob import OneTimeSchedule2
+from classes.OpenAIFunctions import OpenAIFunctions
 from config.db import mongo_db
 from config.env import env
-
-
-DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 
 
 class TodoFunctions:
@@ -38,64 +34,7 @@ class TodoFunctions:
         due: str,
         api_key: Optional[str] = None,
     ) -> Optional[datetime.datetime]:
-        text = due.strip()
-        if not text:
-            return None
-
-        api_key = api_key or env.get("OPENAI_API_KEY")
-        if not api_key:
-            return None
-
-        now = datetime.datetime.now()
-        client = OpenAI(api_key=api_key)
-        system_prompt = (
-            "You convert natural language due dates into local datetimes. "
-            "Return JSON with a single key 'due' whose value is an ISO 8601 datetime "
-            "without timezone (YYYY-MM-DDTHH:MM). "
-            "If the input cannot be understood, set 'due' to null. "
-            "Prefer future dates; if a time would be in the past, choose the next occurrence."
-        )
-        user_prompt = (
-            f"Current local datetime: {now.strftime('%Y-%m-%d %H:%M')}\n"
-            f"Input: {text}"
-        )
-
-        try:
-            response = client.chat.completions.create(
-                model=DEFAULT_OPENAI_MODEL,
-                temperature=0,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                response_format={"type": "json_object"},
-            )
-        except APIError:
-            return None
-
-        message = response.choices[0].message.content or ""
-        try:
-            payload = json.loads(message)
-        except json.JSONDecodeError:
-            return None
-
-        due_value = payload.get("due")
-        if not due_value:
-            return None
-
-        try:
-            due_dt = datetime.datetime.fromisoformat(due_value)
-        except ValueError:
-            return None
-
-        if due_dt.tzinfo is not None:
-            due_dt = due_dt.astimezone().replace(tzinfo=None)
-
-        due_dt = due_dt.replace(second=0, microsecond=0)
-        if due_dt <= now:
-            due_dt += datetime.timedelta(days=1)
-
-        return due_dt
+        return OpenAIFunctions.parse_due_datetime(due, api_key=api_key)
 
     @staticmethod
     def insert_todo(
