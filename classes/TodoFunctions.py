@@ -30,13 +30,6 @@ class TodoFunctions:
         )
 
     @staticmethod
-    def convert_due_to_timestamp(
-        due: str,
-        api_key: Optional[str] = None,
-    ) -> Optional[datetime.datetime]:
-        return OpenAIFunctions.parse_due_datetime(due, api_key=api_key)
-
-    @staticmethod
     def insert_todo(
         guild_id: int,
         user_id: int,
@@ -59,7 +52,7 @@ class TodoFunctions:
             api_key = env.get("OPENAI_API_KEY")
             if not api_key:
                 raise ValueError("OpenAI API key is not configured.")
-            due_dt = TodoFunctions.convert_due_to_timestamp(due_text, api_key=api_key)
+            due_dt = OpenAIFunctions.parse_due_datetime(due_text, api_key=api_key)
             if due_dt is None:
                 raise ValueError(
                     "I couldn't understand that due time. Try 'tomorrow 8pm'."
