@@ -1,15 +1,11 @@
 import datetime
-import json
-import os
 from typing import Optional
 
 from croniter import CroniterBadCronError, croniter
-from openai import APIError, OpenAI
+from openai import OpenAI
 
+from classes.OpenAIFunctions import OpenAIFunctions
 from config.env import env
-
-
-DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 
 
 class CronConversionError(Exception):
@@ -21,7 +17,7 @@ class CronScheduleResolver:
 
     def __init__(
         self,
-        model: str = DEFAULT_OPENAI_MODEL,
+        model: str = OpenAIFunctions.DEFAULT_OPENAI_MODEL,
         client: Optional[OpenAI] = None,
         api_key: Optional[str] = None,
     ) -> None:
@@ -52,30 +48,14 @@ class CronScheduleResolver:
         return True
 
     def _cron_from_text(self, text: str) -> str:
-        client = self._get_client()
-        system_prompt = (
-            "You convert natural language schedules into standard five-field cron expressions "
-            "(minute hour day-of-month month day-of-week). "
-            "Return JSON with a single key 'cron'. If conversion is impossible, set the value to null. "
-            "Use 0-6 for day-of-week, where 0 corresponds to Sunday."
-        )
-        user_prompt = f"Schedule: {text}"
-
-        response = client.chat.completions.create(
+        cron_value = OpenAIFunctions.parse_cron_expression(
+            text,
             model=self._model,
-            temperature=0,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={"type": "json_object"},
+            client=self._get_client(),
+            api_key=self._api_key,
         )
-
-        message = response.choices[0].message.content
-        payload = json.loads(message)
-
-        cron_value = payload["cron"]
-        cron_value = cron_value.strip()
+        if not cron_value:
+            raise CronConversionError("Schedule could not be parsed.")
 
         if not self.is_valid(cron_value):
             raise CronConversionError("Model produced an invalid cron expression.")
