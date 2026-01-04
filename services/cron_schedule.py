@@ -4,7 +4,7 @@ from typing import Optional
 from croniter import CroniterBadCronError, croniter
 from openai import OpenAI
 
-from classes.OpenAIFunctions import OpenAIFunctions
+from classes.OpenAIFunctions import OpenAIFunctions, DEFAULT_OPENAI_MODEL
 from config.env import env
 
 
@@ -17,7 +17,7 @@ class CronScheduleResolver:
 
     def __init__(
         self,
-        model: str = OpenAIFunctions.DEFAULT_OPENAI_MODEL,
+        model: str = DEFAULT_OPENAI_MODEL,
         client: Optional[OpenAI] = None,
         api_key: Optional[str] = None,
     ) -> None:
