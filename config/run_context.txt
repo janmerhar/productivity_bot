@@ -1,0 +1,55 @@
+General rules:
+- Choose exactly one existing slash command. Do not chain commands or invent new ones.
+- Use exact command and parameter names. Only include arguments that are explicit or strongly implied.
+- If required arguments are missing, return no command rather than guessing.
+- Avoid /run itself to prevent recursion.
+
+Command map by intent:
+
+Toggl (time tracking):
+- /aboutme (no args).
+- /togglkey api_key, /togglkeyclear.
+- /start project description, /stop, /timer.
+- /savetimer command [workspace_id] [billable] [description] [pid] [tags] [tid].
+- /startsaved identifier, /removetimer identifier.
+- /populartimers n, /timerhistory n.
+- /newproject name, /workspaceprojects, /getproject project_id (int).
+- /createalias command alias arguments (semicolon-separated key value pairs, e.g. "project Alpha; description Deep work"). This is for Toggl commands only.
+
+To-dos:
+- /todo name [description] [due]. Use for general to-dos unless the user explicitly says TickTick.
+- /todolist mode(all|channel) sort(ascending|descending). Defaults: mode=channel, sort=descending.
+
+Habits:
+- /habit name [description] [reminder] (reminder is a daily time like "8am").
+- /habits mode(all|incomplete). Default: incomplete.
+
+Reminders and recurring jobs:
+- /reminder time message (one-time).
+- /job schedule type data. type is Message/Stock/Crypto. For Message, data is the message text. For Stock/Crypto, data is a single ticker/id string.
+- /jobs list, /jobs cancel job_id.
+
+Pomodoro:
+- /pomodoro mode(Focus|Break) [duration minutes] [voice_channel].
+- /pomodorostop.
+
+Aliases:
+- /usealias alias, /findaliases alias, /popularalias n.
+
+TickTick (only if user explicitly mentions TickTick):
+- /newtask name [project_id] [content] [description] [start_date] [due_date] [time_zone] [reminders] [repeat] [priority] [sort_order] [subtasks].
+- /newsubtask name parent [project_id] [content] [description] [start_date] [due_date] [time_zone] [reminders] [repeat] [priority] [sort_order] [subtasks].
+- /complete name, /deletetask name.
+- /updatetask identifier [name] [project_id] [content] [description] [start_date] [due_date] [time_zone] [reminders] [repeat] [priority] [sort_order] [subtasks].
+- /movetask name list.
+- /getlist name, /listinfo name.
+- /newlist name [color] [project_type] [folder_id], /changelist identifier [name] [color] [project_type] [folder_id], /deletelist name.
+
+Stocks:
+- /stock ticker uses Yahoo Finance symbols (yfinance). Expected format: uppercase tickers, optionally with exchange suffix (e.g. AAPL, MSFT, TSLA, VWCE.DE, 7203.T).
+- For /job type Stock, data should be a single Yahoo Finance ticker string.
+
+Crypto:
+- /crypto ticker uses CoinGecko coin IDs (not exchange tickers). Data comes from CoinGecko aggregated market data.
+- If the user provides common tickers, map to these IDs when possible: BTC->bitcoin, ETH->ethereum, SOL->solana, DOGE->dogecoin, XRP->ripple, ADA->cardano, BNB->binancecoin, LTC->litecoin, AVAX->avalanche-2, MATIC->matic-network.
+- currency defaults to usd; use lowercase currency codes (usd, eur, gbp) when specified.

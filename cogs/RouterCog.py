@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from classes.SlashCommandRouter import SlashCommandRouter
+from config.env import env
 
 
 class RouterCog(commands.Cog):
@@ -27,6 +28,12 @@ class RouterCog(commands.Cog):
         query: str,
         private: bool = True,
     ) -> None:
+        if env.get("DEV_MODE") == "true":
+            await interaction.response.send_message(
+                "This command is in development.",
+                ephemeral=private,
+            )
+            return
         await interaction.response.defer(thinking=True, ephemeral=private)
         router = SlashCommandRouter(
             interaction.client.tree,
