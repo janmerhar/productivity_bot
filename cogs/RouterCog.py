@@ -1,9 +1,12 @@
+from typing import Optional
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from classes.SlashCommandRouter import SlashCommandRouter
 from config.env import env
+from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
 class RouterCog(commands.Cog):
@@ -20,26 +23,28 @@ class RouterCog(commands.Cog):
     )
     @app_commands.describe(
         query="Instruction for the bot",
-        private="Send the response privately",
+        visibility=VISIBILITY_DESC,
     )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def run(
         self,
         interaction: discord.Interaction,
         query: str,
-        private: bool = True,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
+        ephemeral = resolve_visibility(visibility, default="private")
         if env.get("DEV_MODE") == "true":
             await interaction.response.send_message(
                 "This command is in development.",
-                ephemeral=private,
+                ephemeral=ephemeral,
             )
             return
-        await interaction.response.defer(thinking=True, ephemeral=private)
+        await interaction.response.defer(thinking=True, ephemeral=ephemeral)
         router = SlashCommandRouter(
             interaction.client.tree,
             excluded={"run"},
         )
-        await router.dispatch(interaction, query, ephemeral_default=private)
+        await router.dispatch(interaction, query, ephemeral_default=ephemeral)
 
 
 async def setup(client: commands.Bot) -> None:

@@ -1,5 +1,7 @@
 # Color palette
 # https://colorswall.com/palette/72717/
+from typing import Optional
+
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -12,6 +14,7 @@ import sys
 import aiohttp
 
 from embeds.AliasEmbeds import AliasEmbeds
+from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
 class AliasCog(commands.Cog):
@@ -42,21 +45,37 @@ class AliasCog(commands.Cog):
     @app_commands.command(name="usealias", description="Shortcuts use alias")
     @app_commands.describe(
         alias="Alias of a command to be used",
+        visibility=VISIBILITY_DESC,
     )
-    async def usealias(self, interaction: discord.Interaction, alias: str):
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def usealias(
+        self,
+        interaction: discord.Interaction,
+        alias: str,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ):
+        ephemeral = resolve_visibility(visibility, default="public")
         param = AliasEmbeds.usealias_embed(
             alias=alias,
             guild_id=interaction.guild_id,
             user_id=interaction.user.id,
         )
 
-        await interaction.response.send_message(**param)
+        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
     @app_commands.command(name="findaliases", description="Shortcuts find aliases")
     @app_commands.describe(
         alias="Alias of a command to be used",
+        visibility=VISIBILITY_DESC,
     )
-    async def findalias(self, interaction: discord.Interaction, alias: str):
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def findalias(
+        self,
+        interaction: discord.Interaction,
+        alias: str,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ):
+        ephemeral = resolve_visibility(visibility, default="public")
         print(AliasCog.getFunctionByName(AliasCog, "usealias"))
         print(
             AliasCog.getDefaultParameters(
@@ -69,18 +88,28 @@ class AliasCog(commands.Cog):
             user_id=interaction.user.id,
         )
 
-        await interaction.response.send_message(**param)
+        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
     @app_commands.command(name="popularalias", description="Most popular aliases")
-    @app_commands.describe(n="Number of most popular aliases to be displayed")
-    async def popularalias(self, interaction: discord.Interaction, n: int = 5):
+    @app_commands.describe(
+        n="Number of most popular aliases to be displayed",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def popularalias(
+        self,
+        interaction: discord.Interaction,
+        n: int = 5,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ):
+        ephemeral = resolve_visibility(visibility, default="public")
         param = AliasEmbeds.popularalias_embed(
             n=n,
             guild_id=interaction.guild_id,
             user_id=interaction.user.id,
         )
 
-        await interaction.response.send_message(**param)
+        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
 
 async def setup(client):
