@@ -63,6 +63,7 @@ async def on_ready():
 async def load():
     extensions = [
         "cogs.AliasCog",
+        "cogs.BugReportCog",
         "cogs.DailyTaskCog",
         "cogs.FeatureRequestCog",
         "cogs.HabitCog",
