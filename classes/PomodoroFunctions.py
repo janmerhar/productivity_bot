@@ -71,7 +71,7 @@ class PomodoroFunctions:
 
         resolved_duration = duration_minutes
         if resolved_duration is None:
-            resolved_duration = 50 if normalized_mode == "focus" else 20
+            resolved_duration = 30 if normalized_mode == "focus" else 5
 
         if resolved_duration <= 0:
             raise ValueError("Pomodoro duration must be greater than zero.")
