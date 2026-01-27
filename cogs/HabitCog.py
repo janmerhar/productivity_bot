@@ -8,6 +8,7 @@ from discord.ext import commands
 from embeds.HabitEmbeds import HabitEmbeds
 from classes.HabitFunctions import HabitFunctions
 from views.HabitActionView import HabitActionView
+from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
 class HabitCog(commands.Cog):
@@ -23,22 +24,26 @@ class HabitCog(commands.Cog):
         name="Habit name",
         description="Longer description for this habit",
         reminder="Daily reminder time",
+        visibility=VISIBILITY_DESC,
     )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def habit(
         self,
         interaction: discord.Interaction,
         name: str,
         description: Optional[str] = None,
         reminder: Optional[str] = None,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
+        ephemeral = resolve_visibility(visibility, default="private")
         if not name.strip():
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=ephemeral,
                 content="Habit name cannot be empty.",
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=ephemeral)
 
         try:
             document, reminder_time = await asyncio.to_thread(
@@ -51,11 +56,11 @@ class HabitCog(commands.Cog):
                 reminder,
             )
         except ValueError as exc:
-            await interaction.followup.send(ephemeral=True, content=str(exc))
+            await interaction.followup.send(ephemeral=ephemeral, content=str(exc))
             return
         except Exception:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=ephemeral,
                 content="Something went wrong while creating that habit.",
             )
             return
@@ -79,24 +84,30 @@ class HabitCog(commands.Cog):
         if reminder_failed:
             payload["content"] = "Habit created, but I couldn't schedule the reminder."
 
-        await interaction.followup.send(ephemeral=True, **payload)
+        await interaction.followup.send(ephemeral=ephemeral, **payload)
 
     @app_commands.command(name="habits", description="List habits")
-    @app_commands.describe(mode="Show all habits or only incomplete habits")
+    @app_commands.describe(
+        mode="Show all habits or only incomplete habits",
+        visibility=VISIBILITY_DESC,
+    )
     @app_commands.choices(
         mode=[
             app_commands.Choice(name="All", value="all"),
             app_commands.Choice(name="Incomplete", value="incomplete"),
-        ]
+        ],
+        visibility=VISIBILITY_CHOICES,
     )
     async def habits(
         self,
         interaction: discord.Interaction,
         mode: Optional[app_commands.Choice[str]] = None,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
+        ephemeral = resolve_visibility(visibility, default="private")
         mode_value = mode.value if mode else "incomplete"
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=ephemeral)
 
         try:
             habits = await asyncio.to_thread(
@@ -108,14 +119,14 @@ class HabitCog(commands.Cog):
             )
         except Exception:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=ephemeral,
                 content="Something went wrong while fetching habits.",
             )
             return
 
         if not habits:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=ephemeral,
                 **HabitEmbeds.habits_empty_embed(mode_value),
             )
             return
@@ -127,7 +138,7 @@ class HabitCog(commands.Cog):
             habit_name = str(habit.get("name") or "Habit")
             payload = HabitEmbeds.habit_item_embed(habit, status, progress)
             view = HabitActionView(habit_id, habit_name, interaction.user.id)
-            await interaction.followup.send(ephemeral=True, view=view, **payload)
+            await interaction.followup.send(ephemeral=ephemeral, view=view, **payload)
 
 
 async def setup(client: commands.Bot) -> None:

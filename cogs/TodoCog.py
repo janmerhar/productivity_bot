@@ -7,6 +7,7 @@ from discord.ext import commands
 
 from classes.TodoFunctions import TodoFunctions
 from embeds.TodoEmbeds import TodoEmbeds, TodoListView
+from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
 class TodoCog(commands.Cog):
@@ -22,21 +23,25 @@ class TodoCog(commands.Cog):
         name="Task name",
         description="Longer description for this task",
         due="Due date/time (natural language, same as /reminder)",
+        visibility=VISIBILITY_DESC,
     )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def todo(
         self,
         interaction: discord.Interaction,
         name: str,
         description: Optional[str] = None,
         due: Optional[str] = None,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
+        ephemeral = resolve_visibility(visibility, default="private")
         if not name.strip():
             await interaction.response.send_message(
-                ephemeral=True, content="Task name cannot be empty."
+                ephemeral=ephemeral, content="Task name cannot be empty."
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=ephemeral)
 
         try:
             document, due_dt = await asyncio.to_thread(
@@ -49,11 +54,11 @@ class TodoCog(commands.Cog):
                 due,
             )
         except ValueError as exc:
-            await interaction.followup.send(ephemeral=True, content=str(exc))
+            await interaction.followup.send(ephemeral=ephemeral, content=str(exc))
             return
         except Exception:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=ephemeral,
                 content="Something went wrong while creating that todo.",
             )
             return
@@ -79,12 +84,13 @@ class TodoCog(commands.Cog):
                 "Todo created, but I couldn't schedule the due reminder."
             )
 
-        await interaction.followup.send(ephemeral=True, **payload)
+        await interaction.followup.send(ephemeral=ephemeral, **payload)
 
     @app_commands.command(name="todolist", description="List todo items")
     @app_commands.describe(
         mode="Show all todos or only this channel",
         sort="Sort order for the list",
+        visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
         mode=[
@@ -95,17 +101,20 @@ class TodoCog(commands.Cog):
             app_commands.Choice(name="Ascending", value="ascending"),
             app_commands.Choice(name="Descending", value="descending"),
         ],
+        visibility=VISIBILITY_CHOICES,
     )
     async def todolist(
         self,
         interaction: discord.Interaction,
         mode: Optional[app_commands.Choice[str]] = None,
         sort: Optional[app_commands.Choice[str]] = None,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
+        ephemeral = resolve_visibility(visibility, default="private")
         mode_value = mode.value if mode else "channel"
         sort_value = sort.value if sort else "descending"
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=ephemeral)
 
         try:
             todos = await asyncio.to_thread(
@@ -117,7 +126,7 @@ class TodoCog(commands.Cog):
             )
         except Exception:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=ephemeral,
                 content="Something went wrong while fetching todos.",
             )
             return
@@ -130,10 +139,10 @@ class TodoCog(commands.Cog):
         view = TodoListView(todos, mode_value, sort_value) if todos else None
 
         if view is None:
-            await interaction.followup.send(ephemeral=True, **payload)
+            await interaction.followup.send(ephemeral=ephemeral, **payload)
             return
 
-        await interaction.followup.send(ephemeral=True, view=view, **payload)
+        await interaction.followup.send(ephemeral=ephemeral, view=view, **payload)
 
 
 async def setup(client: commands.Bot) -> None:

@@ -9,6 +9,7 @@ from classes.PomodoroFunctions import PomodoroFunctions
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from embeds.PomodoroEmbeds import PomodoroEmbeds
 from views.PomodoroStartView import PomodoroStartView
+from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
 class PomodoroCog(commands.Cog):
@@ -24,12 +25,14 @@ class PomodoroCog(commands.Cog):
         mode="Pick focus or break",
         duration="Duration in minutes (optional)",
         voice_channel="Voice channel to join (optional)",
+        visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
         mode=[
             app_commands.Choice(name="Focus", value="focus"),
             app_commands.Choice(name="Break", value="break"),
-        ]
+        ],
+        visibility=VISIBILITY_CHOICES,
     )
     async def pomodoro(
         self,
@@ -37,14 +40,16 @@ class PomodoroCog(commands.Cog):
         mode: app_commands.Choice[str],
         duration: Optional[int] = None,
         voice_channel: Optional[discord.VoiceChannel] = None,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
+        ephemeral = resolve_visibility(visibility, default="private")
         if duration is not None and duration <= 0:
             await interaction.response.send_message(
-                ephemeral=True, content="Duration must be greater than zero."
+                ephemeral=ephemeral, content="Duration must be greater than zero."
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=ephemeral)
 
         channel_id = interaction.channel_id
         mode_value = mode.value
@@ -64,7 +69,7 @@ class PomodoroCog(commands.Cog):
             )
         except Exception:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=ephemeral,
                 content="Something went wrong while starting that pomodoro.",
             )
             return
@@ -99,18 +104,25 @@ class PomodoroCog(commands.Cog):
             join_url=join_url if voice_error is None else None,
         )
 
-        await interaction.followup.send(ephemeral=True, **payload)
+        await interaction.followup.send(ephemeral=ephemeral, **payload)
 
         if voice_error:
-            await interaction.followup.send(ephemeral=True, content=voice_error)
+            await interaction.followup.send(ephemeral=ephemeral, content=voice_error)
 
     @app_commands.command(
         name="pomodorostop", description="Stop your active pomodoro timer"
     )
-    async def pomodoro_stop(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+    @app_commands.describe(visibility=VISIBILITY_DESC)
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def pomodoro_stop(
+        self,
+        interaction: discord.Interaction,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        ephemeral = resolve_visibility(visibility, default="private")
+        await interaction.response.defer(ephemeral=ephemeral)
         result = await PomodoroFunctions.stop_user_pomodoro(interaction)
-        await interaction.followup.send(ephemeral=True, content=result.message)
+        await interaction.followup.send(ephemeral=ephemeral, content=result.message)
 
 
 async def setup(client: commands.Bot) -> None:

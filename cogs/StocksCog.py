@@ -1,9 +1,12 @@
 import asyncio
+from typing import Optional
+
 import discord
 from discord.ext import commands
 from discord import app_commands
 
 from embeds.StocksEmbeds import StocksEmbeds
+from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
 class StocksCog(commands.Cog):
@@ -20,9 +23,19 @@ class StocksCog(commands.Cog):
 
     # Naredi embed...
     @app_commands.command(name="stock", description="Get stock price")
-    @app_commands.describe(ticker="Ticker symbol of the stock or ETF")
-    async def fetchStock(self, interaction: discord.Interaction, ticker: str):
-        await interaction.response.defer(thinking=True)
+    @app_commands.describe(
+        ticker="Ticker symbol of the stock or ETF",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def fetchStock(
+        self,
+        interaction: discord.Interaction,
+        ticker: str,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ):
+        ephemeral = resolve_visibility(visibility, default="public")
+        await interaction.response.defer(thinking=True, ephemeral=ephemeral)
         await interaction.edit_original_response(
             content=f"• Fetching `{ticker.upper()}` ⏳", embed=None
         )

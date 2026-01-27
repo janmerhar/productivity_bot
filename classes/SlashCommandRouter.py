@@ -8,6 +8,7 @@ from discord import app_commands
 
 from classes.OpenAIFunctions import OpenAIFunctions, DEFAULT_OPENAI_MODEL
 from config.env import env
+from services.visibility import visibility_value_from_ephemeral
 
 
 class SlashCommandRouter:
@@ -311,6 +312,12 @@ class SlashCommandRouter:
             return
 
         coerced, missing, invalid = self._coerce_arguments(command, args, interaction)
+        if "visibility" not in coerced:
+            for param in command.parameters:
+                if param.name == "visibility":
+                    default_value = visibility_value_from_ephemeral(ephemeral_default)
+                    coerced["visibility"] = self._coerce_choice(param, default_value)
+                    break
         if missing or invalid:
             parts: List[str] = []
             if missing:
