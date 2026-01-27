@@ -10,6 +10,10 @@ from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_vis
 
 
 class RouterCog(commands.Cog):
+    assistant_group = app_commands.Group(
+        name="assistant", description="Assistant utilities"
+    )
+
     def __init__(self, client: commands.Bot) -> None:
         self.client = client
 
@@ -17,7 +21,7 @@ class RouterCog(commands.Cog):
     async def on_ready(self) -> None:
         print("RouterCog cog loaded")
 
-    @app_commands.command(
+    @assistant_group.command(
         name="run",
         description="Run an existing slash command from natural language",
     )

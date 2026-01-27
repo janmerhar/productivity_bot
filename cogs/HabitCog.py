@@ -12,6 +12,8 @@ from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_vis
 
 
 class HabitCog(commands.Cog):
+    habit_group = app_commands.Group(name="habit", description="Manage habits")
+
     def __init__(self, client: commands.Bot) -> None:
         self.client = client
 
@@ -19,7 +21,7 @@ class HabitCog(commands.Cog):
     async def on_ready(self) -> None:
         print("HabitCog cog loaded")
 
-    @app_commands.command(name="habit", description="Create a new habit")
+    @habit_group.command(name="create", description="Create a new habit")
     @app_commands.describe(
         name="Habit name",
         description="Longer description for this habit",
@@ -86,7 +88,7 @@ class HabitCog(commands.Cog):
 
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
-    @app_commands.command(name="habits", description="List habits")
+    @habit_group.command(name="list", description="List habits")
     @app_commands.describe(
         mode="Show all habits or only incomplete habits",
         visibility=VISIBILITY_DESC,

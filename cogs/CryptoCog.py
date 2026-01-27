@@ -10,6 +10,8 @@ from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_vis
 
 
 class CryptoCog(commands.Cog):
+    crypto_group = app_commands.Group(name="crypto", description="Crypto quotes")
+
     def __init__(self, client):
         self.client = client
 
@@ -22,7 +24,7 @@ class CryptoCog(commands.Cog):
     # Commands
 
     # Naredi embed...
-    @app_commands.command(name="crypto", description="Get cryptocurrency price")
+    @crypto_group.command(name="quote", description="Get cryptocurrency price")
     @app_commands.describe(
         ticker="Ticker symbol of the cryptocurrency",
         currency="Currency to compare against",

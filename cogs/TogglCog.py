@@ -13,6 +13,18 @@ from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_vis
 
 
 class TogglCog(commands.Cog):
+    toggl = app_commands.Group(name="toggl", description="Toggl commands")
+    project = app_commands.Group(name="project", description="Manage Toggl projects")
+    key = app_commands.Group(name="key", description="Manage Toggl API key")
+    timer_group = app_commands.Group(name="timer", description="Manage Toggl timers")
+    saved = app_commands.Group(name="saved", description="Manage saved timers")
+    alias_group = app_commands.Group(name="alias", description="Manage Toggl aliases")
+    toggl.add_command(project)
+    toggl.add_command(key)
+    toggl.add_command(timer_group)
+    toggl.add_command(saved)
+    toggl.add_command(alias_group)
+
     def __init__(self, client):
         self.client = client
 
@@ -27,7 +39,7 @@ class TogglCog(commands.Cog):
     #
     # Authentication
     #
-    @app_commands.command(name="aboutme", description="Toggl about me")
+    @toggl.command(name="about", description="About your Toggl account")
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def aboutme(
@@ -43,9 +55,7 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(ephemeral=ephemeral, **param)
 
-    @app_commands.command(
-        name="togglkey", description="Save your Toggl API key for this server"
-    )
+    @key.command(name="set", description="Save your Toggl API key for this server")
     @app_commands.describe(
         api_key="Your Toggl API token",
         visibility=VISIBILITY_DESC,
@@ -84,8 +94,8 @@ class TogglCog(commands.Cog):
             content="Saved your Toggl API key for this server.",
         )
 
-    @app_commands.command(
-        name="togglkeyclear",
+    @key.command(
+        name="clear",
         description="Remove your Toggl API key for this server",
     )
     @app_commands.describe(visibility=VISIBILITY_DESC)
@@ -121,7 +131,7 @@ class TogglCog(commands.Cog):
     #
     # Tracking
     #
-    @app_commands.command(name="start", description="Toggl start timer")
+    @timer_group.command(name="start", description="Start a Toggl timer")
     @app_commands.describe(
         project="Project that timer will start in",
         description="Description of this timer",
@@ -145,7 +155,7 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(ephemeral=ephemeral, **param)
 
-    @app_commands.command(name="timer", description="Toggl get active timer")
+    @timer_group.command(name="current", description="Get active Toggl timer")
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def timer(
@@ -160,7 +170,7 @@ class TogglCog(commands.Cog):
         )
         await interaction.response.send_message(ephemeral=ephemeral, **param)
 
-    @app_commands.command(name="stop", description="Toggl stop active time")
+    @timer_group.command(name="stop", description="Stop active Toggl time")
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def stop(
@@ -176,7 +186,7 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(ephemeral=ephemeral, **param)
 
-    @app_commands.command(name="inserttimer", description="Toggl insert past time")
+    @timer_group.command(name="insert", description="Insert past Toggl time")
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def inserttimer(
@@ -196,7 +206,7 @@ class TogglCog(commands.Cog):
     - Improve tags handling
     """
 
-    @app_commands.command(name="savetimer", description="Toggl save timer")
+    @saved.command(name="create", description="Save a timer preset")
     @app_commands.describe(
         command="Name of the saved timer",
         workspace_id="Workspace id",
@@ -234,7 +244,7 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(ephemeral=ephemeral, **param)
 
-    @app_commands.command(name="removetimer", description="Toggl remove saved timer")
+    @saved.command(name="delete", description="Delete a saved timer")
     @app_commands.describe(
         identifier="Timer to be removed",
         visibility=VISIBILITY_DESC,
@@ -255,7 +265,7 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(ephemeral=ephemeral, **param)
 
-    @app_commands.command(name="startsaved", description="Toggl start saved timer")
+    @saved.command(name="start", description="Start a saved timer")
     @app_commands.describe(
         identifier="Saved timer to start",
         visibility=VISIBILITY_DESC,
@@ -288,7 +298,7 @@ class TogglCog(commands.Cog):
 
         return options
 
-    @app_commands.command(name="populartimers", description="Toggl most popular timers")
+    @saved.command(name="popular", description="Most popular saved timers")
     @app_commands.describe(
         n="Number of most popular timers to be displayed",
         visibility=VISIBILITY_DESC,
@@ -309,7 +319,7 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(ephemeral=ephemeral, **param)
 
-    @app_commands.command(name="timerhistory", description="Toggl get timer history")
+    @timer_group.command(name="history", description="Get Toggl timer history")
     @app_commands.describe(
         n="Number of timers to display",
         visibility=VISIBILITY_DESC,
@@ -333,7 +343,7 @@ class TogglCog(commands.Cog):
     #
     # Projects
     #
-    @app_commands.command(name="newproject", description="Toggl create new project")
+    @project.command(name="create", description="Create a Toggl project")
     @app_commands.describe(
         name="Name of newly created project",
         visibility=VISIBILITY_DESC,
@@ -354,9 +364,7 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(ephemeral=ephemeral, **param)
 
-    @app_commands.command(
-        name="workspaceprojects", description="Toggl get all projects"
-    )
+    @project.command(name="list", description="List Toggl projects")
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def workspaceprojects(
@@ -372,7 +380,7 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(ephemeral=ephemeral, **param)
 
-    @app_commands.command(name="getproject", description="Toggl get project by id")
+    @project.command(name="get", description="Get a Toggl project by id")
     @app_commands.describe(
         project_id="Project id",
         visibility=VISIBILITY_DESC,
@@ -397,14 +405,54 @@ class TogglCog(commands.Cog):
     # Shortcuts
     #
 
+    @staticmethod
+    def _normalize_alias_command(command: str) -> str:
+        if not command:
+            return ""
+        cleaned = " ".join(command.strip().lower().split())
+        if cleaned.startswith("toggl "):
+            cleaned = cleaned[len("toggl ") :].strip()
+        return cleaned
+
+    @staticmethod
+    def _alias_command_map() -> dict:
+        return {
+            "about": "aboutme",
+            "key set": "togglkey",
+            "key clear": "togglkeyclear",
+            "timer start": "start",
+            "timer stop": "stop",
+            "timer current": "timer",
+            "timer insert": "inserttimer",
+            "timer history": "timerhistory",
+            "saved create": "savetimer",
+            "saved delete": "removetimer",
+            "saved start": "startsaved",
+            "saved popular": "populartimers",
+            "project create": "newproject",
+            "project list": "workspaceprojects",
+            "project get": "getproject",
+            "alias create": "createalias",
+        }
+
     def getFunctionByName(self, name):
+        key = self._normalize_alias_command(name)
+        if not key:
+            return None
+        alias_map = self._alias_command_map()
+        if key in alias_map:
+            key = alias_map[key]
+        elif " " in key:
+            return None
         try:
-            fn = getattr(self, f"{name}")
+            fn = getattr(self, f"{key}")
             return fn
         except:
             return None
 
     def getDefaultParameters(self, cog_fn):
+        if cog_fn is None:
+            return {}
         return {
             param.name: param.default
             for param in cog_fn.parameters
@@ -415,7 +463,7 @@ class TogglCog(commands.Cog):
     """
     """
 
-    @app_commands.command(name="createalias", description="create alias")
+    @alias_group.command(name="create", description="Create a Toggl alias")
     @app_commands.describe(
         command="Command name",
         alias="Alias for the command",
@@ -432,6 +480,9 @@ class TogglCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
         ephemeral = resolve_visibility(visibility, default="public")
+        normalized_command = self._normalize_alias_command(command)
+        if normalized_command:
+            command = normalized_command
         cog_fn = self.getFunctionByName(name=command)
         cog_param = self.getDefaultParameters(cog_fn=cog_fn)
 

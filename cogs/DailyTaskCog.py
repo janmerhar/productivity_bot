@@ -49,6 +49,9 @@ def parse_time_string(raw: str) -> Optional[datetime.datetime]:
 
 class DailyTaskCog(commands.Cog):
     jobs = app_commands.Group(name="jobs", description="Manage scheduled jobs")
+    reminder_group = app_commands.Group(
+        name="reminder", description="Manage one-time reminders"
+    )
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -62,7 +65,9 @@ class DailyTaskCog(commands.Cog):
         if self._runner.is_running():
             self._runner.cancel()
 
-    @app_commands.command(name="reminder", description="Set a one time reminder for")
+    @reminder_group.command(
+        name="create", description="Create a one time reminder"
+    )
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def reminder(
@@ -139,7 +144,7 @@ class DailyTaskCog(commands.Cog):
             ephemeral=ephemeral, **DailyTaskEmbeds.reminder_embed(confirmation, ok=True)
         )
 
-    @app_commands.command(name="job", description="Set a recurring job")
+    @jobs.command(name="create", description="Create a recurring job")
     @app_commands.describe(
         schedule="Cron expression or natural language schedule",
         type="Type of the job to create",
@@ -334,7 +339,7 @@ class DailyTaskCog(commands.Cog):
             ephemeral=ephemeral, **DailyTaskEmbeds.jobs_list_embed(lines)
         )
 
-    @jobs.command(name="cancel", description="Cancel a scheduled job")
+    @jobs.command(name="delete", description="Delete a scheduled job")
     @app_commands.describe(
         job_id="Job id from /jobs list",
         visibility=VISIBILITY_DESC,
@@ -370,7 +375,7 @@ class DailyTaskCog(commands.Cog):
             await interaction.followup.send(
                 ephemeral=ephemeral,
                 **DailyTaskEmbeds.jobs_cancel_embed(
-                    f"Cancelled job `{job_id}`.", ok=True
+                    f"Deleted job `{job_id}`.", ok=True
                 ),
             )
             return

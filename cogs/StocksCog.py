@@ -10,6 +10,8 @@ from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_vis
 
 
 class StocksCog(commands.Cog):
+    stock_group = app_commands.Group(name="stock", description="Stock quotes")
+
     def __init__(self, client):
         self.client = client
 
@@ -22,7 +24,7 @@ class StocksCog(commands.Cog):
     # Commands
 
     # Naredi embed...
-    @app_commands.command(name="stock", description="Get stock price")
+    @stock_group.command(name="quote", description="Get stock price")
     @app_commands.describe(
         ticker="Ticker symbol of the stock or ETF",
         visibility=VISIBILITY_DESC,

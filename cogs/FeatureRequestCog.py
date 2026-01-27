@@ -11,6 +11,10 @@ from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_vis
 
 
 class FeatureRequestCog(commands.Cog):
+    feature_group = app_commands.Group(
+        name="feature", description="Feature requests"
+    )
+
     def __init__(self, client: commands.Bot) -> None:
         self.client = client
 
@@ -18,8 +22,8 @@ class FeatureRequestCog(commands.Cog):
     async def on_ready(self) -> None:
         print("FeatureRequestCog cog loaded")
 
-    @app_commands.command(
-        name="featurerequest",
+    @feature_group.command(
+        name="request",
         description="Send a feature request to the bot author",
     )
     @app_commands.describe(
@@ -70,4 +74,3 @@ class FeatureRequestCog(commands.Cog):
 
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(FeatureRequestCog(client))
-

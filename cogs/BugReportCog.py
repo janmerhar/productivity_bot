@@ -11,6 +11,8 @@ from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_vis
 
 
 class BugReportCog(commands.Cog):
+    bug_group = app_commands.Group(name="bug", description="Bug reports")
+
     def __init__(self, client: commands.Bot) -> None:
         self.client = client
 
@@ -18,8 +20,8 @@ class BugReportCog(commands.Cog):
     async def on_ready(self) -> None:
         print("BugReportCog cog loaded")
 
-    @app_commands.command(
-        name="bugreport",
+    @bug_group.command(
+        name="report",
         description="Report a bug or something that isn't working right",
     )
     @app_commands.describe(
@@ -70,4 +72,3 @@ class BugReportCog(commands.Cog):
 
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(BugReportCog(client))
-

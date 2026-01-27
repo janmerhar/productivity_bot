@@ -11,6 +11,8 @@ from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_vis
 
 
 class TodoCog(commands.Cog):
+    todo_group = app_commands.Group(name="todo", description="Manage to-dos")
+
     def __init__(self, client: commands.Bot) -> None:
         self.client = client
 
@@ -18,7 +20,7 @@ class TodoCog(commands.Cog):
     async def on_ready(self) -> None:
         print("TodoCog cog loaded")
 
-    @app_commands.command(name="todo", description="Create a new to-do item")
+    @todo_group.command(name="create", description="Create a new to-do item")
     @app_commands.describe(
         name="Task name",
         description="Longer description for this task",
@@ -86,7 +88,7 @@ class TodoCog(commands.Cog):
 
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
-    @app_commands.command(name="todolist", description="List todo items")
+    @todo_group.command(name="list", description="List todo items")
     @app_commands.describe(
         mode="Show all todos or only this channel",
         sort="Sort order for the list",
