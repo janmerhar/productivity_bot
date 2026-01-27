@@ -13,6 +13,8 @@ from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_vis
 
 
 class PomodoroCog(commands.Cog):
+    pomodoro_group = app_commands.Group(name="pomodoro", description="Pomodoro timers")
+
     def __init__(self, client: commands.Bot) -> None:
         self.client = client
 
@@ -20,7 +22,7 @@ class PomodoroCog(commands.Cog):
     async def on_ready(self) -> None:
         print("PomodoroCog cog loaded")
 
-    @app_commands.command(name="pomodoro", description="Start a pomodoro timer")
+    @pomodoro_group.command(name="start", description="Start a pomodoro timer")
     @app_commands.describe(
         mode="Pick focus or break",
         duration="Duration in minutes (optional)",
@@ -109,8 +111,8 @@ class PomodoroCog(commands.Cog):
         if voice_error:
             await interaction.followup.send(ephemeral=ephemeral, content=voice_error)
 
-    @app_commands.command(
-        name="pomodorostop", description="Stop your active pomodoro timer"
+    @pomodoro_group.command(
+        name="stop", description="Stop your active pomodoro timer"
     )
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)

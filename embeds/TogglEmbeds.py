@@ -23,15 +23,42 @@ class TogglEmbeds(EmbedsAbstract):
         embed = discord.Embed(
             title=":stopwatch: Toggl",
             color=discord.Colour.from_str("#552d4f"),
-            description="Set your Toggl API key with `/togglkey <api_key>`.",
+            description="Set your Toggl API key with `/toggl key set <api_key>`.",
         )
         embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
         return {"embeds": [embed]}
 
     @staticmethod
     def _get_function_by_name(name: str):
+        if not name:
+            return None
+        cleaned = " ".join(str(name).strip().lower().split())
+        if cleaned.startswith("toggl "):
+            cleaned = cleaned[len("toggl ") :].strip()
+        alias_map = {
+            "about": "aboutme",
+            "key set": "togglkey",
+            "key clear": "togglkeyclear",
+            "timer start": "start",
+            "timer stop": "stop",
+            "timer current": "timer",
+            "timer insert": "inserttimer",
+            "timer history": "timerhistory",
+            "saved create": "savetimer",
+            "saved delete": "removetimer",
+            "saved start": "startsaved",
+            "saved popular": "populartimers",
+            "project create": "newproject",
+            "project list": "workspaceprojects",
+            "project get": "getproject",
+            "alias create": "createalias",
+        }
+        if cleaned in alias_map:
+            cleaned = alias_map[cleaned]
+        elif " " in cleaned:
+            return None
         try:
-            return getattr(TogglEmbeds, f"{name}_embed")
+            return getattr(TogglEmbeds, f"{cleaned}_embed")
         except AttributeError:
             return None
 

@@ -18,6 +18,8 @@ from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_vis
 
 
 class AliasCog(commands.Cog):
+    alias_group = app_commands.Group(name="alias", description="Alias shortcuts")
+
     def __init__(self, client):
         self.client = client
 
@@ -42,7 +44,7 @@ class AliasCog(commands.Cog):
             and type(param.default) != discord.utils._MissingSentinel
         }
 
-    @app_commands.command(name="usealias", description="Shortcuts use alias")
+    @alias_group.command(name="use", description="Use an alias")
     @app_commands.describe(
         alias="Alias of a command to be used",
         visibility=VISIBILITY_DESC,
@@ -63,7 +65,7 @@ class AliasCog(commands.Cog):
 
         await interaction.response.send_message(ephemeral=ephemeral, **param)
 
-    @app_commands.command(name="findaliases", description="Shortcuts find aliases")
+    @alias_group.command(name="find", description="Find aliases")
     @app_commands.describe(
         alias="Alias of a command to be used",
         visibility=VISIBILITY_DESC,
@@ -90,7 +92,7 @@ class AliasCog(commands.Cog):
 
         await interaction.response.send_message(ephemeral=ephemeral, **param)
 
-    @app_commands.command(name="popularalias", description="Most popular aliases")
+    @alias_group.command(name="popular", description="Most popular aliases")
     @app_commands.describe(
         n="Number of most popular aliases to be displayed",
         visibility=VISIBILITY_DESC,
