@@ -42,7 +42,7 @@ class DailyTaskEmbeds:
     @staticmethod
     def jobs_cancel_embed(message: str, ok: bool) -> dict:
         embed = discord.Embed(
-            title="Cancel Job",
+            title="Delete Job",
             description=message,
             color=discord.Colour.green() if ok else discord.Colour.red(),
         )
