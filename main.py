@@ -6,6 +6,7 @@ from discord.ext import commands
 
 from config.env import env
 from config.logger import setup_logging
+from services.error_reporting import handle_app_command_error
 
 tick_disabled = env.get("TICK_DISABLED") == "true"
 dev_mode = env.get("DEV_MODE") == "true"
@@ -58,6 +59,11 @@ async def on_ready():
                 _sync_done = True
 
     print("Online")
+
+
+@bot.tree.error
+async def on_app_command_error(interaction, error):
+    await handle_app_command_error(interaction, error)
 
 
 async def load():
