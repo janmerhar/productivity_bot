@@ -7,6 +7,7 @@ from classes.PomodoroFunctions import PomodoroFunctions
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from embeds.PomodoroEmbeds import PomodoroEmbeds
 from views.PomodoroStartView import PomodoroStartView
+from services.error_reporting import UserVisibleError, handle_interaction_error
 
 
 class PomodoroRestartView(discord.ui.View):
@@ -27,10 +28,14 @@ class PomodoroRestartView(discord.ui.View):
                 None,
                 interaction.user.id,
             )
-        except Exception:
-            await interaction.followup.send(
-                ephemeral=True,
-                content="Something went wrong while starting that pomodoro.",
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while starting that pomodoro.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
             )
             return
 
