@@ -7,6 +7,7 @@ from discord.ext import commands
 
 from classes.FeatureRequestFunctions import FeatureRequestFunctions
 from embeds.FeatureRequestEmbeds import FeatureRequestEmbeds
+from services.error_reporting import UserVisibleError, ValidationError
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
@@ -41,11 +42,10 @@ class FeatureRequestCog(commands.Cog):
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="private")
         if not request.strip():
-            await interaction.response.send_message(
+            raise ValidationError(
+                "Feature request cannot be empty.",
                 ephemeral=ephemeral,
-                content="Feature request cannot be empty.",
             )
-            return
 
         await interaction.response.defer(ephemeral=ephemeral)
 
@@ -59,14 +59,13 @@ class FeatureRequestCog(commands.Cog):
                 link,
             )
         except ValueError as exc:
-            await interaction.followup.send(ephemeral=ephemeral, content=str(exc))
-            return
-        except Exception:
-            await interaction.followup.send(
+            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while saving that feature request.",
                 ephemeral=ephemeral,
-                content="Something went wrong while saving that feature request.",
+                cause=exc,
             )
-            return
 
         payload = FeatureRequestEmbeds.received_embed(document)
         await interaction.followup.send(ephemeral=ephemeral, **payload)
@@ -74,3 +73,5 @@ class FeatureRequestCog(commands.Cog):
 
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(FeatureRequestCog(client))
+
+

@@ -8,6 +8,7 @@ from discord.ext import commands
 from embeds.HabitEmbeds import HabitEmbeds
 from classes.HabitFunctions import HabitFunctions
 from views.HabitActionView import HabitActionView
+from services.error_reporting import UserVisibleError, ValidationError
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
@@ -39,11 +40,7 @@ class HabitCog(commands.Cog):
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="private")
         if not name.strip():
-            await interaction.response.send_message(
-                ephemeral=ephemeral,
-                content="Habit name cannot be empty.",
-            )
-            return
+            raise ValidationError("Habit name cannot be empty.", ephemeral=ephemeral)
 
         await interaction.response.defer(ephemeral=ephemeral)
 
@@ -58,14 +55,13 @@ class HabitCog(commands.Cog):
                 reminder,
             )
         except ValueError as exc:
-            await interaction.followup.send(ephemeral=ephemeral, content=str(exc))
-            return
-        except Exception:
-            await interaction.followup.send(
+            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while creating that habit.",
                 ephemeral=ephemeral,
-                content="Something went wrong while creating that habit.",
+                cause=exc,
             )
-            return
 
         reminder_failed = False
         if reminder_time:
@@ -119,12 +115,12 @@ class HabitCog(commands.Cog):
                 interaction.channel_id,
                 mode_value,
             )
-        except Exception:
-            await interaction.followup.send(
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while fetching habits.",
                 ephemeral=ephemeral,
-                content="Something went wrong while fetching habits.",
+                cause=exc,
             )
-            return
 
         if not habits:
             await interaction.followup.send(
@@ -145,3 +141,5 @@ class HabitCog(commands.Cog):
 
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(HabitCog(client))
+
+

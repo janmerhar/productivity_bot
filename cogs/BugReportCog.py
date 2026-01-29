@@ -7,6 +7,7 @@ from discord.ext import commands
 
 from classes.BugReportFunctions import BugReportFunctions
 from embeds.BugReportEmbeds import BugReportEmbeds
+from services.error_reporting import UserVisibleError, ValidationError
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
@@ -39,11 +40,7 @@ class BugReportCog(commands.Cog):
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="private")
         if not bug.strip():
-            await interaction.response.send_message(
-                ephemeral=ephemeral,
-                content="Bug report cannot be empty.",
-            )
-            return
+            raise ValidationError("Bug report cannot be empty.", ephemeral=ephemeral)
 
         await interaction.response.defer(ephemeral=ephemeral)
 
@@ -57,14 +54,13 @@ class BugReportCog(commands.Cog):
                 link,
             )
         except ValueError as exc:
-            await interaction.followup.send(ephemeral=ephemeral, content=str(exc))
-            return
-        except Exception:
-            await interaction.followup.send(
+            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while saving that bug report.",
                 ephemeral=ephemeral,
-                content="Something went wrong while saving that bug report.",
+                cause=exc,
             )
-            return
 
         payload = BugReportEmbeds.received_embed(document)
         await interaction.followup.send(ephemeral=ephemeral, **payload)
