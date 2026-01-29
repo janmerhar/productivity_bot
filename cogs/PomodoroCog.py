@@ -9,6 +9,7 @@ from classes.PomodoroFunctions import PomodoroFunctions
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from embeds.PomodoroEmbeds import PomodoroEmbeds
 from views.PomodoroStartView import PomodoroStartView
+from services.error_reporting import UserVisibleError, ValidationError
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
@@ -46,10 +47,10 @@ class PomodoroCog(commands.Cog):
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="private")
         if duration is not None and duration <= 0:
-            await interaction.response.send_message(
-                ephemeral=ephemeral, content="Duration must be greater than zero."
+            raise ValidationError(
+                "Duration must be greater than zero.",
+                ephemeral=ephemeral,
             )
-            return
 
         await interaction.response.defer(ephemeral=ephemeral)
 
@@ -69,12 +70,12 @@ class PomodoroCog(commands.Cog):
                 duration_value,
                 user_id,
             )
-        except Exception:
-            await interaction.followup.send(
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while starting that pomodoro.",
                 ephemeral=ephemeral,
-                content="Something went wrong while starting that pomodoro.",
+                cause=exc,
             )
-            return
 
         target_channel = voice_channel
         if target_channel is None:

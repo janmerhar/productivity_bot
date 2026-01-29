@@ -9,6 +9,7 @@ from discord import app_commands
 
 from embeds.TogglEmbeds import TogglEmbeds
 from classes.TogglCredentials import TogglCredentials
+from services.error_reporting import ValidationError
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
@@ -69,19 +70,17 @@ class TogglCog(commands.Cog):
     ):
         ephemeral = resolve_visibility(visibility, default="private")
         if interaction.guild_id is None:
-            await interaction.response.send_message(
+            raise ValidationError(
+                "Use this command inside a server to save your key.",
                 ephemeral=ephemeral,
-                content="Use this command inside a server to save your key.",
             )
-            return
 
         cleaned = api_key.strip()
         if not cleaned:
-            await interaction.response.send_message(
+            raise ValidationError(
+                "API key cannot be empty.",
                 ephemeral=ephemeral,
-                content="API key cannot be empty.",
             )
-            return
 
         await asyncio.to_thread(
             TogglCredentials.set_key,
@@ -107,11 +106,10 @@ class TogglCog(commands.Cog):
     ):
         ephemeral = resolve_visibility(visibility, default="private")
         if interaction.guild_id is None:
-            await interaction.response.send_message(
+            raise ValidationError(
+                "Use this command inside a server to remove your key.",
                 ephemeral=ephemeral,
-                content="Use this command inside a server to remove your key.",
             )
-            return
 
         removed = await asyncio.to_thread(
             TogglCredentials.clear_key,
