@@ -94,6 +94,66 @@ def _build_error_embed(
     return embed
 
 
+def _describe_error(
+    original: Exception,
+    *,
+    default_ephemeral: bool = True,
+) -> tuple[str, str, Optional[str], list[str], bool, bool]:
+    title = "Error"
+    message = "Something went wrong while running that command."
+    hint = None
+    details: list[str] = []
+    ephemeral = default_ephemeral
+    is_expected = False
+
+    if isinstance(original, UserVisibleError):
+        title = original.title
+        message = original.message
+        hint = original.hint
+        details = original.details
+        if original.ephemeral is not None:
+            ephemeral = original.ephemeral
+        is_expected = True
+    elif isinstance(original, app_commands.CommandOnCooldown):
+        title = "Slow down"
+        message = "That command is on cooldown."
+        hint = f"Try again in {_format_duration(original.retry_after)}."
+        is_expected = True
+    elif isinstance(original, app_commands.MissingPermissions):
+        title = "Missing permissions"
+        message = "You do not have permission to use that command."
+        if getattr(original, "missing_permissions", None):
+            details = [", ".join(original.missing_permissions)]
+        is_expected = True
+    elif isinstance(original, app_commands.BotMissingPermissions):
+        title = "I need permissions"
+        message = "I am missing permissions to run that command."
+        if getattr(original, "missing_permissions", None):
+            details = [", ".join(original.missing_permissions)]
+        is_expected = True
+    elif isinstance(original, app_commands.NoPrivateMessage):
+        title = "Server only"
+        message = "That command cannot be used in DMs."
+        is_expected = True
+    elif isinstance(original, app_commands.TransformerError):
+        param = getattr(original, "parameter", None) or getattr(original, "param", None)
+        param_name = param.name if param else "parameter"
+        title = "Invalid input"
+        message = f"Invalid value for `{param_name}`."
+        details = [str(original)]
+        is_expected = True
+    elif isinstance(original, app_commands.CheckFailure):
+        title = "Not allowed"
+        message = "You cannot use that command here."
+        is_expected = True
+    elif isinstance(original, ValueError):
+        title = "Invalid input"
+        message = str(original) or "That input could not be processed."
+        is_expected = True
+
+    return title, message, hint, details, ephemeral, is_expected
+
+
 async def _send_error_response(
     interaction: Optional[discord.Interaction],
     *,
@@ -119,50 +179,7 @@ async def handle_app_command_error(
     logger = logging.getLogger(__name__)
 
     original = getattr(error, "original", error)
-
-    title = "Error"
-    message = "Something went wrong while running that command."
-    hint = None
-    details: list[str] = []
-
-    ephemeral = True
-
-    if isinstance(original, UserVisibleError):
-        title = original.title
-        message = original.message
-        hint = original.hint
-        details = original.details
-        if original.ephemeral is not None:
-            ephemeral = original.ephemeral
-    elif isinstance(original, app_commands.CommandOnCooldown):
-        title = "Slow down"
-        message = "That command is on cooldown."
-        hint = f"Try again in {_format_duration(original.retry_after)}."
-    elif isinstance(original, app_commands.MissingPermissions):
-        title = "Missing permissions"
-        message = "You do not have permission to use that command."
-        if getattr(original, "missing_permissions", None):
-            details = [", ".join(original.missing_permissions)]
-    elif isinstance(original, app_commands.BotMissingPermissions):
-        title = "I need permissions"
-        message = "I am missing permissions to run that command."
-        if getattr(original, "missing_permissions", None):
-            details = [", ".join(original.missing_permissions)]
-    elif isinstance(original, app_commands.NoPrivateMessage):
-        title = "Server only"
-        message = "That command cannot be used in DMs."
-    elif isinstance(original, app_commands.TransformerError):
-        param = getattr(original, "parameter", None) or getattr(original, "param", None)
-        param_name = param.name if param else "parameter"
-        title = "Invalid input"
-        message = f"Invalid value for `{param_name}`."
-        details = [str(original)]
-    elif isinstance(original, app_commands.CheckFailure):
-        title = "Not allowed"
-        message = "You cannot use that command here."
-    elif isinstance(original, ValueError):
-        title = "Invalid input"
-        message = str(original) or "That input could not be processed."
+    title, message, hint, details, ephemeral, is_expected = _describe_error(original)
 
     log_context = {
         "error_id": error_id,
@@ -174,7 +191,7 @@ async def handle_app_command_error(
 
     cause = original.cause if isinstance(original, UserVisibleError) else None
 
-    if isinstance(original, UserVisibleError) or isinstance(original, ValueError):
+    if is_expected:
         logger.warning(
             "Command error %(error_id)s | user=%(user)s guild=%(guild)s channel=%(channel)s command=%(command)s",
             log_context,
@@ -196,3 +213,53 @@ async def handle_app_command_error(
     )
 
     await _send_error_response(interaction, embed=embed, ephemeral=ephemeral)
+
+
+async def handle_interaction_error(
+    interaction: Optional[discord.Interaction],
+    error: Exception,
+    *,
+    ephemeral: bool = True,
+) -> None:
+    error_id = str(uuid.uuid4())[:8]
+    logger = logging.getLogger(__name__)
+
+    title, message, hint, details, resolved_ephemeral, is_expected = _describe_error(
+        error,
+        default_ephemeral=ephemeral,
+    )
+    cause = error.cause if isinstance(error, UserVisibleError) else None
+
+    log_context = {
+        "error_id": error_id,
+        "user": getattr(getattr(interaction, "user", None), "id", None),
+        "guild": getattr(getattr(interaction, "guild", None), "id", None),
+        "channel": getattr(getattr(interaction, "channel", None), "id", None),
+    }
+
+    if is_expected:
+        logger.warning(
+            "Interaction error %(error_id)s | user=%(user)s guild=%(guild)s channel=%(channel)s",
+            log_context,
+            exc_info=cause,
+        )
+    else:
+        logger.exception(
+            "Interaction error %(error_id)s | user=%(user)s guild=%(guild)s channel=%(channel)s",
+            log_context,
+            exc_info=error,
+        )
+
+    embed = _build_error_embed(
+        title=title,
+        message=message,
+        hint=hint,
+        details=details,
+        error_id=error_id,
+    )
+
+    await _send_error_response(
+        interaction,
+        embed=embed,
+        ephemeral=resolved_ephemeral,
+    )
