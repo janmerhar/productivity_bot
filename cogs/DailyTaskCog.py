@@ -19,6 +19,7 @@ from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from views.PomodoroRestartView import PomodoroRestartView
 from classes.HabitFunctions import HabitFunctions
 from services.cron_schedule import CronConversionError, resolve_cron_expression
+from services.error_reporting import UserVisibleError, ValidationError
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
@@ -80,14 +81,11 @@ class DailyTaskCog(commands.Cog):
         ephemeral = resolve_visibility(visibility, default="private")
         scheduled_dt = parse_time_string(time)
         if scheduled_dt is None:
-            await interaction.response.send_message(
+            raise ValidationError(
+                "I couldn't understand that time.",
+                hint="Try '08:30', '8pm', or similar.",
                 ephemeral=ephemeral,
-                **DailyTaskEmbeds.reminder_embed(
-                    "I couldn't understand that time. Try '08:30', '8pm', or similar.",
-                    ok=False,
-                ),
             )
-            return
 
         job_schedule = OneTimeSchedule2(datetime=scheduled_dt.isoformat())
         payload = message.strip()
@@ -103,14 +101,10 @@ class DailyTaskCog(commands.Cog):
                 if token.strip()
             ]
             if not tickers:
-                await interaction.response.send_message(
+                raise ValidationError(
+                    "Please provide at least one stock ticker after `stock:`.",
                     ephemeral=ephemeral,
-                    **DailyTaskEmbeds.reminder_embed(
-                        "Please provide at least one stock ticker after `stock:`.",
-                        ok=False,
-                    ),
                 )
-                return
 
             job_type = "stock"
             job_data = {"tickers": tickers}
@@ -131,15 +125,12 @@ class DailyTaskCog(commands.Cog):
                 job_data,
                 job_schedule,
             )
-        except Exception:
-            await interaction.followup.send(
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while scheduling that task. Please try again.",
                 ephemeral=ephemeral,
-                **DailyTaskEmbeds.reminder_embed(
-                    "Something went wrong while scheduling that task. Please try again.",
-                    ok=False,
-                ),
+                cause=exc,
             )
-            return
         await interaction.followup.send(
             ephemeral=ephemeral, **DailyTaskEmbeds.reminder_embed(confirmation, ok=True)
         )
@@ -173,10 +164,7 @@ class DailyTaskCog(commands.Cog):
         try:
             cron_expression = await asyncio.to_thread(resolve_cron_expression, schedule)
         except CronConversionError as exc:
-            await interaction.followup.send(
-                ephemeral=ephemeral, **DailyTaskEmbeds.job_embed(str(exc), ok=False)
-            )
-            return
+            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
 
         job_type = type.value
         raw_data = data.strip()
@@ -200,15 +188,12 @@ class DailyTaskCog(commands.Cog):
                 payload,
                 schedule_config,
             )
-        except Exception:
-            await interaction.followup.send(
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while storing that job. Please try again.",
                 ephemeral=ephemeral,
-                **DailyTaskEmbeds.job_embed(
-                    "Something went wrong while storing that job. Please try again.",
-                    ok=False,
-                ),
+                cause=exc,
             )
-            return
 
         await interaction.followup.send(
             ephemeral=ephemeral,
@@ -362,14 +347,12 @@ class DailyTaskCog(commands.Cog):
                 interaction.channel_id,
                 interaction.guild_id,
             )
-        except ValueError:
-            await interaction.followup.send(
+        except ValueError as exc:
+            raise ValidationError(
+                "That job id is invalid.",
                 ephemeral=ephemeral,
-                **DailyTaskEmbeds.jobs_cancel_embed(
-                    "That job id is invalid.", ok=False
-                ),
+                cause=exc,
             )
-            return
 
         if deleted:
             await interaction.followup.send(
@@ -380,11 +363,9 @@ class DailyTaskCog(commands.Cog):
             )
             return
 
-        await interaction.followup.send(
+        raise ValidationError(
+            "No job found with that id in this channel.",
             ephemeral=ephemeral,
-            **DailyTaskEmbeds.jobs_cancel_embed(
-                "No job found with that id in this channel.", ok=False
-            ),
         )
 
 

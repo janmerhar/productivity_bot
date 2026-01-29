@@ -8,6 +8,7 @@ from discord import app_commands
 
 from classes.OpenAIFunctions import OpenAIFunctions, DEFAULT_OPENAI_MODEL
 from config.env import env
+from services.error_reporting import UserVisibleError, ValidationError
 from services.visibility import visibility_value_from_ephemeral
 
 
@@ -272,44 +273,42 @@ class SlashCommandRouter:
     ) -> None:
         query_text = query.strip()
         if not query_text:
-            await interaction.followup.send(
+            raise ValidationError(
+                "Please provide instructions to run a command.",
+                hint="Try: /assistant run query: create a todo called Buy milk",
                 ephemeral=ephemeral_default,
-                content="Please provide instructions to run a command.",
             )
-            return
 
         command_map, catalog = self._command_catalog()
         if not command_map:
-            await interaction.followup.send(
+            raise UserVisibleError(
+                "No slash commands are available to run.",
                 ephemeral=ephemeral_default,
-                content="No slash commands are available to run.",
             )
-            return
 
         payload = await asyncio.to_thread(self._parse_query, query_text, catalog)
         if payload is None:
-            await interaction.followup.send(
+            raise UserVisibleError(
+                "I could not parse that request.",
+                hint="Make sure OpenAI is configured.",
                 ephemeral=ephemeral_default,
-                content="I could not parse that request. Make sure OpenAI is configured.",
             )
-            return
 
         command_name = payload.get("command") or ""
         args = payload.get("arguments", {})
         if not command_name:
-            await interaction.followup.send(
+            raise UserVisibleError(
+                "I could not find a matching command for that request.",
+                hint="Try being more specific or naming the command you want.",
                 ephemeral=ephemeral_default,
-                content="I could not find a matching command for that request.",
             )
-            return
 
         command = command_map.get(command_name)
         if command is None:
-            await interaction.followup.send(
+            raise UserVisibleError(
+                f"Command `{command_name}` is not available.",
                 ephemeral=ephemeral_default,
-                content=f"Command `{command_name}` is not available.",
             )
-            return
 
         coerced, missing, invalid = self._coerce_arguments(command, args, interaction)
         if "visibility" not in coerced:
@@ -324,14 +323,12 @@ class SlashCommandRouter:
                 parts.append(f"Missing: {', '.join(missing)}")
             if invalid:
                 parts.append(f"Invalid: {', '.join(invalid)}")
-            await interaction.followup.send(
+            raise ValidationError(
+                f"Matched `{command_name}`, but the arguments were invalid.",
+                details=parts,
+                hint="Check the parameter names and values for that command.",
                 ephemeral=ephemeral_default,
-                content=(
-                    f"Matched `{command_name}`, but the arguments were invalid. "
-                    + " ".join(parts)
-                ),
             )
-            return
 
         proxy = RoutedInteraction(interaction, ephemeral_default)
         bound = command.binding
