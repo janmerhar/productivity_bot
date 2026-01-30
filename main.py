@@ -30,7 +30,13 @@ async def on_ready():
             if dev_mode:
                 if not dev_guild_id:
                     logging.getLogger(__name__).warning(
-                        "DEV_MODE is true but DEV_GUILD_ID is not set; skipping sync."
+                        "DEV_MODE is true but DEV_GUILD_ID is not set; syncing global only."
+                    )
+                    synced = await bot.tree.sync()
+                    did_sync = True
+                    logging.getLogger(__name__).info(
+                        "Synced %d global application commands (DEV_MODE).",
+                        len(synced),
                     )
                 else:
                     try:
@@ -40,12 +46,17 @@ async def on_ready():
                             "DEV_GUILD_ID must be an integer; skipping sync."
                         )
                     else:
-                        bot.tree.copy_global_to(guild=guild_object)
-                        synced = await bot.tree.sync(guild=guild_object)
+                        synced_global = await bot.tree.sync()
+                        bot.tree.clear_commands(guild=guild_object)
+                        synced_guild = await bot.tree.sync(guild=guild_object)
                         did_sync = True
                         logging.getLogger(__name__).info(
-                            "Synced %d dev guild application commands for guild %s.",
-                            len(synced),
+                            "Synced %d global application commands (DEV_MODE).",
+                            len(synced_global),
+                        )
+                        logging.getLogger(__name__).info(
+                            "Cleared %d dev guild application commands for guild %s.",
+                            len(synced_guild),
                             dev_guild_id,
                         )
             else:
