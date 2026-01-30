@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import datetime
 import json
 from typing import Any, Dict, Optional
@@ -232,6 +233,22 @@ class DailyTaskCog(commands.Cog):
                 task_id = job.data.get("task_id")
                 todo = TodoFunctions.fetch_todo(task_id, job.guild_id)
                 if not todo or todo.get("state") != "todo":
+                    continue
+                if todo.get("scope") == "personal":
+                    user_id = todo.get("user_id")
+                    if not user_id:
+                        continue
+                    user = self.bot.get_user(user_id)
+                    if user is None:
+                        user = await self.bot.fetch_user(user_id)
+                    todo_payload = TodoEmbeds.todo_reminder_payload(todo)
+                    try:
+                        await user.send(**todo_payload)
+                    except discord.HTTPException:
+                        logging.getLogger(__name__).exception(
+                            "Failed to DM todo reminder",
+                            extra={"user_id": user_id, "task_id": task_id},
+                        )
                     continue
 
                 channel = self.bot.get_channel(job.channel_id)
