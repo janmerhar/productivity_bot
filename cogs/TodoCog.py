@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional
+from typing import Optional, Tuple
 
 import discord
 from discord import app_commands
@@ -9,6 +9,77 @@ from classes.TodoFunctions import TodoFunctions
 from embeds.TodoEmbeds import TodoEmbeds, TodoListView
 from services.error_reporting import UserVisibleError, ValidationError
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+
+
+_MAX_TITLE_LEN = 100
+_MAX_DESC_LEN = 800
+
+
+def _trim_text(text: str, limit: int) -> str:
+    if limit <= 0:
+        return ""
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _todo_from_message(message: discord.Message) -> Tuple[str, Optional[str]]:
+    content = (message.content or "").strip()
+    name_source = content.splitlines()[0].strip() if content else ""
+
+    if not name_source:
+        if message.attachments:
+            name_source = f"Attachment from {message.author.display_name}"
+        else:
+            name_source = f"Message from {message.author.display_name}"
+
+    name = _trim_text(name_source, _MAX_TITLE_LEN)
+
+    description = _trim_text(content, _MAX_DESC_LEN) if content else None
+
+    return name, description
+
+
+@app_commands.context_menu(name="Add to Todo")
+async def add_message_to_todo(
+    interaction: discord.Interaction, message: discord.Message
+) -> None:
+    if not interaction.guild_id:
+        raise UserVisibleError(
+            "That action can only be used in a server.",
+            ephemeral=True,
+        )
+
+    name, description = _todo_from_message(message)
+    if not name.strip():
+        raise ValidationError("I couldn't extract a todo title.", ephemeral=True)
+
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        document, _ = await asyncio.to_thread(
+            TodoFunctions.insert_todo,
+            interaction.guild_id,
+            interaction.user.id,
+            message.channel.id,
+            name,
+            description,
+            None,
+        )
+    except Exception as exc:
+        raise UserVisibleError(
+            "Something went wrong while creating that todo.",
+            ephemeral=True,
+            cause=exc,
+        )
+
+    payload = TodoEmbeds.insert_todo_embed(
+        name=document["name"],
+        description=document.get("description"),
+        due=None,
+    )
+    await interaction.followup.send(ephemeral=True, **payload)
 
 
 class TodoCog(commands.Cog):
@@ -146,5 +217,6 @@ class TodoCog(commands.Cog):
 
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(TodoCog(client))
+    client.tree.add_command(add_message_to_todo)
 
 
