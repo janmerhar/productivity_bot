@@ -30,7 +30,7 @@ class DailyJob:
         self,
         id: ObjectId,
         guild_id: Optional[int],
-        channel_id: int,
+        channel_id: Optional[int],
         type: str,
         data: Dict[str, Any],
         schedule: Optional[Union[ScheduleConfig, Mapping[str, Any]]],
@@ -46,7 +46,7 @@ class DailyJob:
 
     def insert(
         guild_id: Optional[int],
-        channel_id: int,
+        channel_id: Optional[int],
         type: str,
         data: dict,
         schedule: dict = None,
