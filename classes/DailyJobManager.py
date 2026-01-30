@@ -30,7 +30,7 @@ class DailyJobManager:
     def insert_job(
         self,
         guild_id: Optional[int],
-        channel_id: int,
+        channel_id: Optional[int],
         type: str,
         data: dict,
         schedule: Optional[Union[ScheduleConfig, Mapping[str, Any]]] = None,

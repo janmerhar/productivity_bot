@@ -14,6 +14,7 @@ class TodoListView(discord.ui.View):
         todos: List[Dict[str, Any]],
         mode: str,
         sort: str,
+        user_id: Optional[int] = None,
         page: int = 1,
         page_size: int = 5,
     ) -> None:
@@ -21,6 +22,7 @@ class TodoListView(discord.ui.View):
         self.todos = todos
         self.mode = mode
         self.sort = sort
+        self.user_id = user_id
         self.page_size = max(1, page_size)
         self.total_pages = max(1, math.ceil(len(todos) / self.page_size))
         self.page = max(1, min(page, self.total_pages))
@@ -56,7 +58,10 @@ class TodoListView(discord.ui.View):
             ) -> None:
                 await interaction.response.defer(ephemeral=True)
                 updated = await asyncio.to_thread(
-                    TodoFunctions.complete_todo, todo_object_id, interaction.guild_id
+                    TodoFunctions.complete_todo,
+                    todo_object_id,
+                    interaction.guild_id,
+                    interaction.user.id,
                 )
                 if not updated:
                     await interaction.followup.send(
@@ -125,10 +130,13 @@ class TodoListView(discord.ui.View):
 
 
 class TodoReminderView(discord.ui.View):
-    def __init__(self, todo_id: str, todo_name: str) -> None:
+    def __init__(
+        self, todo_id: str, todo_name: str, user_id: Optional[int] = None
+    ) -> None:
         super().__init__(timeout=3600)
         self.todo_id = todo_id
         self.todo_name = todo_name
+        self.user_id = user_id
 
         button = discord.ui.Button(
             label="Complete",
@@ -144,6 +152,7 @@ class TodoReminderView(discord.ui.View):
             TodoFunctions.complete_todo,
             self.todo_id,
             interaction.guild_id,
+            self.user_id or interaction.user.id,
         )
         if not updated:
             await interaction.followup.send(
@@ -241,7 +250,7 @@ class TodoEmbeds:
         if user_id:
             payload["content"] = f"<@{user_id}>"
         if todo_id:
-            payload["view"] = TodoReminderView(todo_id, name)
+            payload["view"] = TodoReminderView(todo_id, name, user_id)
         return payload
 
     @staticmethod
