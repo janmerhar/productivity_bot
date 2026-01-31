@@ -26,12 +26,12 @@ class PomodoroVoiceManager:
     def _resolve_audio_path(mode: str) -> Optional[Path]:
         normalized_mode = mode.lower().strip()
         key = "POMODORO_AUDIO_PATH"
+        default_path = Path("assets/focus.mp3")
         if normalized_mode == "break":
             key = "POMODORO_BREAK_AUDIO_PATH"
+            default_path = Path("assets/break.mp3")
         raw_path = (env.get(key) or "").strip()
-        if not raw_path:
-            return None
-        path = Path(raw_path)
+        path = Path(raw_path) if raw_path else default_path
         if not path.is_absolute():
             path = Path.cwd() / path
         return path
@@ -71,12 +71,7 @@ class PomodoroVoiceManager:
         normalized_mode = mode.lower().strip()
         audio_path = cls._resolve_audio_path(normalized_mode)
         if audio_path is None:
-            if normalized_mode == "break":
-                return (
-                    "POMODORO_BREAK_AUDIO_PATH is not set, so I couldn't start break "
-                    "audio."
-                )
-            return "POMODORO_AUDIO_PATH is not set, so I couldn't start focus audio."
+            return "Pomodoro audio path could not be resolved."
         if not audio_path.exists() or not audio_path.is_file():
             return f"Audio file not found at `{audio_path}`."
 
