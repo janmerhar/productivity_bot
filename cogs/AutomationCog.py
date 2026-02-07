@@ -6,6 +6,7 @@ from discord.ext import commands, tasks
 
 from classes.CryptoFunctions import CryptoFunctions
 from classes.PriceAlertFunctions import (
+    delete_expired_alerts,
     fetch_active_alerts,
     mark_triggered,
     should_trigger,
@@ -13,7 +14,7 @@ from classes.PriceAlertFunctions import (
 from classes.StocksFunctions import StocksFunctions
 from embeds.CryptoEmbeds import CryptoEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
-from services.discord_helpers import resolve_messageable_channel
+from services.discord_helpers import resolve_alert_destination
 
 
 class AutomationCog(commands.Cog):
@@ -35,6 +36,7 @@ class AutomationCog(commands.Cog):
         await self._run_crypto_alerts()
 
     async def _run_stock_alerts(self) -> None:
+        await asyncio.to_thread(delete_expired_alerts, "stock")
         alerts = await asyncio.to_thread(
             fetch_active_alerts,
             "stock",
@@ -57,10 +59,13 @@ class AutomationCog(commands.Cog):
             if not should_trigger(alert, current_price):
                 continue
 
-            channel = await resolve_messageable_channel(
-                self.bot, alert.get("channel_id")
+            destination = await resolve_alert_destination(
+                self.bot,
+                str(alert.get("destination_type") or "channel"),
+                alert.get("channel_id"),
+                alert.get("user_id"),
             )
-            if channel is None:
+            if destination is None:
                 continue
 
             alert_currency = (
@@ -74,17 +79,18 @@ class AutomationCog(commands.Cog):
                 f"{target_price:,.2f}{f' {alert_currency}' if alert_currency else ''}"
             )
             condition = alert.get("condition", "above")
-            mention = (
-                f"<@{alert.get('user_id')}>" if alert.get("user_id") else "Stock alert"
-            )
+            destination_type = str(alert.get("destination_type") or "channel")
+            mention = ""
+            if destination_type == "channel" and alert.get("user_id"):
+                mention = f"<@{alert.get('user_id')}> "
             embed = StocksEmbeds.stock_to_embed(quote)
             message = (
-                f"{mention} stock alert: `{symbol}` is `{condition}` "
+                f"{mention}stock alert: `{symbol}` is `{condition}` "
                 f"`{target_label}`. Current price: `{current_label}`."
             )
 
             sent = await self._send_alert_message(
-                channel=channel,
+                channel=destination,
                 content=message,
                 embed=embed,
             )
@@ -94,6 +100,7 @@ class AutomationCog(commands.Cog):
             await self._close_alert(alert_id=alert["_id"], current_price=current_price)
 
     async def _run_crypto_alerts(self) -> None:
+        await asyncio.to_thread(delete_expired_alerts, "crypto")
         alerts = await asyncio.to_thread(
             fetch_active_alerts,
             "crypto",
@@ -129,26 +136,30 @@ class AutomationCog(commands.Cog):
             if not should_trigger(alert, current_price):
                 continue
 
-            channel = await resolve_messageable_channel(
-                self.bot, alert.get("channel_id")
+            destination = await resolve_alert_destination(
+                self.bot,
+                str(alert.get("destination_type") or "channel"),
+                alert.get("channel_id"),
+                alert.get("user_id"),
             )
-            if channel is None:
+            if destination is None:
                 continue
 
             target_price = float(alert.get("target_price", 0))
             condition = alert.get("condition", "above")
-            mention = (
-                f"<@{alert.get('user_id')}>" if alert.get("user_id") else "Crypto alert"
-            )
+            destination_type = str(alert.get("destination_type") or "channel")
+            mention = ""
+            if destination_type == "channel" and alert.get("user_id"):
+                mention = f"<@{alert.get('user_id')}> "
             embed = CryptoEmbeds.coin_embed(coin, currency).get("embed")
             message = (
-                f"{mention} crypto alert: `{coin.get('name') or coin_id}` "
+                f"{mention}crypto alert: `{coin.get('name') or coin_id}` "
                 f"is `{condition}` `{target_price:,.6f} {currency.upper()}`. "
                 f"Current price: `{current_price:,.6f} {currency.upper()}`."
             )
 
             sent = await self._send_alert_message(
-                channel=channel,
+                channel=destination,
                 content=message,
                 embed=embed,
             )
