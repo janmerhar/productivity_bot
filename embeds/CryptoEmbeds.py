@@ -19,7 +19,7 @@ class CryptoEmbeds:
         vs_currency = currency.strip().lower()
 
         try:
-            results = CryptoFunctions.fetchPrices(
+            results = CryptoFunctions.fetch_prices(
                 [coin_id.lower()], vs_currency, ("24h", "7d", "30d")
             )
         except Exception as exc:
@@ -111,7 +111,7 @@ class CryptoEmbeds:
             return [], "No crypto tickers configured for this job."
 
         try:
-            rows = CryptoFunctions.fetchPrices(tickers, currency, change_periods)
+            rows = CryptoFunctions.fetch_prices(tickers, currency, change_periods)
         except Exception as exc:
             return [], f"Failed to fetch crypto prices: {exc}"
 

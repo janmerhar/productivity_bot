@@ -19,6 +19,7 @@ from embeds.TodoEmbeds import TodoEmbeds
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from views.PomodoroRestartView import PomodoroRestartView
 from classes.HabitFunctions import HabitFunctions
+from services.discord_helpers import resolve_messageable_channel
 from services.cron_schedule import CronConversionError, resolve_cron_expression
 from services.error_reporting import UserVisibleError, ValidationError
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
@@ -218,9 +219,9 @@ class DailyTaskCog(commands.Cog):
 
         for job, payload in runs:
             if job.type == "pomodoro":
-                channel = self.bot.get_channel(job.channel_id)
+                channel = await resolve_messageable_channel(self.bot, job.channel_id)
                 if channel is None:
-                    channel = await self.bot.fetch_channel(job.channel_id)
+                    continue
                 pomodoro_payload = PomodoroFunctions.pomodoro_payload(job)
                 pomodoro_payload["view"] = PomodoroRestartView()
                 await channel.send(**pomodoro_payload)
@@ -251,9 +252,9 @@ class DailyTaskCog(commands.Cog):
                         )
                     continue
 
-                channel = self.bot.get_channel(job.channel_id)
+                channel = await resolve_messageable_channel(self.bot, job.channel_id)
                 if channel is None:
-                    channel = await self.bot.fetch_channel(job.channel_id)
+                    continue
 
                 todo_payload = TodoEmbeds.todo_reminder_payload(todo)
                 await channel.send(**todo_payload)
@@ -266,9 +267,9 @@ class DailyTaskCog(commands.Cog):
                 if not HabitFunctions.needs_completion_today(habit):
                     continue
 
-                channel = self.bot.get_channel(job.channel_id)
+                channel = await resolve_messageable_channel(self.bot, job.channel_id)
                 if channel is None:
-                    channel = await self.bot.fetch_channel(job.channel_id)
+                    continue
 
                 habit_payload = HabitEmbeds.habit_reminder_payload(habit)
                 await channel.send(**habit_payload)
@@ -276,9 +277,9 @@ class DailyTaskCog(commands.Cog):
             if not payload:
                 continue
 
-            channel = self.bot.get_channel(job.channel_id)
+            channel = await resolve_messageable_channel(self.bot, job.channel_id)
             if channel is None:
-                channel = await self.bot.fetch_channel(job.channel_id)
+                continue
 
             await channel.send(**payload)
 

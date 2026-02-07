@@ -11,7 +11,6 @@ VISIBILITY_CHOICES = [
 
 def resolve_visibility(
     visibility: Optional[app_commands.Choice[str]],
-    *,
     default: str,
 ) -> bool:
     value = visibility.value if visibility else default

@@ -3,7 +3,7 @@ import yfinance as yf
 
 class StocksFunctions:
     @staticmethod
-    def fetchPrice(ticker: str):
+    def fetch_price(ticker: str):
         def pct(new, old):
             if new is None or old in (None, 0):
                 return None
@@ -62,7 +62,7 @@ class StocksFunctions:
         return result
 
     @staticmethod
-    def fetchPrices(tickers: list[str]):
+    def fetch_prices(tickers: list[str]):
         quotes = []
 
         for raw_ticker in tickers:
@@ -71,7 +71,7 @@ class StocksFunctions:
                 continue
 
             try:
-                quote = StocksFunctions.fetchPrice(symbol)
+                quote = StocksFunctions.fetch_price(symbol)
             except Exception:
                 quote = {
                     "symbol": symbol,
@@ -89,10 +89,3 @@ class StocksFunctions:
             quotes.append(quote)
 
         return quotes
-
-
-if __name__ == "__main__":
-    tickers = ["VWCE.DE"]
-
-    for ticker in tickers:
-        print(StocksFunctions.fetchPrice(ticker))

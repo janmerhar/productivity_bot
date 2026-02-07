@@ -48,6 +48,7 @@ async def on_ready():
                     else:
                         synced_global = await bot.tree.sync()
                         bot.tree.clear_commands(guild=guild_object)
+                        bot.tree.copy_global_to(guild=guild_object)
                         synced_guild = await bot.tree.sync(guild=guild_object)
                         did_sync = True
                         logging.getLogger(__name__).info(
@@ -55,7 +56,7 @@ async def on_ready():
                             len(synced_global),
                         )
                         logging.getLogger(__name__).info(
-                            "Cleared %d dev guild application commands for guild %s.",
+                            "Synced %d dev guild application commands for guild %s.",
                             len(synced_guild),
                             dev_guild_id,
                         )
@@ -80,6 +81,7 @@ async def on_app_command_error(interaction, error):
 async def load():
     extensions = [
         "cogs.AliasCog",
+        "cogs.AutomationCog",
         "cogs.BugReportCog",
         "cogs.DailyTaskCog",
         "cogs.FeatureRequestCog",

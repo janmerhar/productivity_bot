@@ -4,7 +4,7 @@ import requests
 class CryptoFunctions:
     # Insert into mongoDB
     @staticmethod
-    def inserTracker(
+    def insert_tracker(
         ticker: str,
         change_periods,
         currency: str,
@@ -14,7 +14,7 @@ class CryptoFunctions:
         pass
 
     @staticmethod
-    def fetchPrices(
+    def fetch_prices(
         tickers: list[str],
         currency: str,
         change_periods=("24h", "7d", "30d"),
@@ -34,7 +34,7 @@ class CryptoFunctions:
 
 if __name__ == "__main__":
     print("Testing CryptoFunctions class...")
-    res = CryptoFunctions.fetchPrices(
+    res = CryptoFunctions.fetch_prices(
         ["bitcoin"],
         "usd",
     )

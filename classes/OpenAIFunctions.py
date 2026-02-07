@@ -151,6 +151,57 @@ class OpenAIFunctions:
         return due_dt
 
     @staticmethod
+    def parse_alert_expiration_datetime(
+        expires_in: str,
+        api_key: Optional[str] = None,
+        model: str = DEFAULT_OPENAI_MODEL,
+    ) -> Optional[datetime.datetime]:
+        text = expires_in.strip()
+        if not text:
+            return None
+
+        now = datetime.datetime.now()
+        system_prompt = (
+            "You convert natural language alert lifetimes into a future local datetime. "
+            "Return JSON with key 'expires_at' in ISO 8601 format without timezone "
+            "(YYYY-MM-DDTHH:MM). "
+            "If input is invalid or ambiguous, set 'expires_at' to null. "
+            "Treat relative durations like 'in 3 days', '2h', 'next week', or "
+            "'until tomorrow 8pm' as future points in time."
+        )
+        user_prompt = (
+            f"Current local datetime: {now.strftime('%Y-%m-%d %H:%M')}\n"
+            f"Input: {text}"
+        )
+
+        payload = OpenAIFunctions._chat_json_safe(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model=model,
+            api_key=api_key,
+        )
+        if not payload:
+            return None
+
+        expires_at_value = payload.get("expires_at")
+        if not expires_at_value:
+            return None
+
+        try:
+            expires_at = datetime.datetime.fromisoformat(str(expires_at_value))
+        except ValueError:
+            return None
+
+        if expires_at.tzinfo is not None:
+            expires_at = expires_at.astimezone().replace(tzinfo=None)
+
+        expires_at = expires_at.replace(second=0, microsecond=0)
+        if expires_at <= now:
+            return None
+
+        return expires_at
+
+    @staticmethod
     def parse_cron_expression(
         text: str,
         model: str = DEFAULT_OPENAI_MODEL,
