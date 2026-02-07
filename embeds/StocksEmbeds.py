@@ -13,7 +13,7 @@ class StocksEmbeds:
         symbol = ticker.upper().strip()
 
         try:
-            quote = StocksFunctions.fetchPrice(symbol)
+            quote = StocksFunctions.fetch_price(symbol)
         except Exception as exc:
             return {"content": f"• `{symbol}` lookup failed: {exc}", "embed": None}
 
@@ -92,7 +92,7 @@ class StocksEmbeds:
             return [], "No stock tickers configured for this job."
 
         try:
-            rows = StocksFunctions.fetchPrices(tickers)
+            rows = StocksFunctions.fetch_prices(tickers)
         except Exception as exc:
             return [], f"Failed to fetch stock prices: {exc}"
 
