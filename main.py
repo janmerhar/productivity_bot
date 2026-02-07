@@ -80,6 +80,7 @@ async def on_app_command_error(interaction, error):
 async def load():
     extensions = [
         "cogs.AliasCog",
+        "cogs.AutomationCog",
         "cogs.BugReportCog",
         "cogs.DailyTaskCog",
         "cogs.FeatureRequestCog",
