@@ -6,6 +6,7 @@ from bson.objectid import ObjectId
 from config.db import mongo_db
 
 mongo_db["price_alerts"].create_index([("asset_type", 1), ("active", 1)])
+mongo_db["price_alerts"].create_index([("asset_type", 1), ("active", 1), ("expires_at", 1)])
 mongo_db["price_alerts"].create_index([("channel_id", 1), ("active", 1)])
 mongo_db["price_alerts"].create_index([("user_id", 1), ("active", 1)])
 
@@ -15,10 +16,12 @@ def create_alert(
     symbol: str,
     target_price: float,
     condition: str,
-    channel_id: int,
+    channel_id: Optional[int],
     user_id: int,
     guild_id: Optional[int] = None,
     currency: Optional[str] = None,
+    destination_type: str = "channel",
+    expires_at: Optional[datetime.datetime] = None,
 ) -> str:
     document: Dict[str, Any] = {
         "asset_type": asset_type,
@@ -28,9 +31,11 @@ def create_alert(
         "currency": currency,
         "guild_id": guild_id,
         "channel_id": channel_id,
+        "destination_type": destination_type,
         "user_id": user_id,
         "active": True,
-        "created_at": datetime.datetime.utcnow(),
+        "created_at": datetime.datetime.now(),
+        "expires_at": expires_at,
         "triggered_at": None,
         "triggered_price": None,
     }
@@ -43,9 +48,20 @@ def fetch_active_alerts(
     asset_type: str,
     limit: int = 100,
 ) -> List[Dict[str, Any]]:
+    now = datetime.datetime.now()
     cursor = (
         mongo_db["price_alerts"]
-        .find({"asset_type": asset_type, "active": True})
+        .find(
+            {
+                "asset_type": asset_type,
+                "active": True,
+                "$or": [
+                    {"expires_at": {"$exists": False}},
+                    {"expires_at": None},
+                    {"expires_at": {"$gt": now}},
+                ],
+            }
+        )
         .sort("_id", 1)
         .limit(limit)
     )
@@ -68,8 +84,20 @@ def mark_triggered(alert_id: ObjectId, current_price: float) -> None:
         {
             "$set": {
                 "active": False,
-                "triggered_at": datetime.datetime.utcnow(),
+                "triggered_at": datetime.datetime.now(),
                 "triggered_price": float(current_price),
             }
         },
     )
+
+
+def delete_expired_alerts(asset_type: str) -> int:
+    now = datetime.datetime.now()
+    result = mongo_db["price_alerts"].delete_many(
+        {
+            "asset_type": asset_type,
+            "active": True,
+            "expires_at": {"$lte": now},
+        }
+    )
+    return result.deleted_count
