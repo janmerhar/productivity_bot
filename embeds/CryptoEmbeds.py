@@ -34,6 +34,12 @@ class CryptoEmbeds:
                 "embed": None,
             }
 
+        if not isinstance(results, list):
+            return {
+                "content": "Lookup failed: unexpected data format.",
+                "embed": None,
+            }
+
         coin = results[0]
         return {
             "content": None,
@@ -114,6 +120,9 @@ class CryptoEmbeds:
             rows = CryptoFunctions.fetch_prices(tickers, currency, change_periods)
         except Exception as exc:
             return [], f"Failed to fetch crypto prices: {exc}"
+
+        if not isinstance(rows, list):
+            return [], "Failed to fetch crypto prices: unexpected data format."
 
         if not rows:
             return [], "No crypto price data returned today."

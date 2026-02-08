@@ -1,3 +1,5 @@
+from typing import Any, Dict, List, Sequence
+
 import requests
 
 
@@ -15,19 +17,23 @@ class CryptoFunctions:
 
     @staticmethod
     def fetch_prices(
-        tickers: list[str],
+        tickers: Sequence[str],
         currency: str,
         change_periods=("24h", "7d", "30d"),
-    ):
-        url = f"https://api.coingecko.com/api/v3/coins/markets"
+    ) -> List[Dict[str, Any]]:
+        url = "https://api.coingecko.com/api/v3/coins/markets"
         params = {
             "vs_currency": currency,
             "ids": ",".join(tickers),
             "price_change_percentage": ",".join(change_periods),
         }
 
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=15)
+        response.raise_for_status()
         data = response.json()
+
+        if not isinstance(data, list):
+            raise ValueError("Unexpected response format from CoinGecko.")
 
         return data
 
