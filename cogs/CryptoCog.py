@@ -10,12 +10,14 @@ from classes.OpenAIFunctions import OpenAIFunctions
 from classes.PriceAlertFunctions import create_alert
 from config.env import env
 from embeds.CryptoEmbeds import CryptoEmbeds
+from embeds.PriceAlertEmbeds import PriceAlertEmbeds
 from services.discord_helpers import (
     alert_destination_autocomplete,
     normalize_alert_destination,
 )
 from services.error_reporting import UserVisibleError, ValidationError
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from views.CryptoActionView import CryptoActionView
 
 
 class CryptoCog(commands.Cog):
@@ -60,9 +62,17 @@ class CryptoCog(commands.Cog):
             currency,
         )
 
+        action_view = None
+        if response.get("embed") is not None:
+            action_view = CryptoActionView(
+                ticker,
+                currency,
+            )
+
         await interaction.edit_original_response(
             content=response.get("content"),
             embed=response.get("embed"),
+            view=action_view,
         )
 
     @crypto_group.command(name="alert", description="Set a crypto price alert")
@@ -187,16 +197,18 @@ class CryptoCog(commands.Cog):
         )
 
         coin_name = coin.get("name") or coin_id
-        message = (
-            f"Created crypto alert `{alert_id}` for `{coin_name}` (`{coin.get('id') or coin_id}`) "
-            f"when price is `{rule}` `{target_price:,.6f} {vs_currency.upper()}`. "
-            f"Destination: {destination_label}."
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            **PriceAlertEmbeds.alert_created_embed(
+                alert_id=alert_id,
+                asset_label="Crypto",
+                symbol_label=f"`{coin_name}` (`{coin.get('id') or coin_id}`)",
+                condition=rule,
+                target_price_label=f"{target_price:,.6f} {vs_currency.upper()}",
+                destination_label=destination_label,
+                expires_at=expires_at,
+            ),
         )
-        if expires_at is not None:
-            expires_at_label = f"<t:{int(expires_at.timestamp())}:f>"
-            message = f"{message} Expires: {expires_at_label}."
-
-        await interaction.followup.send(message, ephemeral=ephemeral)
 
     @set_crypto_alert.autocomplete("destination")
     async def crypto_alert_destination_autocomplete(
