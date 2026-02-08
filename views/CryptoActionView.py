@@ -1,0 +1,365 @@
+import asyncio
+
+import discord
+
+from classes.CryptoFunctions import CryptoFunctions
+from classes.DailyJob import CronSchedule
+from classes.DailyJobManager import DailyJobManager
+from classes.OpenAIFunctions import OpenAIFunctions
+from classes.PriceAlertFunctions import create_alert
+from config.env import env
+from embeds.DailyTaskEmbeds import DailyTaskEmbeds
+from services.cron_schedule import CronConversionError, resolve_cron_expression
+from services.discord_helpers import normalize_alert_destination
+from services.error_reporting import (
+    UserVisibleError,
+    ValidationError,
+    handle_interaction_error,
+)
+
+
+class CryptoAlertModal(discord.ui.Modal, title="Create Crypto Alert"):
+    currency = discord.ui.TextInput(
+        label="Currency",
+        placeholder="e.g. usd",
+        required=True,
+        max_length=16,
+    )
+    target_price = discord.ui.TextInput(
+        label="Target price",
+        placeholder="e.g. 95000",
+        required=True,
+        max_length=32,
+    )
+    condition = discord.ui.TextInput(
+        label="Condition",
+        placeholder="above or below",
+        default="above",
+        required=True,
+        max_length=16,
+    )
+    expires_in = discord.ui.TextInput(
+        label="Expires in (optional)",
+        placeholder="e.g. 3 days, tomorrow 9am",
+        required=False,
+        max_length=100,
+    )
+    destination = discord.ui.TextInput(
+        label="Destination (optional)",
+        placeholder="dm or channel:<id>",
+        required=False,
+        max_length=100,
+    )
+
+    def __init__(self, coin_id: str, currency: str) -> None:
+        super().__init__()
+        self.coin_id = coin_id.strip().lower()
+        self.currency.default = currency.strip().lower() or "usd"
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        coin_id = self.coin_id
+        vs_currency = (self.currency.value or "").strip().lower()
+        destination_text = (self.destination.value or "").strip()
+        expires_text = (self.expires_in.value or "").strip()
+
+        try:
+            target_price = float((self.target_price.value or "").strip())
+        except ValueError as exc:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(
+                    "Target price must be a number.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
+
+        if not vs_currency:
+            await handle_interaction_error(
+                interaction,
+                ValidationError("Please provide a currency.", ephemeral=True),
+            )
+            return
+        if target_price <= 0:
+            await handle_interaction_error(
+                interaction,
+                ValidationError("Target price must be greater than 0.", ephemeral=True),
+            )
+            return
+
+        rule = (self.condition.value or "").strip().lower()
+        if rule not in {"above", "below"}:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(
+                    "Condition must be either `above` or `below`.",
+                    ephemeral=True,
+                ),
+            )
+            return
+
+        try:
+            destination_type, destination_channel_id, destination_label = (
+                normalize_alert_destination(interaction, destination_text or None)
+            )
+        except ValueError as exc:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(str(exc), ephemeral=True, cause=exc),
+            )
+            return
+
+        try:
+            results = await asyncio.to_thread(
+                CryptoFunctions.fetch_prices,
+                [coin_id],
+                vs_currency,
+                ("24h", "7d", "30d"),
+            )
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    f"Failed to fetch `{coin_id}` price data.",
+                    hint="Check the coin id and currency.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
+
+        if not results:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(
+                    f"No market data returned for `{coin_id}` in `{vs_currency}`.",
+                    hint="Use CoinGecko ids such as `bitcoin` or `ethereum`.",
+                    ephemeral=True,
+                ),
+            )
+            return
+
+        coin = results[0]
+        if coin.get("current_price") is None:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(
+                    f"No live price data returned for `{coin_id}`.",
+                    ephemeral=True,
+                ),
+            )
+            return
+
+        expires_at = None
+        if expires_text:
+            api_key = env.get("OPENAI_API_KEY")
+            if not api_key:
+                await handle_interaction_error(
+                    interaction,
+                    ValidationError(
+                        "OpenAI API key is not configured.",
+                        hint="Set `OPENAI_API_KEY` to use natural-language alert expiry.",
+                        ephemeral=True,
+                    ),
+                )
+                return
+
+            expires_at = await asyncio.to_thread(
+                OpenAIFunctions.parse_alert_expiration_datetime,
+                expires_text,
+                api_key,
+            )
+            if expires_at is None:
+                await handle_interaction_error(
+                    interaction,
+                    ValidationError(
+                        "I couldn't understand that alert expiry value.",
+                        hint="Try `3 days`, `tomorrow 8pm`, or `in 2 hours`.",
+                        ephemeral=True,
+                    ),
+                )
+                return
+
+        alert_id = await asyncio.to_thread(
+            create_alert,
+            asset_type="crypto",
+            symbol=coin.get("id") or coin_id,
+            target_price=target_price,
+            condition=rule,
+            currency=vs_currency,
+            guild_id=interaction.guild_id,
+            channel_id=destination_channel_id,
+            destination_type=destination_type,
+            expires_at=expires_at,
+            user_id=interaction.user.id,
+        )
+
+        coin_name = coin.get("name") or coin_id
+        message = (
+            f"Created crypto alert `{alert_id}` for `{coin_name}` "
+            f"when price is `{rule}` "
+            f"`{target_price:,.6f} {vs_currency.upper()}`. "
+            f"Destination: {destination_label}."
+        )
+        if expires_at is not None:
+            message = f"{message} Expires: <t:{int(expires_at.timestamp())}:f>."
+
+        await interaction.followup.send(message, ephemeral=True)
+
+
+class CryptoDailyJobModal(discord.ui.Modal, title="Schedule Daily Crypto Check"):
+    ticker = discord.ui.TextInput(
+        label="Ticker (CoinGecko id)",
+        placeholder="e.g. bitcoin",
+        required=True,
+        max_length=64,
+    )
+    currency = discord.ui.TextInput(
+        label="Currency",
+        placeholder="e.g. usd",
+        required=True,
+        max_length=16,
+    )
+    schedule = discord.ui.TextInput(
+        label="Schedule",
+        placeholder="e.g. every day at 9am or 0 9 * * *",
+        required=True,
+        max_length=120,
+    )
+    header = discord.ui.TextInput(
+        label="Message header (optional)",
+        placeholder="e.g. Daily BTC check",
+        required=False,
+        max_length=200,
+    )
+
+    def __init__(self, coin_id: str, currency: str) -> None:
+        super().__init__()
+        self.ticker.default = coin_id.strip().lower()
+        self.currency.default = currency.strip().lower() or "usd"
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        coin_id = (self.ticker.value or "").strip().lower()
+        currency = (self.currency.value or "").strip().lower()
+        raw_schedule = (self.schedule.value or "").strip()
+
+        if not coin_id:
+            await handle_interaction_error(
+                interaction,
+                ValidationError("Please provide a crypto ticker.", ephemeral=True),
+            )
+            return
+        if not currency:
+            await handle_interaction_error(
+                interaction,
+                ValidationError("Please provide a currency.", ephemeral=True),
+            )
+            return
+
+        try:
+            cron_expression = await asyncio.to_thread(
+                resolve_cron_expression, raw_schedule
+            )
+        except CronConversionError as exc:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(str(exc), ephemeral=True, cause=exc),
+            )
+            return
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while parsing that schedule.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
+
+        payload = {"tickers": [coin_id], "currency": currency}
+        header_text = (self.header.value or "").strip()
+        if header_text:
+            payload["header"] = header_text
+
+        manager = DailyJobManager()
+        try:
+            await asyncio.to_thread(
+                manager.insert_job,
+                interaction.guild_id,
+                interaction.channel_id,
+                "crypto",
+                payload,
+                CronSchedule(expression=cron_expression),
+            )
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while storing that job. Please try again.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
+
+        await interaction.followup.send(
+            ephemeral=True,
+            **DailyTaskEmbeds.job_embed(
+                (
+                    f"Scheduled `crypto` job for `{coin_id}` on `{raw_schedule}`. "
+                    f"(Cron: `{cron_expression}`)"
+                ),
+                ok=True,
+            ),
+        )
+
+
+class CryptoActionView(discord.ui.View):
+    def __init__(self, coin_id: str, currency: str, *, timeout: float = 3600) -> None:
+        super().__init__(timeout=timeout)
+        self.coin_id = coin_id.strip().lower()
+        self.currency = currency.strip().lower() or "usd"
+
+    @discord.ui.button(label="Set Alert", style=discord.ButtonStyle.success)
+    async def set_alert(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        if not self.coin_id:
+            await handle_interaction_error(
+                interaction,
+                ValidationError("Missing coin id for this action.", ephemeral=True),
+            )
+            return
+        await interaction.response.send_modal(
+            CryptoAlertModal(
+                coin_id=self.coin_id,
+                currency=self.currency,
+            )
+        )
+
+    @discord.ui.button(
+        label="Schedule Daily Check", style=discord.ButtonStyle.secondary
+    )
+    async def schedule_daily_check(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        if not self.coin_id:
+            await handle_interaction_error(
+                interaction,
+                ValidationError("Missing coin id for this action.", ephemeral=True),
+            )
+            return
+        await interaction.response.send_modal(
+            CryptoDailyJobModal(
+                coin_id=self.coin_id,
+                currency=self.currency,
+            )
+        )
