@@ -13,9 +13,11 @@ from services.discord_helpers import (
     alert_destination_autocomplete,
     normalize_alert_destination,
 )
+from embeds.PriceAlertEmbeds import PriceAlertEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
 from services.error_reporting import UserVisibleError, ValidationError
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from views.StockActionView import StockActionView
 
 
 class StocksCog(commands.Cog):
@@ -53,9 +55,14 @@ class StocksCog(commands.Cog):
 
         response = await asyncio.to_thread(StocksEmbeds.stock_embed, ticker)
 
+        action_view = None
+        if response.get("embed") is not None:
+            action_view = StockActionView(ticker)
+
         await interaction.edit_original_response(
             content=response.get("content"),
             embed=response.get("embed"),
+            view=action_view,
         )
 
     @stock_group.command(name="alert", description="Set a stock price alert")
@@ -163,15 +170,18 @@ class StocksCog(commands.Cog):
         target_price_label = (
             f"{target_price:,.2f}{f' {currency_code}' if currency_code else ''}"
         )
-        message = (
-            f"Created stock alert `{alert_id}` for `{symbol}` when price is "
-            f"`{rule}` `{target_price_label}`. Destination: {destination_label}."
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            **PriceAlertEmbeds.alert_created_embed(
+                alert_id=alert_id,
+                asset_label="Stock",
+                symbol_label=f"`{symbol}`",
+                condition=rule,
+                target_price_label=target_price_label,
+                destination_label=destination_label,
+                expires_at=expires_at,
+            ),
         )
-        if expires_at is not None:
-            expires_at_label = f"<t:{int(expires_at.timestamp())}:f>"
-            message = f"{message} Expires: {expires_at_label}."
-
-        await interaction.followup.send(message, ephemeral=ephemeral)
 
     @set_stock_alert.autocomplete("destination")
     async def stock_alert_destination_autocomplete(
