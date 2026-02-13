@@ -1,8 +1,10 @@
-from typing import List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 import discord
 from discord import app_commands
 from discord.ext import commands
+
+from services.visibility import resolve_visibility
 
 
 async def resolve_messageable_channel(
@@ -105,7 +107,11 @@ def alert_destination_autocomplete(
                 break
             if current_channel_id and channel.id == current_channel_id:
                 continue
-            if query and query not in channel.name.lower() and query not in str(channel.id):
+            if (
+                query
+                and query not in channel.name.lower()
+                and query not in str(channel.id)
+            ):
                 continue
             if not channel.permissions_for(interaction.user).view_channel:
                 continue
@@ -126,3 +132,75 @@ def alert_destination_autocomplete(
         choices.append(app_commands.Choice(name="Direct messages", value="dm"))
 
     return choices[:25]
+
+
+def resolve_scope_value(
+    guild_id: Optional[int],
+    scope: Optional[app_commands.Choice[str]],
+    server_default: str = "channel",
+    dm_default: str = "personal",
+    allowed_values: Iterable[str] = ("channel", "personal"),
+    dm_allowed_values: Optional[Iterable[str]] = None,
+    dm_error_message: str = "That option is only available in servers.",
+) -> str:
+    scope_value = (
+        scope.value if scope else (dm_default if guild_id is None else server_default)
+    )
+    allowed_set = set(allowed_values)
+    if scope_value not in allowed_set:
+        raise ValueError("Invalid scope.")
+
+    dm_allowed_set = (
+        set(dm_allowed_values) if dm_allowed_values is not None else {dm_default}
+    )
+    if guild_id is None and scope_value not in dm_allowed_set:
+        raise ValueError(dm_error_message)
+
+    return scope_value
+
+
+def resolve_ephemeral_from_scope(
+    guild_id: Optional[int],
+    scope_value: str,
+    visibility: Optional[app_commands.Choice[str]],
+    private_scope_values: Iterable[str] = ("personal",),
+    guild_default_visibility: str = "public",
+    dm_default_visibility: str = "private",
+) -> bool:
+    private_scope_set = set(private_scope_values)
+    default_visibility = (
+        "private" if scope_value in private_scope_set else guild_default_visibility
+    )
+    if guild_id is None:
+        default_visibility = dm_default_visibility
+
+    return resolve_visibility(visibility, default=default_visibility)
+
+
+def resolve_todo_scope(
+    guild_id: Optional[int],
+    scope: Optional[app_commands.Choice[str]],
+) -> str:
+    return resolve_scope_value(
+        guild_id=guild_id,
+        scope=scope,
+        server_default="channel",
+        dm_default="personal",
+        allowed_values=("channel", "personal"),
+        dm_allowed_values=("personal",),
+    )
+
+
+def resolve_todo_ephemeral(
+    guild_id: Optional[int],
+    scope_value: str,
+    visibility: Optional[app_commands.Choice[str]],
+) -> bool:
+    return resolve_ephemeral_from_scope(
+        guild_id=guild_id,
+        scope_value=scope_value,
+        visibility=visibility,
+        private_scope_values=("personal",),
+        guild_default_visibility="public",
+        dm_default_visibility="private",
+    )
