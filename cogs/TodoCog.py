@@ -16,7 +16,7 @@ _SORT_CHOICES = [
     app_commands.Choice(name="Ascending", value="ascending"),
     app_commands.Choice(name="Descending", value="descending"),
 ]
-_ADD_LIST_CHOICES = [
+_ADD_SCOPE_CHOICES = [
     app_commands.Choice(name="This Channel", value="channel"),
     app_commands.Choice(name="Personal", value="personal"),
 ]
@@ -124,11 +124,11 @@ class TodoCog(commands.Cog):
     async def on_ready(self) -> None:
         print("TodoCog cog loaded")
 
-    @list_group.command(name="view", description="Show all items on a list")
+    @list_group.command(name="show", description="Show all items on a list")
     @app_commands.describe(
         sort="Sort order for items",
         status="Filter by item status",
-        list="Which todo scope to show",
+        scope="Which todo scope to show",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
@@ -141,10 +141,10 @@ class TodoCog(commands.Cog):
         interaction: discord.Interaction,
         sort: Optional[app_commands.Choice[str]] = None,
         status: Optional[app_commands.Choice[str]] = None,
-        list: Optional[str] = None,
+        scope: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        target_value = (list or "").strip()
+        target_value = (scope or "").strip()
         selected_channel_id: Optional[int] = None
         selected_channel_name: Optional[str] = None
         use_all_server_channels = False
@@ -185,7 +185,7 @@ class TodoCog(commands.Cog):
             use_all_server_channels = True
         elif target_value not in {"channel", "personal"}:
             raise ValidationError(
-                "Please select a valid list target from autocomplete.",
+                "Please select a valid scope from autocomplete.",
                 ephemeral=True,
             )
 
@@ -284,8 +284,8 @@ class TodoCog(commands.Cog):
             **view.payload(),
         )
 
-    @list_view.autocomplete("list")
-    async def list_view_list_autocomplete(
+    @list_view.autocomplete("scope")
+    async def list_view_scope_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
@@ -374,14 +374,14 @@ class TodoCog(commands.Cog):
         text="Item text",
         description="Additional details (optional)",
         due="Due date/time (natural language, same as /reminder)",
-        list="Where to add this item",
+        scope="Where to add this item",
         status="Initial progress status",
         assignee="Who should be assigned (optional)",
         notify_assignee="Mention the assignee with the todo embed",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
-        list=_ADD_LIST_CHOICES,
+        scope=_ADD_SCOPE_CHOICES,
         status=_ITEM_STATUS_CHOICES,
         notify_assignee=_YES_NO_CHOICES,
         visibility=VISIBILITY_CHOICES,
@@ -392,15 +392,15 @@ class TodoCog(commands.Cog):
         text: str,
         description: Optional[str] = None,
         due: Optional[str] = None,
-        list: Optional[app_commands.Choice[str]] = None,
+        scope: Optional[app_commands.Choice[str]] = None,
         status: Optional[app_commands.Choice[str]] = None,
         assignee: Optional[str] = None,
         notify_assignee: Optional[app_commands.Choice[str]] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         target_value = (
-            list.value
-            if list
+            scope.value
+            if scope
             else ("channel" if interaction.guild_id is not None else "personal")
         )
         if interaction.guild_id is None:
@@ -505,9 +505,9 @@ class TodoCog(commands.Cog):
     ) -> List[app_commands.Choice[str]]:
         return await self.todo_assign_autocomplete(interaction, current)
 
-    @todo_group.command(name="view", description="Show the text of an item")
+    @todo_group.command(name="show", description="Show the text of an item")
     @app_commands.describe(
-        todo="Todo number from /todo list view",
+        todo="Todo number from /todo list show",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -553,7 +553,7 @@ class TodoCog(commands.Cog):
 
     @todo_group.command(name="edit", description="Edit the text of an existing item")
     @app_commands.describe(
-        todo="Todo number from /todo list view",
+        todo="Todo number from /todo list show",
     )
     async def item_edit(
         self,
@@ -646,7 +646,7 @@ class TodoCog(commands.Cog):
 
     @todo_group.command(name="status", description="Set the progress of an item")
     @app_commands.describe(
-        todo="Todo number from /todo list view",
+        todo="Todo number from /todo list show",
         status="New progress status",
         visibility=VISIBILITY_DESC,
     )
@@ -713,7 +713,7 @@ class TodoCog(commands.Cog):
 
     @todo_group.command(name="delete", description="Delete an item from a list")
     @app_commands.describe(
-        todo="Todo number from /todo list view",
+        todo="Todo number from /todo list show",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -768,7 +768,7 @@ class TodoCog(commands.Cog):
 
     @todo_group.command(name="assign", description="Assign or unassign an item")
     @app_commands.describe(
-        todo="Todo number from /todo list view",
+        todo="Todo number from /todo list show",
         assignee="Who should be assigned (None = unassign, Me = yourself)",
         visibility=VISIBILITY_DESC,
     )

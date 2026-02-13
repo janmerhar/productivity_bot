@@ -562,7 +562,7 @@ class TodoListItemsView(discord.ui.View):
     async def _notify_missing_message(self, interaction: discord.Interaction) -> None:
         message = (
             "That todo list message is no longer available. "
-            "Run `/todo list view` again."
+            "Run `/todo list show` again."
         )
         try:
             if interaction.response.is_done():
