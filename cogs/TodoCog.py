@@ -6,7 +6,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from classes.TodoFunctions import TodoFunctions
-from embeds.TodoEmbeds import TodoEmbeds, TodoListItemsView
+from embeds.TodoEmbeds import TodoEmbeds, TodoListItemsView, TodoItemEditModal
 from services.discord_helpers import resolve_ephemeral_from_scope
 from services.error_reporting import UserVisibleError, ValidationError
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC
@@ -554,25 +554,12 @@ class TodoCog(commands.Cog):
     @todo_group.command(name="edit", description="Edit the text of an existing item")
     @app_commands.describe(
         todo="Todo number from /todo list view",
-        text="New item text",
-        visibility=VISIBILITY_DESC,
     )
-    @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def item_edit(
         self,
         interaction: discord.Interaction,
         todo: int,
-        text: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        scope_value = "channel" if interaction.guild_id is not None else "personal"
-        ephemeral = resolve_ephemeral_from_scope(
-            interaction.guild_id,
-            scope_value,
-            visibility,
-        )
-        await interaction.response.defer(ephemeral=ephemeral)
-
         try:
             todo_list = await asyncio.to_thread(
                 TodoFunctions.get_or_create_implicit_list,
@@ -582,35 +569,78 @@ class TodoCog(commands.Cog):
                 getattr(interaction.channel, "name", None),
                 "channel" if interaction.guild_id is not None else "personal",
             )
+            items = await asyncio.to_thread(
+                TodoFunctions.list_items_on_list,
+                todo_list["_id"],
+                "ascending",
+            )
             item = await asyncio.to_thread(
                 TodoFunctions.fetch_item_on_list_or_error,
                 todo_list["_id"],
                 todo,
             )
-            updated = await asyncio.to_thread(
-                TodoFunctions.set_item_text,
-                item["_id"],
-                text,
-            )
         except ValueError as exc:
-            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
+            raise ValidationError(str(exc), ephemeral=True, cause=exc)
         except Exception as exc:
             raise UserVisibleError(
-                "Something went wrong while editing that item.",
-                ephemeral=ephemeral,
+                "Something went wrong while loading that item.",
+                ephemeral=True,
                 cause=exc,
             )
 
-        if not updated:
-            raise UserVisibleError(
-                "That item could not be updated.",
-                ephemeral=ephemeral,
-            )
-
-        await interaction.followup.send(
-            ephemeral=ephemeral,
-            content=f"Updated item #{todo} on `{todo_list.get('name')}`.",
+        parent_view = TodoListItemsView(
+            todo_list=todo_list,
+            items=items,
+            sort="ascending",
+            status_filter="all",
+            user_id=interaction.user.id,
+            view_scope="list",
+            guild_id=interaction.guild_id,
         )
+        assignee_options = parent_view._build_assignee_select_options(
+            interaction,
+            item,
+        )
+        list_options = []
+        try:
+            list_docs = await asyncio.to_thread(
+                TodoFunctions.list_candidate_lists_for_item_scope,
+                item,
+                interaction.user.id,
+                25,
+            )
+            list_options = parent_view._build_list_select_options(item, list_docs)
+        except Exception:
+            list_options = []
+
+        try:
+            await interaction.response.send_modal(
+                TodoItemEditModal(
+                    parent_view=parent_view,
+                    item=item,
+                    item_number=todo,
+                    source_message=None,
+                    assignee_options=assignee_options,
+                    list_options=list_options,
+                )
+            )
+        except discord.HTTPException as exc:
+            if exc.code == 50035 and "must be one of (4,)" in str(exc):
+                await interaction.response.send_modal(
+                    TodoItemEditModal(
+                        parent_view=parent_view,
+                        item=item,
+                        item_number=todo,
+                        source_message=None,
+                    )
+                )
+                return
+
+            raise UserVisibleError(
+                "Something went wrong while opening the edit dialog.",
+                ephemeral=True,
+                cause=exc,
+            )
 
     @todo_group.command(name="status", description="Set the progress of an item")
     @app_commands.describe(
