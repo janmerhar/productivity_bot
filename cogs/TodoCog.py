@@ -622,6 +622,7 @@ class TodoCog(commands.Cog):
                     source_message=None,
                     assignee_options=assignee_options,
                     list_options=list_options,
+                    return_item_embed=True,
                 )
             )
         except discord.HTTPException as exc:
@@ -632,6 +633,7 @@ class TodoCog(commands.Cog):
                         item=item,
                         item_number=todo,
                         source_message=None,
+                        return_item_embed=True,
                     )
                 )
                 return

@@ -137,12 +137,14 @@ class TodoItemEditModal(discord.ui.Modal):
         source_message: Optional[discord.Message],
         assignee_options: Optional[List[discord.SelectOption]] = None,
         list_options: Optional[List[discord.SelectOption]] = None,
+        return_item_embed: bool = False,
     ) -> None:
         super().__init__(title=f"Edit Item #{item_number}")
         self.parent_view = parent_view
         self.item_id = str(item.get("_id") or "")
         self.item_number = item_number
         self.source_message = source_message
+        self.return_item_embed = return_item_embed
 
         current_task = str(item.get("name") or "").strip() or "Untitled"
         current_text = TodoFunctions.item_text(item)
@@ -409,6 +411,32 @@ class TodoItemEditModal(discord.ui.Modal):
                 )
                 return
 
+        final_item = updated_assignee
+        if list_changed:
+            final_item = moved
+        if final_item is None:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "That item could not be loaded after update.",
+                    ephemeral=True,
+                ),
+            )
+            return
+
+        final_list = self.parent_view.todo_list
+        final_list_id = final_item.get("list_id")
+        if final_list_id:
+            try:
+                resolved_list = await asyncio.to_thread(
+                    TodoFunctions.fetch_todo_list_by_id,
+                    final_list_id,
+                )
+                if resolved_list is not None:
+                    final_list = resolved_list
+            except Exception:
+                pass
+
         try:
             await self.parent_view._reload_items()
             self.parent_view._build()
@@ -430,10 +458,15 @@ class TodoItemEditModal(discord.ui.Modal):
             )
             return
 
-        await interaction.followup.send(
-            ephemeral=True,
-            content=f"Updated item #{self.item_number}.",
-        )
+        if self.return_item_embed:
+            payload = TodoEmbeds.item_details_embed(final_list, final_item)
+            await interaction.followup.send(
+                ephemeral=True,
+                **payload,
+            )
+            return
+
+        await interaction.followup.send(ephemeral=True, content=f"Updated item #{self.item_number}.")
 
 
 class TodoListItemsView(discord.ui.View):
