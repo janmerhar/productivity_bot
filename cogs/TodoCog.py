@@ -507,14 +507,14 @@ class TodoCog(commands.Cog):
 
     @todo_group.command(name="view", description="Show the text of an item")
     @app_commands.describe(
-        item_number="Item number from /todo list view",
+        todo="Todo number from /todo list view",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def item_view(
         self,
         interaction: discord.Interaction,
-        item_number: int,
+        todo: int,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         scope_value = "channel" if interaction.guild_id is not None else "personal"
@@ -537,7 +537,7 @@ class TodoCog(commands.Cog):
             item = await asyncio.to_thread(
                 TodoFunctions.fetch_item_on_list_or_error,
                 todo_list["_id"],
-                item_number,
+                todo,
             )
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
@@ -553,7 +553,7 @@ class TodoCog(commands.Cog):
 
     @todo_group.command(name="edit", description="Edit the text of an existing item")
     @app_commands.describe(
-        item_number="Item number from /todo list view",
+        todo="Todo number from /todo list view",
         text="New item text",
         visibility=VISIBILITY_DESC,
     )
@@ -561,7 +561,7 @@ class TodoCog(commands.Cog):
     async def item_edit(
         self,
         interaction: discord.Interaction,
-        item_number: int,
+        todo: int,
         text: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
@@ -585,7 +585,7 @@ class TodoCog(commands.Cog):
             item = await asyncio.to_thread(
                 TodoFunctions.fetch_item_on_list_or_error,
                 todo_list["_id"],
-                item_number,
+                todo,
             )
             updated = await asyncio.to_thread(
                 TodoFunctions.set_item_text,
@@ -609,12 +609,12 @@ class TodoCog(commands.Cog):
 
         await interaction.followup.send(
             ephemeral=ephemeral,
-            content=f"Updated item #{item_number} on `{todo_list.get('name')}`.",
+            content=f"Updated item #{todo} on `{todo_list.get('name')}`.",
         )
 
     @todo_group.command(name="status", description="Set the progress of an item")
     @app_commands.describe(
-        item_number="Item number from /todo list view",
+        todo="Todo number from /todo list view",
         status="New progress status",
         visibility=VISIBILITY_DESC,
     )
@@ -625,7 +625,7 @@ class TodoCog(commands.Cog):
     async def item_status(
         self,
         interaction: discord.Interaction,
-        item_number: int,
+        todo: int,
         status: app_commands.Choice[str],
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
@@ -649,7 +649,7 @@ class TodoCog(commands.Cog):
             item = await asyncio.to_thread(
                 TodoFunctions.fetch_item_on_list_or_error,
                 todo_list["_id"],
-                item_number,
+                todo,
             )
             updated = await asyncio.to_thread(
                 TodoFunctions.set_item_status,
@@ -674,21 +674,21 @@ class TodoCog(commands.Cog):
         await interaction.followup.send(
             ephemeral=ephemeral,
             content=(
-                f"Updated item #{item_number} on `{todo_list.get('name')}` "
+                f"Updated item #{todo} on `{todo_list.get('name')}` "
                 f"to {TodoFunctions.status_label(status.value)}."
             ),
         )
 
     @todo_group.command(name="delete", description="Delete an item from a list")
     @app_commands.describe(
-        item_number="Item number from /todo list view",
+        todo="Todo number from /todo list view",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def item_delete(
         self,
         interaction: discord.Interaction,
-        item_number: int,
+        todo: int,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         scope_value = "channel" if interaction.guild_id is not None else "personal"
@@ -711,7 +711,7 @@ class TodoCog(commands.Cog):
             item = await asyncio.to_thread(
                 TodoFunctions.fetch_item_on_list_or_error,
                 todo_list["_id"],
-                item_number,
+                todo,
             )
             deleted = await asyncio.to_thread(TodoFunctions.delete_item, item["_id"])
         except ValueError as exc:
@@ -731,12 +731,12 @@ class TodoCog(commands.Cog):
 
         await interaction.followup.send(
             ephemeral=ephemeral,
-            content=f"Deleted item #{item_number} from `{todo_list.get('name')}`.",
+            content=f"Deleted item #{todo} from `{todo_list.get('name')}`.",
         )
 
     @todo_group.command(name="assign", description="Assign or unassign an item")
     @app_commands.describe(
-        item_number="Item number from /todo list view",
+        todo="Todo number from /todo list view",
         assignee="Who should be assigned (None = unassign, Me = yourself)",
         visibility=VISIBILITY_DESC,
     )
@@ -744,7 +744,7 @@ class TodoCog(commands.Cog):
     async def todo_assign(
         self,
         interaction: discord.Interaction,
-        item_number: int,
+        todo: int,
         assignee: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
@@ -776,7 +776,7 @@ class TodoCog(commands.Cog):
             item = await asyncio.to_thread(
                 TodoFunctions.fetch_item_on_list_or_error,
                 todo_list["_id"],
-                item_number,
+                todo,
             )
             updated = await asyncio.to_thread(
                 TodoFunctions.set_item_assignee,
@@ -800,11 +800,11 @@ class TodoCog(commands.Cog):
 
         if assignee_id is None:
             message = (
-                f"Unassigned item #{item_number} on `{todo_list.get('name')}`."
+                f"Unassigned item #{todo} on `{todo_list.get('name')}`."
             )
         else:
             message = (
-                f"Assigned <@{assignee_id}> to item #{item_number} "
+                f"Assigned <@{assignee_id}> to item #{todo} "
                 f"on `{todo_list.get('name')}`."
             )
 
@@ -850,6 +850,95 @@ class TodoCog(commands.Cog):
                 break
 
         return options[:25]
+
+    async def todo_item_number_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[int]]:
+        query = (current or "").strip().lower()
+        scope_value = "channel" if interaction.guild_id is not None else "personal"
+
+        try:
+            todo_list = await asyncio.to_thread(
+                TodoFunctions.get_or_create_implicit_list,
+                interaction.guild_id,
+                interaction.channel_id,
+                interaction.user.id,
+                getattr(interaction.channel, "name", None),
+                scope_value,
+            )
+            items = await asyncio.to_thread(
+                TodoFunctions.list_items_on_list,
+                todo_list["_id"],
+                "ascending",
+            )
+        except Exception:
+            return []
+
+        options: List[app_commands.Choice[int]] = []
+        for item in items:
+            item_no = item.get("item_no")
+            if not isinstance(item_no, int):
+                continue
+
+            task_name = str(item.get("name") or "").strip() or "Untitled"
+            status = TodoFunctions.status_label(TodoFunctions.item_status(item))
+            search_text = f"{item_no} {task_name} {status}".lower()
+            if query and query not in search_text:
+                continue
+
+            label = f"#{item_no} {task_name} [{status}]"
+            options.append(
+                app_commands.Choice(
+                    name=label[:100],
+                    value=item_no,
+                )
+            )
+            if len(options) >= 25:
+                break
+
+        return options[:25]
+
+    @item_view.autocomplete("todo")
+    async def todo_item_view_number_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[int]]:
+        return await self.todo_item_number_autocomplete(interaction, current)
+
+    @item_edit.autocomplete("todo")
+    async def todo_item_edit_number_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[int]]:
+        return await self.todo_item_number_autocomplete(interaction, current)
+
+    @item_status.autocomplete("todo")
+    async def todo_item_status_number_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[int]]:
+        return await self.todo_item_number_autocomplete(interaction, current)
+
+    @item_delete.autocomplete("todo")
+    async def todo_item_delete_number_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[int]]:
+        return await self.todo_item_number_autocomplete(interaction, current)
+
+    @todo_assign.autocomplete("todo")
+    async def todo_item_assign_number_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[int]]:
+        return await self.todo_item_number_autocomplete(interaction, current)
 
 
 async def setup(client: commands.Bot) -> None:
