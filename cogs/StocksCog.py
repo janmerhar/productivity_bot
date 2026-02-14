@@ -16,6 +16,7 @@ from services.discord_helpers import (
 from embeds.PriceAlertEmbeds import PriceAlertEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
 from services.error_reporting import UserVisibleError, ValidationError
+from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 from views.StockActionView import StockActionView
 
@@ -110,8 +111,60 @@ class StocksCog(commands.Cog):
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
 
-        await interaction.response.defer(ephemeral=ephemeral)
+        timezone = None
+        if expires_text:
+            async def _continue_with_timezone(
+                followup_interaction: discord.Interaction,
+                resolved_timezone: str,
+            ) -> None:
+                await self._set_stock_alert(
+                    interaction=followup_interaction,
+                    symbol=symbol,
+                    target_price=target_price,
+                    rule=condition.value,
+                    expires_text=expires_text,
+                    destination_type=destination_type,
+                    destination_channel_id=destination_channel_id,
+                    destination_label=destination_label,
+                    ephemeral=ephemeral,
+                    timezone=resolved_timezone,
+                )
 
+            timezone = await ensure_user_timezone(
+                interaction,
+                _continue_with_timezone,
+                continue_message="Timezone saved as `{timezone}`. Continuing `/stock alert`.",
+            )
+            if timezone is None:
+                return
+
+        await interaction.response.defer(ephemeral=ephemeral)
+        await self._set_stock_alert(
+            interaction=interaction,
+            symbol=symbol,
+            target_price=target_price,
+            rule=condition.value,
+            expires_text=expires_text,
+            destination_type=destination_type,
+            destination_channel_id=destination_channel_id,
+            destination_label=destination_label,
+            ephemeral=ephemeral,
+            timezone=timezone,
+        )
+
+    async def _set_stock_alert(
+        self,
+        interaction: discord.Interaction,
+        symbol: str,
+        target_price: float,
+        rule: str,
+        expires_text: str,
+        destination_type: str,
+        destination_channel_id: Optional[int],
+        destination_label: str,
+        ephemeral: bool,
+        timezone: Optional[str],
+    ) -> None:
         try:
             quote = await asyncio.to_thread(StocksFunctions.fetch_price, symbol)
         except Exception as exc:
@@ -143,7 +196,8 @@ class StocksCog(commands.Cog):
             expires_at = await asyncio.to_thread(
                 OpenAIFunctions.parse_alert_expiration_datetime,
                 expires_text,
-                api_key,
+                api_key=api_key,
+                timezone=timezone,
             )
             if expires_at is None:
                 raise ValidationError(
@@ -152,7 +206,6 @@ class StocksCog(commands.Cog):
                     ephemeral=ephemeral,
                 )
 
-        rule = condition.value
         alert_id = await asyncio.to_thread(
             create_alert,
             asset_type="stock",

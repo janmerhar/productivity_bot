@@ -9,6 +9,7 @@ from embeds.HabitEmbeds import HabitEmbeds
 from classes.HabitFunctions import HabitFunctions
 from views.HabitActionView import HabitActionView
 from services.error_reporting import UserVisibleError, ValidationError
+from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
@@ -42,8 +43,49 @@ class HabitCog(commands.Cog):
         if not name.strip():
             raise ValidationError("Habit name cannot be empty.", ephemeral=ephemeral)
 
-        await interaction.response.defer(ephemeral=ephemeral)
+        reminder_text = (reminder or "").strip()
+        timezone = None
+        if reminder_text:
+            async def _continue_with_timezone(
+                followup_interaction: discord.Interaction,
+                resolved_timezone: str,
+            ) -> None:
+                await self._create_habit(
+                    interaction=followup_interaction,
+                    name=name,
+                    description=description,
+                    reminder=reminder,
+                    ephemeral=ephemeral,
+                    timezone=resolved_timezone,
+                )
 
+            timezone = await ensure_user_timezone(
+                interaction,
+                _continue_with_timezone,
+                continue_message="Timezone saved as `{timezone}`. Continuing `/habit create`.",
+            )
+            if timezone is None:
+                return
+
+        await interaction.response.defer(ephemeral=ephemeral)
+        await self._create_habit(
+            interaction=interaction,
+            name=name,
+            description=description,
+            reminder=reminder,
+            ephemeral=ephemeral,
+            timezone=timezone,
+        )
+
+    async def _create_habit(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        description: Optional[str],
+        reminder: Optional[str],
+        ephemeral: bool,
+        timezone: Optional[str],
+    ) -> None:
         try:
             document, reminder_time = await asyncio.to_thread(
                 HabitFunctions.insert_habit,
@@ -53,6 +95,7 @@ class HabitCog(commands.Cog):
                 name,
                 description,
                 reminder,
+                timezone,
             )
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)

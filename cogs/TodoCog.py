@@ -9,6 +9,7 @@ from classes.TodoFunctions import TodoFunctions
 from embeds.TodoEmbeds import TodoEmbeds, TodoListItemsView, TodoItemEditModal
 from services.discord_helpers import resolve_ephemeral_from_scope
 from services.error_reporting import UserVisibleError, ValidationError
+from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC
 
 
@@ -302,7 +303,9 @@ class TodoCog(commands.Cog):
                 app_commands.Choice(name="All Server Channels", value="all_server"),
             )
         options: List[app_commands.Choice[str]] = [
-            option for option in base_options if not query or query in option.name.lower()
+            option
+            for option in base_options
+            if not query or query in option.name.lower()
         ]
 
         if guild is None:
@@ -412,8 +415,70 @@ class TodoCog(commands.Cog):
             scope_value,
             visibility,
         )
-        await interaction.response.defer(ephemeral=ephemeral)
+        status_value = status.value if status else "todo"
+        notify_enabled = (notify_assignee.value if notify_assignee else "yes") == "yes"
+        channel_id = interaction.channel_id
+        channel_name = getattr(interaction.channel, "name", None)
+        timezone = None
+        if (due or "").strip():
+            async def _continue_with_timezone(
+                followup_interaction: discord.Interaction,
+                resolved_timezone: str,
+            ) -> None:
+                await self._run_item_add(
+                    interaction=followup_interaction,
+                    text=text,
+                    description=description,
+                    due=due,
+                    target_value=target_value,
+                    status_value=status_value,
+                    assignee=assignee,
+                    notify_enabled=notify_enabled,
+                    ephemeral=ephemeral,
+                    timezone=resolved_timezone,
+                    channel_id=channel_id,
+                    channel_name=channel_name,
+                )
 
+            timezone = await ensure_user_timezone(
+                interaction,
+                _continue_with_timezone,
+                continue_message="Timezone saved as `{timezone}`. Continuing `/todo add`.",
+            )
+            if timezone is None:
+                return
+
+        await interaction.response.defer(ephemeral=ephemeral)
+        await self._run_item_add(
+            interaction=interaction,
+            text=text,
+            description=description,
+            due=due,
+            target_value=target_value,
+            status_value=status_value,
+            assignee=assignee,
+            notify_enabled=notify_enabled,
+            ephemeral=ephemeral,
+            timezone=timezone,
+            channel_id=channel_id,
+            channel_name=channel_name,
+        )
+
+    async def _run_item_add(
+        self,
+        interaction: discord.Interaction,
+        text: str,
+        description: Optional[str],
+        due: Optional[str],
+        target_value: str,
+        status_value: str,
+        assignee: Optional[str],
+        notify_enabled: bool,
+        ephemeral: bool,
+        timezone: Optional[str],
+        channel_id: int,
+        channel_name: Optional[str],
+    ) -> None:
         try:
             assignee_id = TodoFunctions.parse_assignee_token(
                 assignee,
@@ -422,8 +487,6 @@ class TodoCog(commands.Cog):
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
 
-        status_value = status.value if status else "todo"
-        notify_enabled = (notify_assignee.value if notify_assignee else "yes") == "yes"
         description_value = description.strip() if description else ""
         item_text = text
         if description_value:
@@ -433,9 +496,9 @@ class TodoCog(commands.Cog):
             todo_list = await asyncio.to_thread(
                 TodoFunctions.get_or_create_implicit_list,
                 interaction.guild_id,
-                interaction.channel_id,
+                channel_id,
                 interaction.user.id,
-                getattr(interaction.channel, "name", None),
+                channel_name,
                 target_value,
             )
             item, due_dt = await asyncio.to_thread(
@@ -446,6 +509,7 @@ class TodoCog(commands.Cog):
                 due,
                 status_value,
                 assignee_id,
+                timezone,
             )
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
@@ -477,7 +541,11 @@ class TodoCog(commands.Cog):
             )
 
         notify_failed = False
-        if notify_enabled and assignee_id is not None and interaction.guild_id is not None:
+        if (
+            notify_enabled
+            and assignee_id is not None
+            and interaction.guild_id is not None
+        ):
             notify_payload = TodoEmbeds.item_details_embed(todo_list, item)
             try:
                 channel = interaction.channel
@@ -828,9 +896,7 @@ class TodoCog(commands.Cog):
             )
 
         if assignee_id is None:
-            message = (
-                f"Unassigned item #{todo} on `{todo_list.get('name')}`."
-            )
+            message = f"Unassigned item #{todo} on `{todo_list.get('name')}`."
         else:
             message = (
                 f"Assigned <@{assignee_id}> to item #{todo} "
@@ -974,5 +1040,3 @@ async def setup(client: commands.Bot) -> None:
     await client.add_cog(TodoCog(client))
     client.tree.add_command(add_message_to_todo)
     client.tree.add_command(add_message_to_personal_todo)
-
-
