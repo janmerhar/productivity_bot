@@ -467,17 +467,14 @@ class TodoCog(commands.Cog):
             except Exception:
                 reminder_failed = True
 
-        message = (
-            f"Added item #{item.get('item_no')} to `{todo_list.get('name')}` "
-            f"(due: {TodoFunctions.format_due(due_dt)})."
-        )
-        message += f" Status: {TodoFunctions.status_label(status_value)}."
-        if assignee_id is not None:
-            message += f" Assignee: <@{assignee_id}>."
-        if reminder_failed:
-            message += " Reminder scheduling failed."
+        payload = TodoEmbeds.item_details_embed(todo_list, item)
+        await interaction.followup.send(ephemeral=ephemeral, **payload)
 
-        await interaction.followup.send(ephemeral=ephemeral, content=message)
+        if reminder_failed:
+            await interaction.followup.send(
+                ephemeral=True,
+                content="Item was added, but reminder scheduling failed.",
+            )
 
         notify_failed = False
         if notify_enabled and assignee_id is not None and interaction.guild_id is not None:
