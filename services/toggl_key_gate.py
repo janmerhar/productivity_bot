@@ -3,7 +3,7 @@ from typing import Awaitable, Callable, Optional
 
 import discord
 
-from classes.TogglCredentials import TogglCredentials
+from classes.UserSettingsFunctions import UserSettingsFunctions
 from views.TogglApiKeyModal import TogglApiKeyModal
 
 
@@ -20,8 +20,7 @@ async def ensure_toggl_api_key(
         return None
 
     api_key = await asyncio.to_thread(
-        TogglCredentials.get_key,
-        guild_id,
+        UserSettingsFunctions.get_toggl_api_key,
         interaction.user.id,
     )
     if api_key:
@@ -30,7 +29,6 @@ async def ensure_toggl_api_key(
     await interaction.response.send_modal(
         TogglApiKeyModal(
             user_id=interaction.user.id,
-            guild_id=guild_id,
             on_api_key_resolved=on_api_key_resolved,
             continue_message=continue_message,
         )
