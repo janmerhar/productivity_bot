@@ -7,8 +7,8 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
+from classes.UserSettingsFunctions import UserSettingsFunctions
 from embeds.TogglEmbeds import TogglEmbeds
-from classes.TogglCredentials import TogglCredentials
 from services.error_reporting import ValidationError
 from services.toggl_key_gate import ensure_toggl_api_key
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
@@ -58,7 +58,7 @@ class TogglCog(commands.Cog):
     ) -> None:
         if interaction.guild_id is None:
             raise ValidationError(
-                "Use this command inside a server because Toggl key is stored per server.",
+                "Use this command inside a server.",
                 ephemeral=ephemeral,
             )
 
@@ -104,46 +104,9 @@ class TogglCog(commands.Cog):
             ),
         )
 
-    @key.command(name="set", description="Save your Toggl API key for this server")
-    @app_commands.describe(
-        api_key="Your Toggl API token",
-        visibility=VISIBILITY_DESC,
-    )
-    @app_commands.choices(visibility=VISIBILITY_CHOICES)
-    async def togglkey(
-        self,
-        interaction: discord.Interaction,
-        api_key: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ):
-        ephemeral = resolve_visibility(visibility, default="private")
-        if interaction.guild_id is None:
-            raise ValidationError(
-                "Use this command inside a server to save your key.",
-                ephemeral=ephemeral,
-            )
-
-        cleaned = api_key.strip()
-        if not cleaned:
-            raise ValidationError(
-                "API key cannot be empty.",
-                ephemeral=ephemeral,
-            )
-
-        await asyncio.to_thread(
-            TogglCredentials.set_key,
-            interaction.guild_id,
-            interaction.user.id,
-            cleaned,
-        )
-        await interaction.response.send_message(
-            ephemeral=ephemeral,
-            content="Saved your Toggl API key for this server.",
-        )
-
     @key.command(
         name="clear",
-        description="Remove your Toggl API key for this server",
+        description="Remove your Toggl API key",
     )
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -153,21 +116,14 @@ class TogglCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
         ephemeral = resolve_visibility(visibility, default="private")
-        if interaction.guild_id is None:
-            raise ValidationError(
-                "Use this command inside a server to remove your key.",
-                ephemeral=ephemeral,
-            )
-
         removed = await asyncio.to_thread(
-            TogglCredentials.clear_key,
-            interaction.guild_id,
-            interaction.user.id,
+            UserSettingsFunctions.clear_toggl_api_key,
+            interaction.user.id
         )
         message = (
-            "Removed your Toggl API key for this server."
+            "Removed your Toggl API key."
             if removed
-            else "No Toggl API key was saved for this server."
+            else "No Toggl API key was saved."
         )
         await interaction.response.send_message(
             ephemeral=ephemeral,
@@ -498,7 +454,6 @@ class TogglCog(commands.Cog):
     def _alias_command_map() -> dict:
         return {
             "about": "aboutme",
-            "key set": "togglkey",
             "key clear": "togglkeyclear",
             "timer start": "start",
             "timer stop": "stop",
