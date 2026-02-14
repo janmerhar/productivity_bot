@@ -25,7 +25,7 @@ class CronScheduleResolver:
         self._client = client
         self._api_key = api_key
 
-    def resolve(self, raw: str) -> str:
+    def resolve(self, raw: str, timezone: Optional[str] = None) -> str:
         expression = raw.strip()
         if not expression:
             raise CronConversionError("Schedule cannot be empty.")
@@ -33,7 +33,7 @@ class CronScheduleResolver:
         if self.is_valid(expression):
             return expression
 
-        return self._cron_from_text(expression)
+        return self._cron_from_text(expression, timezone=timezone)
 
     def is_valid(self, expression: str) -> bool:
         parts = expression.split()
@@ -47,12 +47,13 @@ class CronScheduleResolver:
 
         return True
 
-    def _cron_from_text(self, text: str) -> str:
+    def _cron_from_text(self, text: str, timezone: Optional[str] = None) -> str:
         cron_value = OpenAIFunctions.parse_cron_expression(
             text,
             model=self._model,
             client=self._get_client(),
             api_key=self._api_key,
+            timezone=timezone,
         )
         if not cron_value:
             raise CronConversionError("Schedule could not be parsed.")
@@ -78,5 +79,13 @@ _resolver = CronScheduleResolver()
 def resolve_cron_expression(
     raw: str,
     resolver: CronScheduleResolver = _resolver,
+    timezone: Optional[str] = None,
 ) -> str:
-    return resolver.resolve(raw)
+    return resolver.resolve(raw, timezone=timezone)
+
+
+def is_valid_cron_expression(
+    raw: str,
+    resolver: CronScheduleResolver = _resolver,
+) -> bool:
+    return resolver.is_valid(raw.strip())
