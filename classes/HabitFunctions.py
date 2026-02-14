@@ -38,6 +38,7 @@ class HabitFunctions:
         name: str,
         description: Optional[str] = None,
         reminder: Optional[str] = None,
+        timezone: Optional[str] = None,
     ) -> Tuple[Dict[str, Any], Optional[datetime.time]]:
         cleaned_name = name.strip()
         if not cleaned_name:
@@ -56,6 +57,7 @@ class HabitFunctions:
             reminder_time = OpenAIFunctions.parse_reminder_time(
                 reminder_text,
                 api_key=api_key,
+                timezone=timezone,
             )
             if reminder_time is None:
                 raise ValueError(
