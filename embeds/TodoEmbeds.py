@@ -741,12 +741,24 @@ class TodoListItemsView(discord.ui.View):
             item_id = str(item.get("_id") or "")
             item_no = item.get("item_no")
             item_status = TodoFunctions.item_status(item)
+            if item_status == "todo":
+                progress_emoji = "🟡"
+                progress_style = discord.ButtonStyle.primary
+                progress_disabled = False
+            elif item_status == "in_progress":
+                progress_emoji = "✅"
+                progress_style = discord.ButtonStyle.success
+                progress_disabled = False
+            else:
+                progress_emoji = "✅"
+                progress_style = discord.ButtonStyle.secondary
+                progress_disabled = True
             complete_button = discord.ui.Button(
-                label=f"✅ {display_index}",
-                style=discord.ButtonStyle.secondary,
+                label=f"{progress_emoji} {display_index}",
+                style=progress_style,
                 custom_id=f"todo_item_complete:{item_id}",
                 row=0,
-                disabled=(not item_id) or item_status == "done",
+                disabled=(not item_id) or progress_disabled,
             )
 
             async def _callback(
@@ -761,15 +773,46 @@ class TodoListItemsView(discord.ui.View):
                         content="Couldn't complete that item.",
                     )
                     return
+                current_item = await asyncio.to_thread(
+                    TodoFunctions.fetch_todo,
+                    item_object_id,
+                    interaction.guild_id,
+                )
+                if not current_item:
+                    await interaction.followup.send(
+                        ephemeral=True,
+                        content=f"Item #{item_number} no longer exists.",
+                    )
+                    return
+
+                current_status = TodoFunctions.item_status(current_item)
+                if current_status == "todo":
+                    next_status = "in_progress"
+                elif current_status == "in_progress":
+                    next_status = "done"
+                else:
+                    next_status = None
+
+                if next_status is None:
+                    await self._reload_items()
+                    self._build()
+                    refreshed = await self._safe_refresh_message(interaction)
+                    if not refreshed:
+                        return
+                    await interaction.followup.send(
+                        ephemeral=True,
+                        content=f"Item #{item_number} is already Done.",
+                    )
+                    return
                 updated = await asyncio.to_thread(
                     TodoFunctions.set_item_status,
                     item_object_id,
-                    "done",
+                    next_status,
                 )
                 if not updated:
                     await interaction.followup.send(
                         ephemeral=True,
-                        content=f"Couldn't complete item #{item_number}.",
+                        content=f"Couldn't update item #{item_number}.",
                     )
                     return
                 await self._reload_items()
@@ -779,7 +822,10 @@ class TodoListItemsView(discord.ui.View):
                     return
                 await interaction.followup.send(
                     ephemeral=True,
-                    content=f"Marked item #{item_number} as done.",
+                    content=(
+                        f"Updated item #{item_number} to "
+                        f"{TodoFunctions.status_label(next_status)}."
+                    ),
                 )
 
             complete_button.callback = _callback
@@ -1981,3 +2027,4 @@ class TodoEmbeds:
         if include_actions:
             payload["view"] = TodoItemActionsView(todo_list, item)
         return payload
+
