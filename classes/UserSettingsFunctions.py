@@ -97,6 +97,71 @@ class UserSettingsFunctions:
         return settings
 
     @staticmethod
+    def get_toggl_api_key(user_id: int) -> Optional[str]:
+        settings = UserSettingsFunctions.fetch(user_id)
+        key = settings.toggl_api_key
+        if not isinstance(key, str):
+            return None
+
+        cleaned = key.strip()
+        return cleaned or None
+
+    @staticmethod
+    def set_toggl_api_key(
+        user_id: int,
+        api_key: str,
+    ) -> UserSettings:
+        key = int(user_id)
+        cleaned = api_key.strip()
+        if not cleaned:
+            raise ValueError("API key cannot be empty.")
+
+        now = datetime.datetime.utcnow().isoformat()
+        updated_doc = UserSettingsFunctions._collection().find_one_and_update(
+            {"user_id": key},
+            {
+                "$set": {
+                    "user_id": key,
+                    "toggl_api_key": cleaned,
+                    "updated_at": now,
+                },
+                "$setOnInsert": {
+                    "created_at": now,
+                },
+            },
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        settings = UserSettings.from_document(updated_doc, user_id=key)
+        UserSettingsFunctions._cache_put(settings)
+        return settings
+
+    @staticmethod
+    def clear_toggl_api_key(user_id: int) -> bool:
+        key = int(user_id)
+        existed = UserSettingsFunctions.get_toggl_api_key(user_id) is not None
+        now = datetime.datetime.utcnow().isoformat()
+        updated_doc = UserSettingsFunctions._collection().find_one_and_update(
+            {"user_id": key},
+            {
+                "$unset": {
+                    "toggl_api_key": "",
+                },
+                "$set": {
+                    "updated_at": now,
+                },
+            },
+            upsert=False,
+            return_document=ReturnDocument.AFTER,
+        )
+        if updated_doc:
+            settings = UserSettings.from_document(updated_doc, user_id=key)
+            UserSettingsFunctions._cache_put(settings)
+        else:
+            UserSettingsFunctions.invalidate_cache(key)
+        return existed
+
+    @staticmethod
     def resolve_timezone_input(
         raw: str,
         model: str = DEFAULT_OPENAI_MODEL,
