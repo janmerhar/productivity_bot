@@ -3,7 +3,7 @@ from typing import Dict, Optional
 import discord
 from discord.ext import commands
 from discord import app_commands
-from classes.TogglCredentials import TogglCredentials
+from classes.UserSettingsFunctions import UserSettingsFunctions
 from classes.TogglFunctions import TogglFunctions
 from abstract.EmbedsAbstract import EmbedsAbstract
 
@@ -13,7 +13,7 @@ class TogglEmbeds(EmbedsAbstract):
     def _get_toggl(guild_id: int, user_id: int) -> Optional[TogglFunctions]:
         if guild_id is None or user_id is None:
             return None
-        api_key = TogglCredentials.get_key(guild_id, user_id)
+        api_key = UserSettingsFunctions.get_toggl_api_key(user_id)
         if not api_key:
             return None
         return TogglFunctions(api_key)
