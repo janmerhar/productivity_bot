@@ -97,6 +97,78 @@ class UserSettingsFunctions:
         return settings
 
     @staticmethod
+    def get_toggl_api_key(user_id: int, guild_id: int) -> Optional[str]:
+        settings = UserSettingsFunctions.fetch(user_id)
+        key_map = settings.toggl_api_keys
+        if not isinstance(key_map, dict):
+            return None
+
+        key_value = key_map.get(UserSettingsFunctions._toggl_guild_key(guild_id))
+        if not isinstance(key_value, str):
+            return None
+
+        cleaned = key_value.strip()
+        return cleaned or None
+
+    @staticmethod
+    def set_toggl_api_key(
+        user_id: int,
+        guild_id: int,
+        api_key: str,
+    ) -> UserSettings:
+        key = int(user_id)
+        cleaned = api_key.strip()
+        if not cleaned:
+            raise ValueError("API key cannot be empty.")
+
+        now = datetime.datetime.utcnow().isoformat()
+        guild_key = UserSettingsFunctions._toggl_guild_key(guild_id)
+        updated_doc = UserSettingsFunctions._collection().find_one_and_update(
+            {"user_id": key},
+            {
+                "$set": {
+                    "user_id": key,
+                    f"toggl_api_keys.{guild_key}": cleaned,
+                    "updated_at": now,
+                },
+                "$setOnInsert": {
+                    "created_at": now,
+                },
+            },
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        settings = UserSettings.from_document(updated_doc, user_id=key)
+        UserSettingsFunctions._cache_put(settings)
+        return settings
+
+    @staticmethod
+    def clear_toggl_api_key(user_id: int, guild_id: int) -> bool:
+        key = int(user_id)
+        guild_key = UserSettingsFunctions._toggl_guild_key(guild_id)
+        existed = UserSettingsFunctions.get_toggl_api_key(user_id, guild_id) is not None
+        now = datetime.datetime.utcnow().isoformat()
+        updated_doc = UserSettingsFunctions._collection().find_one_and_update(
+            {"user_id": key},
+            {
+                "$unset": {
+                    f"toggl_api_keys.{guild_key}": "",
+                },
+                "$set": {
+                    "updated_at": now,
+                },
+                "$setOnInsert": {
+                    "created_at": now,
+                },
+            },
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        settings = UserSettings.from_document(updated_doc, user_id=key)
+        UserSettingsFunctions._cache_put(settings)
+        return existed
+
+    @staticmethod
     def resolve_timezone_input(
         raw: str,
         model: str = DEFAULT_OPENAI_MODEL,
@@ -196,3 +268,7 @@ class UserSettingsFunctions:
         key = int(settings.user_id)
         with UserSettingsFunctions._cache_lock:
             UserSettingsFunctions._cache[key] = settings
+
+    @staticmethod
+    def _toggl_guild_key(guild_id: int) -> str:
+        return str(int(guild_id))
