@@ -1,6 +1,7 @@
 import datetime
 import json
 from typing import Optional, Dict, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from openai import APIError, OpenAI
 
@@ -105,12 +106,21 @@ class OpenAIFunctions:
         due: str,
         api_key: Optional[str] = None,
         model: str = DEFAULT_OPENAI_MODEL,
+        timezone: Optional[str] = None,
     ) -> Optional[datetime.datetime]:
         text = due.strip()
         if not text:
             return None
 
-        now = datetime.datetime.now()
+        timezone_value = (timezone or "").strip()
+        tzinfo = None
+        if timezone_value:
+            try:
+                tzinfo = ZoneInfo(timezone_value)
+            except ZoneInfoNotFoundError:
+                tzinfo = None
+
+        now = datetime.datetime.now(tzinfo) if tzinfo else datetime.datetime.now()
         system_prompt = (
             "You convert natural language due dates into local datetimes. "
             "Return JSON with a single key 'due' whose value is an ISO 8601 datetime "
@@ -118,9 +128,15 @@ class OpenAIFunctions:
             "If the input cannot be understood, set 'due' to null. "
             "Prefer future dates; if a time would be in the past, choose the next occurrence."
         )
+        timezone_line = (
+            f"Timezone: {timezone_value}\n"
+            if timezone_value
+            else "Timezone: server local timezone\n"
+        )
         user_prompt = (
-            f"Current local datetime: {now.strftime('%Y-%m-%d %H:%M')}\n"
-            f"Input: {text}"
+            timezone_line
+            + f"Current local datetime: {now.strftime('%Y-%m-%d %H:%M')}\n"
+            + f"Input: {text}"
         )
 
         payload = OpenAIFunctions._chat_json_safe(
@@ -141,12 +157,20 @@ class OpenAIFunctions:
         except ValueError:
             return None
 
-        if due_dt.tzinfo is not None:
+        if tzinfo is not None:
+            if due_dt.tzinfo is None:
+                due_dt = due_dt.replace(tzinfo=tzinfo)
+            else:
+                due_dt = due_dt.astimezone(tzinfo)
+        elif due_dt.tzinfo is not None:
             due_dt = due_dt.astimezone().replace(tzinfo=None)
 
         due_dt = due_dt.replace(second=0, microsecond=0)
         if due_dt <= now:
             due_dt += datetime.timedelta(days=1)
+
+        if due_dt.tzinfo is not None:
+            due_dt = due_dt.astimezone().replace(tzinfo=None)
 
         return due_dt
 
