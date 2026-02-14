@@ -1216,11 +1216,37 @@ class TodoItemActionsView(discord.ui.View):
         self.guild_id = item.get("guild_id")
 
         item_status = TodoFunctions.item_status(item)
-        self.complete_todo.disabled = (not self.item_id) or item_status == "done"
+        self._apply_progress_button_state(item_status)
+        if not self.item_id:
+            self.complete_todo.disabled = True
         self.edit_todo.disabled = not self.item_id
         self.delete_todo.disabled = not self.item_id
         self.assign_to_me.disabled = not self.item_id
         self.assign_to_user.disabled = (not self.item_id) or self.guild_id is None
+
+    @staticmethod
+    def _next_progress_status(current_status: str) -> Optional[str]:
+        if current_status == "todo":
+            return "in_progress"
+        if current_status == "in_progress":
+            return "done"
+        return None
+
+    def _apply_progress_button_state(self, current_status: str) -> None:
+        if current_status == "todo":
+            self.complete_todo.style = discord.ButtonStyle.primary
+            self.complete_todo.emoji = "🟡"
+            self.complete_todo.disabled = False
+            return
+        if current_status == "in_progress":
+            self.complete_todo.style = discord.ButtonStyle.success
+            self.complete_todo.emoji = "✅"
+            self.complete_todo.disabled = False
+            return
+
+        self.complete_todo.style = discord.ButtonStyle.secondary
+        self.complete_todo.emoji = "✅"
+        self.complete_todo.disabled = True
 
     async def _resolve_list_for_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
         list_id = item.get("list_id")
@@ -1383,15 +1409,33 @@ class TodoItemActionsView(discord.ui.View):
             )
             return
 
+        current_list, current_item = await self._load_current_item_and_list()
+        if current_list is None or current_item is None:
+            await interaction.followup.send(
+                ephemeral=True,
+                content="That item no longer exists.",
+            )
+            return
+
+        current_status = TodoFunctions.item_status(current_item)
+        next_status = self._next_progress_status(current_status)
+        if next_status is None:
+            await self._refresh_source_card(interaction, current_list, current_item)
+            await interaction.followup.send(
+                ephemeral=True,
+                content=f"Item #{self.item_label} is already Done.",
+            )
+            return
+
         updated_item = await asyncio.to_thread(
             TodoFunctions.set_item_status,
             self.item_id,
-            "done",
+            next_status,
         )
         if not updated_item:
             await interaction.followup.send(
                 ephemeral=True,
-                content=f"Couldn't complete item #{self.item_label}.",
+                content=f"Couldn't update item #{self.item_label}.",
             )
             return
 
@@ -1399,7 +1443,10 @@ class TodoItemActionsView(discord.ui.View):
         await self._refresh_source_card(interaction, updated_list, updated_item)
         await interaction.followup.send(
             ephemeral=True,
-            content=f"Marked item #{self.item_label} as done.",
+            content=(
+                f"Updated item #{self.item_label} to "
+                f"{TodoFunctions.status_label(next_status)}."
+            ),
         )
 
     @discord.ui.button(emoji="🗑️", style=discord.ButtonStyle.danger, row=0)
@@ -1441,10 +1488,22 @@ class TodoItemActionsView(discord.ui.View):
             )
             return
 
+        current_list, current_item = await self._load_current_item_and_list()
+        if current_list is None or current_item is None:
+            await interaction.followup.send(
+                ephemeral=True,
+                content="That item no longer exists.",
+            )
+            return
+
+        assignees = current_item.get("assignees") or []
+        is_assigned_to_me = interaction.user.id in assignees
+        target_assignee_id: Optional[int] = None if is_assigned_to_me else interaction.user.id
+
         updated_item = await asyncio.to_thread(
             TodoFunctions.set_item_assignee,
             self.item_id,
-            interaction.user.id,
+            target_assignee_id,
         )
         if not updated_item:
             await interaction.followup.send(
@@ -1455,9 +1514,14 @@ class TodoItemActionsView(discord.ui.View):
 
         updated_list = await self._resolve_list_for_item(updated_item)
         await self._refresh_source_card(interaction, updated_list, updated_item)
+
+        if is_assigned_to_me:
+            message = f"Unassigned item #{self.item_label}."
+        else:
+            message = f"Assigned item #{self.item_label} to you."
         await interaction.followup.send(
             ephemeral=True,
-            content=f"Assigned item #{self.item_label} to you.",
+            content=message,
         )
 
     @discord.ui.button(emoji="👥", style=discord.ButtonStyle.secondary, row=0)
