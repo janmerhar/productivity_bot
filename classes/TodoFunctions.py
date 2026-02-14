@@ -22,7 +22,10 @@ class TodoFunctions:
         return scope if scope in ("channel", "personal") else "channel"
 
     @staticmethod
-    def _parse_due_datetime(due: Optional[str]) -> Optional[datetime.datetime]:
+    def _parse_due_datetime(
+        due: Optional[str],
+        timezone: Optional[str] = None,
+    ) -> Optional[datetime.datetime]:
         due_text = due.strip() if due else ""
         if not due_text:
             return None
@@ -30,7 +33,11 @@ class TodoFunctions:
         api_key = env.get("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OpenAI API key is not configured.")
-        due_dt = OpenAIFunctions.parse_due_datetime(due_text, api_key=api_key)
+        due_dt = OpenAIFunctions.parse_due_datetime(
+            due_text,
+            api_key=api_key,
+            timezone=timezone,
+        )
         if due_dt is None:
             raise ValueError(
                 "I couldn't understand that due time. Try 'tomorrow 8pm'."
@@ -831,13 +838,14 @@ class TodoFunctions:
         due: Optional[str] = None,
         status: str = "todo",
         assignee_id: Optional[int] = None,
+        timezone: Optional[str] = None,
     ) -> Tuple[Dict[str, Any], Optional[datetime.datetime]]:
         list_id = TodoFunctions._coerce_object_id(todo_list.get("_id"))
         if list_id is None:
             raise ValueError("That list is invalid.")
 
         cleaned_text = TodoFunctions._clean_item_text(text)
-        due_dt = TodoFunctions._parse_due_datetime(due)
+        due_dt = TodoFunctions._parse_due_datetime(due, timezone=timezone)
         item_no = TodoFunctions._next_item_number(list_id)
         title = TodoFunctions._item_title_from_text(cleaned_text)
         normalized_status = (status or "todo").strip().lower()
