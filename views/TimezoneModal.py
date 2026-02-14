@@ -1,4 +1,5 @@
 import asyncio
+from typing import Awaitable, Callable, Optional
 
 import discord
 
@@ -14,9 +15,17 @@ class TimezoneModal(discord.ui.Modal, title="Set Timezone"):
         max_length=100,
     )
 
-    def __init__(self, user_id: int):
+    def __init__(
+        self,
+        user_id: int,
+        on_timezone_resolved: Callable[[discord.Interaction, str], Awaitable[None]],
+        *,
+        continue_message: Optional[str] = None,
+    ):
         super().__init__()
         self._user_id = int(user_id)
+        self._on_timezone_resolved = on_timezone_resolved
+        self._continue_message = continue_message
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         if interaction.user.id != self._user_id:
@@ -61,37 +70,18 @@ class TimezoneModal(discord.ui.Modal, title="Set Timezone"):
             )
             return
 
-        cog = interaction.client.get_cog("TodoCog")
-        if cog is None:
-            await interaction.followup.send(
-                "Todo service is not available right now. Please try again.",
-                ephemeral=True,
-            )
-            return
-
-        todo_cog = cog
-        pending = todo_cog.pop_pending_timezone_add(self._user_id)
-        if not pending:
-            await interaction.followup.send(
-                (
-                    f"Saved timezone `{resolved_timezone}`. "
-                    "Your pending `/todo add` request expired, so run it again."
-                ),
-                ephemeral=True,
-            )
-            return
-
         try:
-            await todo_cog.resume_item_add_from_pending(
-                interaction,
-                pending,
-                resolved_timezone,
-            )
+            if self._continue_message:
+                await interaction.followup.send(
+                    content=self._continue_message.format(timezone=resolved_timezone),
+                    ephemeral=True,
+                )
+            await self._on_timezone_resolved(interaction, resolved_timezone)
         except Exception as exc:
             await handle_interaction_error(
                 interaction,
                 UserVisibleError(
-                    "Timezone was saved, but I couldn't continue `/todo add`.",
+                    "Timezone was saved, but I couldn't continue that action.",
                     ephemeral=True,
                     cause=exc,
                 ),
