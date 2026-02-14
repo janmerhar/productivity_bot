@@ -3,7 +3,7 @@ from typing import Awaitable, Callable, Optional
 
 import discord
 
-from classes.TogglCredentials import TogglCredentials
+from classes.UserSettingsFunctions import UserSettingsFunctions
 from services.error_reporting import UserVisibleError, handle_interaction_error
 
 
@@ -18,13 +18,11 @@ class TogglApiKeyModal(discord.ui.Modal, title="Set Toggl API Key"):
     def __init__(
         self,
         user_id: int,
-        guild_id: int,
         on_api_key_resolved: Callable[[discord.Interaction, str], Awaitable[None]],
         continue_message: Optional[str] = None,
     ):
         super().__init__()
         self._user_id = int(user_id)
-        self._guild_id = int(guild_id)
         self._on_api_key_resolved = on_api_key_resolved
         self._continue_message = continue_message
 
@@ -48,10 +46,7 @@ class TogglApiKeyModal(discord.ui.Modal, title="Set Toggl API Key"):
 
         try:
             await asyncio.to_thread(
-                TogglCredentials.set_key,
-                self._guild_id,
-                self._user_id,
-                cleaned,
+                UserSettingsFunctions.set_toggl_api_key, self._user_id, cleaned
             )
         except Exception as exc:
             await handle_interaction_error(
