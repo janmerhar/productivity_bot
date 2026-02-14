@@ -23,7 +23,7 @@ class TogglEmbeds(EmbedsAbstract):
         embed = discord.Embed(
             title=":stopwatch: Toggl",
             color=discord.Colour.from_str("#552d4f"),
-            description="Set your Toggl API key with `/toggl key set <api_key>`.",
+            description="Run any Toggl command and provide your API key in the popup.",
         )
         embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
         return {"embeds": [embed]}
@@ -37,7 +37,6 @@ class TogglEmbeds(EmbedsAbstract):
             cleaned = cleaned[len("toggl ") :].strip()
         alias_map = {
             "about": "aboutme",
-            "key set": "togglkey",
             "key clear": "togglkeyclear",
             "timer start": "start",
             "timer stop": "stop",
