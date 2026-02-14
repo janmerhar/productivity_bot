@@ -137,12 +137,16 @@ class TodoItemEditModal(discord.ui.Modal):
         source_message: Optional[discord.Message],
         assignee_options: Optional[List[discord.SelectOption]] = None,
         list_options: Optional[List[discord.SelectOption]] = None,
+        return_item_embed: bool = False,
+        refresh_source_as_item_embed: bool = False,
     ) -> None:
         super().__init__(title=f"Edit Item #{item_number}")
         self.parent_view = parent_view
         self.item_id = str(item.get("_id") or "")
         self.item_number = item_number
         self.source_message = source_message
+        self.return_item_embed = return_item_embed
+        self.refresh_source_as_item_embed = refresh_source_as_item_embed
 
         current_task = str(item.get("name") or "").strip() or "Untitled"
         current_text = TodoFunctions.item_text(item)
@@ -409,31 +413,79 @@ class TodoItemEditModal(discord.ui.Modal):
                 )
                 return
 
-        try:
-            await self.parent_view._reload_items()
-            self.parent_view._build()
-            if self.source_message is not None:
-                await self.source_message.edit(
-                    view=self.parent_view,
-                    **self.parent_view.payload(),
-                )
-        except discord.NotFound:
-            pass
-        except Exception as exc:
+        final_item = updated_assignee
+        if list_changed:
+            final_item = moved
+        if final_item is None:
             await handle_interaction_error(
                 interaction,
                 UserVisibleError(
-                    "Item updated, but refreshing the list failed.",
+                    "That item could not be loaded after update.",
                     ephemeral=True,
-                    cause=exc,
                 ),
             )
             return
 
-        await interaction.followup.send(
-            ephemeral=True,
-            content=f"Updated item #{self.item_number}.",
-        )
+        final_list = self.parent_view.todo_list
+        final_list_id = final_item.get("list_id")
+        if final_list_id:
+            try:
+                resolved_list = await asyncio.to_thread(
+                    TodoFunctions.fetch_todo_list_by_id,
+                    final_list_id,
+                )
+                if resolved_list is not None:
+                    final_list = resolved_list
+            except Exception:
+                pass
+
+        if self.source_message is not None and self.refresh_source_as_item_embed:
+            try:
+                payload = TodoEmbeds.item_details_embed(final_list, final_item)
+                await self.source_message.edit(**payload)
+            except discord.NotFound:
+                pass
+            except Exception as exc:
+                await handle_interaction_error(
+                    interaction,
+                    UserVisibleError(
+                        "Item updated, but refreshing the item card failed.",
+                        ephemeral=True,
+                        cause=exc,
+                    ),
+                )
+                return
+        else:
+            try:
+                await self.parent_view._reload_items()
+                self.parent_view._build()
+                if self.source_message is not None:
+                    await self.source_message.edit(
+                        view=self.parent_view,
+                        **self.parent_view.payload(),
+                    )
+            except discord.NotFound:
+                pass
+            except Exception as exc:
+                await handle_interaction_error(
+                    interaction,
+                    UserVisibleError(
+                        "Item updated, but refreshing the list failed.",
+                        ephemeral=True,
+                        cause=exc,
+                    ),
+                )
+                return
+
+        if self.return_item_embed:
+            payload = TodoEmbeds.item_details_embed(final_list, final_item)
+            await interaction.followup.send(
+                ephemeral=True,
+                **payload,
+            )
+            return
+
+        await interaction.followup.send(ephemeral=True, content=f"Updated item #{self.item_number}.")
 
 
 class TodoListItemsView(discord.ui.View):
@@ -529,7 +581,7 @@ class TodoListItemsView(discord.ui.View):
     async def _notify_missing_message(self, interaction: discord.Interaction) -> None:
         message = (
             "That todo list message is no longer available. "
-            "Run `/todo list view` again."
+            "Run `/todo list show` again."
         )
         try:
             if interaction.response.is_done():
@@ -689,12 +741,24 @@ class TodoListItemsView(discord.ui.View):
             item_id = str(item.get("_id") or "")
             item_no = item.get("item_no")
             item_status = TodoFunctions.item_status(item)
+            if item_status == "todo":
+                progress_emoji = "🟡"
+                progress_style = discord.ButtonStyle.primary
+                progress_disabled = False
+            elif item_status == "in_progress":
+                progress_emoji = "✅"
+                progress_style = discord.ButtonStyle.success
+                progress_disabled = False
+            else:
+                progress_emoji = "✅"
+                progress_style = discord.ButtonStyle.secondary
+                progress_disabled = True
             complete_button = discord.ui.Button(
-                label=f"✅ {display_index}",
-                style=discord.ButtonStyle.secondary,
+                label=f"{progress_emoji} {display_index}",
+                style=progress_style,
                 custom_id=f"todo_item_complete:{item_id}",
                 row=0,
-                disabled=(not item_id) or item_status == "done",
+                disabled=(not item_id) or progress_disabled,
             )
 
             async def _callback(
@@ -709,15 +773,46 @@ class TodoListItemsView(discord.ui.View):
                         content="Couldn't complete that item.",
                     )
                     return
+                current_item = await asyncio.to_thread(
+                    TodoFunctions.fetch_todo,
+                    item_object_id,
+                    interaction.guild_id,
+                )
+                if not current_item:
+                    await interaction.followup.send(
+                        ephemeral=True,
+                        content=f"Item #{item_number} no longer exists.",
+                    )
+                    return
+
+                current_status = TodoFunctions.item_status(current_item)
+                if current_status == "todo":
+                    next_status = "in_progress"
+                elif current_status == "in_progress":
+                    next_status = "done"
+                else:
+                    next_status = None
+
+                if next_status is None:
+                    await self._reload_items()
+                    self._build()
+                    refreshed = await self._safe_refresh_message(interaction)
+                    if not refreshed:
+                        return
+                    await interaction.followup.send(
+                        ephemeral=True,
+                        content=f"Item #{item_number} is already Done.",
+                    )
+                    return
                 updated = await asyncio.to_thread(
                     TodoFunctions.set_item_status,
                     item_object_id,
-                    "done",
+                    next_status,
                 )
                 if not updated:
                     await interaction.followup.send(
                         ephemeral=True,
-                        content=f"Couldn't complete item #{item_number}.",
+                        content=f"Couldn't update item #{item_number}.",
                     )
                     return
                 await self._reload_items()
@@ -727,7 +822,10 @@ class TodoListItemsView(discord.ui.View):
                     return
                 await interaction.followup.send(
                     ephemeral=True,
-                    content=f"Marked item #{item_number} as done.",
+                    content=(
+                        f"Updated item #{item_number} to "
+                        f"{TodoFunctions.status_label(next_status)}."
+                    ),
                 )
 
             complete_button.callback = _callback
@@ -884,6 +982,620 @@ class TodoListItemsView(discord.ui.View):
         self.add_item(filter_button)
 
 
+class TodoDeleteConfirmView(discord.ui.View):
+    def __init__(
+        self,
+        item_id: str,
+        item_number: Any,
+        list_name: str,
+        source_message: Optional[discord.Message],
+    ) -> None:
+        super().__init__(timeout=90)
+        self.item_id = item_id
+        self.item_number = item_number
+        self.item_label = str(item_number if item_number is not None else "?")
+        self.list_name = list_name
+        self.source_message = source_message
+
+    def _disable_buttons(self) -> None:
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+
+    @discord.ui.button(emoji="✅", style=discord.ButtonStyle.danger)
+    async def confirm_delete(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        deleted = await asyncio.to_thread(TodoFunctions.delete_item, self.item_id)
+        self._disable_buttons()
+        try:
+            await interaction.edit_original_response(view=self)
+        except Exception:
+            pass
+
+        if not deleted:
+            await interaction.followup.send(
+                ephemeral=True,
+                content=f"Couldn't delete item #{self.item_label}.",
+            )
+            return
+
+        if self.source_message is not None:
+            try:
+                deleted_embed = discord.Embed(
+                    title=f"{self.list_name or 'List'} | Item #{self.item_label}",
+                    description="This todo was deleted.",
+                    color=discord.Colour.dark_grey(),
+                )
+                await self.source_message.edit(embed=deleted_embed, view=None)
+            except discord.NotFound:
+                pass
+            except Exception:
+                await interaction.followup.send(
+                    ephemeral=True,
+                    content="Item deleted, but updating the card failed.",
+                )
+                return
+
+        await interaction.followup.send(
+            ephemeral=True,
+            content=f"Deleted item #{self.item_label}.",
+        )
+
+    @discord.ui.button(emoji="✖️", style=discord.ButtonStyle.secondary)
+    async def cancel_delete(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        self._disable_buttons()
+        await interaction.response.edit_message(
+            content="Deletion cancelled.",
+            view=self,
+        )
+
+
+class TodoAssignPickerView(discord.ui.View):
+    def __init__(
+        self,
+        todo_list: Dict[str, Any],
+        item: Dict[str, Any],
+        source_message: Optional[discord.Message],
+    ) -> None:
+        super().__init__(timeout=180)
+        self.todo_list = todo_list
+        self.item_id = str(item.get("_id") or "")
+        self.item_number = item.get("item_no")
+        self.item_label = str(self.item_number if self.item_number is not None else "?")
+        self.guild_id = item.get("guild_id")
+        self.source_message = source_message
+
+        assignees = item.get("assignees") or []
+        self.selected_user_id: Optional[int] = assignees[0] if assignees else None
+        self.user_select: Optional[discord.ui.UserSelect] = None
+
+        if self.guild_id is not None:
+            select = discord.ui.UserSelect(
+                placeholder="Select user",
+                min_values=1,
+                max_values=1,
+                row=0,
+            )
+            select.callback = self._on_select_user
+            self.user_select = select
+            self.add_item(select)
+
+    def _disable_components(self) -> None:
+        for child in self.children:
+            if isinstance(child, (discord.ui.Button, discord.ui.UserSelect)):
+                child.disabled = True
+
+    async def _on_select_user(self, interaction: discord.Interaction) -> None:
+        if self.user_select is None or not self.user_select.values:
+            await interaction.response.defer()
+            return
+        selected = self.user_select.values[0]
+        self.selected_user_id = selected.id
+        await interaction.response.edit_message(
+            content=f"Selected assignee: <@{selected.id}>",
+            view=self,
+        )
+
+    async def _resolve_list_for_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        list_id = item.get("list_id")
+        if not list_id:
+            return self.todo_list
+        try:
+            resolved_list = await asyncio.to_thread(
+                TodoFunctions.fetch_todo_list_by_id,
+                list_id,
+            )
+            if resolved_list is not None:
+                return resolved_list
+        except Exception:
+            pass
+        return self.todo_list
+
+    async def _refresh_source_card(
+        self,
+        interaction: discord.Interaction,
+        todo_list: Dict[str, Any],
+        item: Dict[str, Any],
+    ) -> bool:
+        if self.source_message is None:
+            return False
+        payload = TodoEmbeds.item_details_embed(todo_list, item)
+        try:
+            await self.source_message.edit(**payload)
+            return True
+        except discord.NotFound:
+            return False
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Todo updated, but refreshing the card failed.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return False
+
+    async def _apply_assignment(
+        self,
+        interaction: discord.Interaction,
+        assignee_id: Optional[int],
+    ) -> bool:
+        updated_item = await asyncio.to_thread(
+            TodoFunctions.set_item_assignee,
+            self.item_id,
+            assignee_id,
+        )
+        if not updated_item:
+            return False
+        updated_list = await self._resolve_list_for_item(updated_item)
+        await self._refresh_source_card(interaction, updated_list, updated_item)
+        return True
+
+    @discord.ui.button(emoji="✅", style=discord.ButtonStyle.primary, row=1)
+    async def assign_selected(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        if not self.item_id:
+            await interaction.response.send_message(
+                ephemeral=True,
+                content="That item could not be assigned.",
+            )
+            return
+
+        target_user_id = self.selected_user_id
+        if target_user_id is None:
+            await interaction.response.send_message(
+                ephemeral=True,
+                content="Select a user first.",
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        assigned = await self._apply_assignment(interaction, target_user_id)
+        self._disable_components()
+        try:
+            await interaction.edit_original_response(view=self)
+        except Exception:
+            pass
+
+        if not assigned:
+            await interaction.followup.send(
+                ephemeral=True,
+                content=f"Couldn't assign item #{self.item_label}.",
+            )
+            return
+
+        await interaction.followup.send(
+            ephemeral=True,
+            content=f"Assigned item #{self.item_label} to <@{target_user_id}>.",
+        )
+
+    @discord.ui.button(emoji="➖", style=discord.ButtonStyle.secondary, row=1)
+    async def unassign(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        if not self.item_id:
+            await interaction.response.send_message(
+                ephemeral=True,
+                content="That item could not be updated.",
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        unassigned = await self._apply_assignment(interaction, None)
+        self._disable_components()
+        try:
+            await interaction.edit_original_response(view=self)
+        except Exception:
+            pass
+
+        if not unassigned:
+            await interaction.followup.send(
+                ephemeral=True,
+                content=f"Couldn't unassign item #{self.item_label}.",
+            )
+            return
+
+        await interaction.followup.send(
+            ephemeral=True,
+            content=f"Unassigned item #{self.item_label}.",
+        )
+
+    @discord.ui.button(emoji="✖️", style=discord.ButtonStyle.secondary, row=1)
+    async def cancel(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        self._disable_components()
+        await interaction.response.edit_message(
+            content="Assignment cancelled.",
+            view=self,
+        )
+
+
+class TodoItemActionsView(discord.ui.View):
+    def __init__(
+        self,
+        todo_list: Dict[str, Any],
+        item: Dict[str, Any],
+    ) -> None:
+        super().__init__(timeout=900)
+        self.todo_list = todo_list
+        self.item_id = str(item.get("_id") or "")
+        self.item_number = item.get("item_no")
+        self.item_label = str(self.item_number if self.item_number is not None else "?")
+        self.guild_id = item.get("guild_id")
+
+        item_status = TodoFunctions.item_status(item)
+        self._apply_progress_button_state(item_status)
+        if not self.item_id:
+            self.complete_todo.disabled = True
+        self.edit_todo.disabled = not self.item_id
+        self.delete_todo.disabled = not self.item_id
+        self.assign_to_me.disabled = not self.item_id
+        self.assign_to_user.disabled = (not self.item_id) or self.guild_id is None
+
+    @staticmethod
+    def _next_progress_status(current_status: str) -> Optional[str]:
+        if current_status == "todo":
+            return "in_progress"
+        if current_status == "in_progress":
+            return "done"
+        return None
+
+    def _apply_progress_button_state(self, current_status: str) -> None:
+        if current_status == "todo":
+            self.complete_todo.style = discord.ButtonStyle.primary
+            self.complete_todo.emoji = "🟡"
+            self.complete_todo.disabled = False
+            return
+        if current_status == "in_progress":
+            self.complete_todo.style = discord.ButtonStyle.success
+            self.complete_todo.emoji = "✅"
+            self.complete_todo.disabled = False
+            return
+
+        self.complete_todo.style = discord.ButtonStyle.secondary
+        self.complete_todo.emoji = "✅"
+        self.complete_todo.disabled = True
+
+    async def _resolve_list_for_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        list_id = item.get("list_id")
+        if not list_id:
+            return self.todo_list
+        try:
+            resolved_list = await asyncio.to_thread(
+                TodoFunctions.fetch_todo_list_by_id,
+                list_id,
+            )
+            if resolved_list is not None:
+                return resolved_list
+        except Exception:
+            pass
+        return self.todo_list
+
+    async def _load_current_item_and_list(
+        self,
+    ) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        if not self.item_id:
+            return None, None
+
+        current_item = await asyncio.to_thread(
+            TodoFunctions.fetch_todo,
+            self.item_id,
+            self.guild_id,
+        )
+        if current_item is None:
+            return None, None
+
+        current_list = await self._resolve_list_for_item(current_item)
+        return current_list, current_item
+
+    async def _refresh_source_card(
+        self,
+        interaction: discord.Interaction,
+        todo_list: Dict[str, Any],
+        item: Dict[str, Any],
+    ) -> bool:
+        source_message = interaction.message
+        if source_message is None:
+            return False
+
+        payload = TodoEmbeds.item_details_embed(todo_list, item)
+        try:
+            await source_message.edit(**payload)
+            return True
+        except discord.NotFound:
+            return False
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Todo updated, but refreshing the card failed.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return False
+
+    @discord.ui.button(emoji="✏️", style=discord.ButtonStyle.secondary, row=0)
+    async def edit_todo(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        global _MODAL_SELECTS_SUPPORTED
+        current_list, current_item = await self._load_current_item_and_list()
+        if current_list is None or current_item is None:
+            await interaction.response.send_message(
+                ephemeral=True,
+                content="That item no longer exists.",
+            )
+            return
+
+        try:
+            items = await asyncio.to_thread(
+                TodoFunctions.list_items_on_list,
+                current_list["_id"],
+                "ascending",
+            )
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while loading that item.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
+
+        parent_view = TodoListItemsView(
+            todo_list=current_list,
+            items=items,
+            sort="ascending",
+            status_filter="all",
+            user_id=interaction.user.id,
+            view_scope="list",
+            guild_id=interaction.guild_id,
+        )
+        assignee_options = parent_view._build_assignee_select_options(
+            interaction,
+            current_item,
+        )
+        list_options: List[discord.SelectOption] = []
+        try:
+            list_docs = await asyncio.to_thread(
+                TodoFunctions.list_candidate_lists_for_item_scope,
+                current_item,
+                interaction.user.id,
+                25,
+            )
+            list_options = parent_view._build_list_select_options(current_item, list_docs)
+        except Exception:
+            list_options = []
+
+        modal_item_number = current_item.get("item_no") or self.item_number
+        if _MODAL_SELECTS_SUPPORTED:
+            try:
+                await interaction.response.send_modal(
+                    TodoItemEditModal(
+                        parent_view=parent_view,
+                        item=current_item,
+                        item_number=modal_item_number,
+                        source_message=interaction.message,
+                        assignee_options=assignee_options,
+                        list_options=list_options,
+                        refresh_source_as_item_embed=True,
+                    )
+                )
+                return
+            except discord.HTTPException as exc:
+                if exc.code == 50035 and "must be one of (4,)" in str(exc):
+                    _MODAL_SELECTS_SUPPORTED = False
+                else:
+                    raise
+
+        await interaction.response.send_modal(
+            TodoItemEditModal(
+                parent_view=parent_view,
+                item=current_item,
+                item_number=modal_item_number,
+                source_message=interaction.message,
+                refresh_source_as_item_embed=True,
+            )
+        )
+
+    @discord.ui.button(emoji="✅", style=discord.ButtonStyle.success, row=0)
+    async def complete_todo(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+        if not self.item_id:
+            await interaction.followup.send(
+                ephemeral=True,
+                content="Couldn't complete that item.",
+            )
+            return
+
+        current_list, current_item = await self._load_current_item_and_list()
+        if current_list is None or current_item is None:
+            await interaction.followup.send(
+                ephemeral=True,
+                content="That item no longer exists.",
+            )
+            return
+
+        current_status = TodoFunctions.item_status(current_item)
+        next_status = self._next_progress_status(current_status)
+        if next_status is None:
+            await self._refresh_source_card(interaction, current_list, current_item)
+            await interaction.followup.send(
+                ephemeral=True,
+                content=f"Item #{self.item_label} is already Done.",
+            )
+            return
+
+        updated_item = await asyncio.to_thread(
+            TodoFunctions.set_item_status,
+            self.item_id,
+            next_status,
+        )
+        if not updated_item:
+            await interaction.followup.send(
+                ephemeral=True,
+                content=f"Couldn't update item #{self.item_label}.",
+            )
+            return
+
+        updated_list = await self._resolve_list_for_item(updated_item)
+        await self._refresh_source_card(interaction, updated_list, updated_item)
+        await interaction.followup.send(
+            ephemeral=True,
+            content=(
+                f"Updated item #{self.item_label} to "
+                f"{TodoFunctions.status_label(next_status)}."
+            ),
+        )
+
+    @discord.ui.button(emoji="🗑️", style=discord.ButtonStyle.danger, row=0)
+    async def delete_todo(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        if not self.item_id:
+            await interaction.response.send_message(
+                ephemeral=True,
+                content="That item could not be deleted.",
+            )
+            return
+
+        confirm_view = TodoDeleteConfirmView(
+            item_id=self.item_id,
+            item_number=self.item_number,
+            list_name=str(self.todo_list.get("name") or "List"),
+            source_message=interaction.message,
+        )
+        await interaction.response.send_message(
+            ephemeral=True,
+            content=f"Delete item #{self.item_label}?",
+            view=confirm_view,
+        )
+
+    @discord.ui.button(emoji="🙋", style=discord.ButtonStyle.primary, row=0)
+    async def assign_to_me(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+        if not self.item_id:
+            await interaction.followup.send(
+                ephemeral=True,
+                content="That item could not be assigned.",
+            )
+            return
+
+        current_list, current_item = await self._load_current_item_and_list()
+        if current_list is None or current_item is None:
+            await interaction.followup.send(
+                ephemeral=True,
+                content="That item no longer exists.",
+            )
+            return
+
+        assignees = current_item.get("assignees") or []
+        is_assigned_to_me = interaction.user.id in assignees
+        target_assignee_id: Optional[int] = None if is_assigned_to_me else interaction.user.id
+
+        updated_item = await asyncio.to_thread(
+            TodoFunctions.set_item_assignee,
+            self.item_id,
+            target_assignee_id,
+        )
+        if not updated_item:
+            await interaction.followup.send(
+                ephemeral=True,
+                content="That item could not be assigned.",
+            )
+            return
+
+        updated_list = await self._resolve_list_for_item(updated_item)
+        await self._refresh_source_card(interaction, updated_list, updated_item)
+
+        if is_assigned_to_me:
+            message = f"Unassigned item #{self.item_label}."
+        else:
+            message = f"Assigned item #{self.item_label} to you."
+        await interaction.followup.send(
+            ephemeral=True,
+            content=message,
+        )
+
+    @discord.ui.button(emoji="👥", style=discord.ButtonStyle.secondary, row=0)
+    async def assign_to_user(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        current_list, current_item = await self._load_current_item_and_list()
+        if current_list is None or current_item is None:
+            await interaction.response.send_message(
+                ephemeral=True,
+                content="That item no longer exists.",
+            )
+            return
+
+        assign_view = TodoAssignPickerView(
+            todo_list=current_list,
+            item=current_item,
+            source_message=interaction.message,
+        )
+        await interaction.response.send_message(
+            ephemeral=True,
+            content="Pick who should own this task.",
+            view=assign_view,
+        )
+
+
 class TodoReminderView(discord.ui.View):
     def __init__(
         self, todo_id: str, todo_name: str, user_id: Optional[int] = None
@@ -967,31 +1679,46 @@ class TodoEmbeds:
         return f"Sort: {sort_label} | Status: {status_label} | Mine only: {mine_label}"
 
     @staticmethod
+    def _parse_due_dt(
+        value: Optional[Union[datetime.datetime, str]],
+    ) -> Optional[datetime.datetime]:
+        if isinstance(value, datetime.datetime):
+            return value
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return None
+            try:
+                return datetime.datetime.fromisoformat(raw)
+            except ValueError:
+                if raw.endswith("Z"):
+                    try:
+                        return datetime.datetime.fromisoformat(raw[:-1] + "+00:00")
+                    except ValueError:
+                        return None
+                return None
+        return None
+
+    @staticmethod
+    def _due_relative(due: Optional[Union[datetime.datetime, str]]) -> Optional[str]:
+        due_dt = TodoEmbeds._parse_due_dt(due)
+        if due_dt is None:
+            return None
+
+        due_for_epoch = due_dt
+        if due_for_epoch.tzinfo is None or due_for_epoch.utcoffset() is None:
+            local_tz = datetime.datetime.now().astimezone().tzinfo
+            if local_tz is not None:
+                due_for_epoch = due_for_epoch.replace(tzinfo=local_tz)
+        unix_ts = int(due_for_epoch.timestamp())
+        return f"<t:{unix_ts}:R>"
+
+    @staticmethod
     def _due_line(due: Optional[Union[datetime.datetime, str]]) -> Optional[str]:
         if not due:
             return None
 
-        def _parse_due_dt(
-            value: Optional[Union[datetime.datetime, str]],
-        ) -> Optional[datetime.datetime]:
-            if isinstance(value, datetime.datetime):
-                return value
-            if isinstance(value, str):
-                raw = value.strip()
-                if not raw:
-                    return None
-                try:
-                    return datetime.datetime.fromisoformat(raw)
-                except ValueError:
-                    if raw.endswith("Z"):
-                        try:
-                            return datetime.datetime.fromisoformat(raw[:-1] + "+00:00")
-                        except ValueError:
-                            return None
-                    return None
-            return None
-
-        due_dt = _parse_due_dt(due)
+        due_dt = TodoEmbeds._parse_due_dt(due)
         if due_dt is None:
             return f"🗓️ Due: {TodoFunctions.format_due(due)}"
 
@@ -1278,11 +2005,12 @@ class TodoEmbeds:
     def item_details_embed(
         todo_list: Dict[str, Any],
         item: Dict[str, Any],
+        include_actions: bool = True,
     ) -> dict:
         item_no = item.get("item_no")
         text = TodoFunctions.item_text(item) or "No text"
         status = TodoFunctions.status_label(TodoFunctions.item_status(item))
-        due_text = TodoEmbeds._due_line(item.get("due")) or "Due: Not set"
+        due_text = TodoEmbeds._due_relative(item.get("due")) or "Not set"
         assignees = item.get("assignees") or []
         mentions = " ".join(f"<@{uid}>" for uid in assignees) if assignees else "None"
 
@@ -1295,4 +2023,8 @@ class TodoEmbeds:
         embed.add_field(name="Due", value=due_text, inline=True)
         embed.add_field(name="Assignees", value=mentions, inline=False)
 
-        return {"embed": embed}
+        payload: Dict[str, Any] = {"embed": embed}
+        if include_actions:
+            payload["view"] = TodoItemActionsView(todo_list, item)
+        return payload
+
