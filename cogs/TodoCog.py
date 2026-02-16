@@ -421,6 +421,7 @@ class TodoCog(commands.Cog):
         channel_name = getattr(interaction.channel, "name", None)
         timezone = None
         if (due or "").strip():
+
             async def _continue_with_timezone(
                 followup_interaction: discord.Interaction,
                 resolved_timezone: str,
@@ -544,6 +545,7 @@ class TodoCog(commands.Cog):
         if (
             notify_enabled
             and assignee_id is not None
+            and target_value == "channel"
             and interaction.guild_id is not None
         ):
             notify_payload = TodoEmbeds.item_details_embed(todo_list, item)
