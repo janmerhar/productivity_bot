@@ -7,7 +7,6 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from classes.UserSettingsFunctions import UserSettingsFunctions
 from embeds.TogglEmbeds import TogglEmbeds
 from services.error_reporting import ValidationError
 from services.toggl_key_gate import ensure_toggl_api_key
@@ -17,12 +16,10 @@ from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_vis
 class TogglCog(commands.Cog):
     toggl = app_commands.Group(name="toggl", description="Toggl commands")
     project = app_commands.Group(name="project", description="Manage Toggl projects")
-    key = app_commands.Group(name="key", description="Manage Toggl API key")
     timer_group = app_commands.Group(name="timer", description="Manage Toggl timers")
     saved = app_commands.Group(name="saved", description="Manage saved timers")
     alias_group = app_commands.Group(name="alias", description="Manage Toggl aliases")
     toggl.add_command(project)
-    toggl.add_command(key)
     toggl.add_command(timer_group)
     toggl.add_command(saved)
     toggl.add_command(alias_group)
@@ -102,32 +99,6 @@ class TogglCog(commands.Cog):
                 interaction.guild_id,
                 interaction.user.id,
             ),
-        )
-
-    @key.command(
-        name="clear",
-        description="Remove your Toggl API key",
-    )
-    @app_commands.describe(visibility=VISIBILITY_DESC)
-    @app_commands.choices(visibility=VISIBILITY_CHOICES)
-    async def togglkeyclear(
-        self,
-        interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ):
-        ephemeral = resolve_visibility(visibility, default="private")
-        removed = await asyncio.to_thread(
-            UserSettingsFunctions.clear_toggl_api_key,
-            interaction.user.id
-        )
-        message = (
-            "Removed your Toggl API key."
-            if removed
-            else "No Toggl API key was saved."
-        )
-        await interaction.response.send_message(
-            ephemeral=ephemeral,
-            content=message,
         )
 
     #
@@ -454,7 +425,6 @@ class TogglCog(commands.Cog):
     def _alias_command_map() -> dict:
         return {
             "about": "aboutme",
-            "key clear": "togglkeyclear",
             "timer start": "start",
             "timer stop": "stop",
             "timer current": "timer",
