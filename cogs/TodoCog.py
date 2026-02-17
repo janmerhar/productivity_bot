@@ -889,7 +889,7 @@ class TodoCog(commands.Cog):
                 todo_list["_id"],
                 todo,
             )
-            updated = await asyncio.to_thread(
+            updated_item = await asyncio.to_thread(
                 TodoFunctions.set_item_assignee,
                 item["_id"],
                 assignee_id,
@@ -903,24 +903,14 @@ class TodoCog(commands.Cog):
                 cause=exc,
             )
 
-        if not updated:
+        if not updated_item:
             raise UserVisibleError(
                 "That item could not be updated.",
                 ephemeral=ephemeral,
             )
 
-        if assignee_id is None:
-            message = (
-                f"Unassigned todo {TodoFunctions.task_ref_from_item(item)} "
-                f"on `{todo_list.get('name')}`."
-            )
-        else:
-            message = (
-                f"Assigned <@{assignee_id}> to todo {TodoFunctions.task_ref_from_item(item)} "
-                f"on `{todo_list.get('name')}`."
-            )
-
-        await interaction.followup.send(ephemeral=ephemeral, content=message)
+        payload = TodoEmbeds.item_details_embed(todo_list, updated_item)
+        await interaction.followup.send(ephemeral=ephemeral, **payload)
 
     @todo_assign.autocomplete("assignee")
     async def todo_assign_autocomplete(
