@@ -199,11 +199,22 @@ class TodoFunctions:
         return cleaned[: max(0, limit - 3)].rstrip() + "..."
 
     @staticmethod
+    def task_name_from_item(item: Dict[str, Any]) -> str:
+        return str(item["name"]).strip()
+
+    @staticmethod
+    def task_ref(task_name: str, limit: int = 80) -> str:
+        sanitized = str(task_name).strip().replace("`", "'")
+        if len(sanitized) > limit:
+            sanitized = sanitized[: max(0, limit - 3)].rstrip() + "..."
+        return f"`{sanitized}`"
+
+    @staticmethod
     def task_ref_from_item(item: Dict[str, Any], limit: int = 80) -> str:
-        task_name = str(item["name"]).strip().replace("`", "'")
-        if len(task_name) > limit:
-            task_name = task_name[: max(0, limit - 3)].rstrip() + "..."
-        return f"`{task_name}`"
+        return TodoFunctions.task_ref(
+            TodoFunctions.task_name_from_item(item),
+            limit=limit,
+        )
 
     @staticmethod
     def todo_from_message_fields(
