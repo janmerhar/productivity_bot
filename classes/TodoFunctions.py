@@ -836,6 +836,20 @@ class TodoFunctions:
         return deleted.deleted_count
 
     @staticmethod
+    def clear_items_on_guild(guild_id: Optional[int]) -> int:
+        if guild_id is None:
+            return 0
+
+        deleted = mongo_db["todos"].delete_many(
+            {
+                "guild_id": guild_id,
+                "scope": {"$ne": "personal"},
+                "list_id": {"$exists": True},
+            }
+        )
+        return deleted.deleted_count
+
+    @staticmethod
     def _next_item_number(list_id: ObjectId) -> int:
         latest = (
             mongo_db["todos"]
