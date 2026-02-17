@@ -588,7 +588,7 @@ class TodoCog(commands.Cog):
 
     @todo_group.command(name="show", description="Show the text of an item")
     @app_commands.describe(
-        todo="Todo number from /todo list show",
+        todo="Todo from autocomplete",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -634,7 +634,7 @@ class TodoCog(commands.Cog):
 
     @todo_group.command(name="edit", description="Edit the text of an existing item")
     @app_commands.describe(
-        todo="Todo number from /todo list show",
+        todo="Todo from autocomplete",
     )
     async def item_edit(
         self,
@@ -727,7 +727,7 @@ class TodoCog(commands.Cog):
 
     @todo_group.command(name="status", description="Set the progress of an item")
     @app_commands.describe(
-        todo="Todo number from /todo list show",
+        todo="Todo from autocomplete",
         status="New progress status",
         visibility=VISIBILITY_DESC,
     )
@@ -787,14 +787,14 @@ class TodoCog(commands.Cog):
         await interaction.followup.send(
             ephemeral=ephemeral,
             content=(
-                f"Updated item #{todo} on `{todo_list.get('name')}` "
+                f"Updated todo {TodoFunctions.task_ref_from_item(item)} on `{todo_list.get('name')}` "
                 f"to {TodoFunctions.status_label(status.value)}."
             ),
         )
 
     @todo_group.command(name="delete", description="Delete an item from a list")
     @app_commands.describe(
-        todo="Todo number from /todo list show",
+        todo="Todo from autocomplete",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -844,12 +844,15 @@ class TodoCog(commands.Cog):
 
         await interaction.followup.send(
             ephemeral=ephemeral,
-            content=f"Deleted item #{todo} from `{todo_list.get('name')}`.",
+            content=(
+                f"Deleted todo {TodoFunctions.task_ref_from_item(item)} "
+                f"from `{todo_list.get('name')}`."
+            ),
         )
 
     @todo_group.command(name="assign", description="Assign or unassign an item")
     @app_commands.describe(
-        todo="Todo number from /todo list show",
+        todo="Todo from autocomplete",
         assignee="Who should be assigned (None = unassign, Me = yourself)",
         visibility=VISIBILITY_DESC,
     )
@@ -912,10 +915,13 @@ class TodoCog(commands.Cog):
             )
 
         if assignee_id is None:
-            message = f"Unassigned item #{todo} on `{todo_list.get('name')}`."
+            message = (
+                f"Unassigned todo {TodoFunctions.task_ref_from_item(item)} "
+                f"on `{todo_list.get('name')}`."
+            )
         else:
             message = (
-                f"Assigned <@{assignee_id}> to item #{todo} "
+                f"Assigned <@{assignee_id}> to todo {TodoFunctions.task_ref_from_item(item)} "
                 f"on `{todo_list.get('name')}`."
             )
 
@@ -993,13 +999,15 @@ class TodoCog(commands.Cog):
             if not isinstance(item_no, int):
                 continue
 
-            task_name = str(item.get("name") or "").strip() or "Untitled"
+            todo_name = str(item.get("name") or "").strip() or "Untitled"
             status = TodoFunctions.status_label(TodoFunctions.item_status(item))
-            search_text = f"{item_no} {task_name} {status}".lower()
+            due_value = item.get("due")
+            due_label = TodoFunctions.format_due(due_value) if due_value else "No due date"
+            search_text = f"{todo_name} {status} {due_label}".lower()
             if query and query not in search_text:
                 continue
 
-            label = f"#{item_no} {task_name} [{status}]"
+            label = f"{todo_name} [{status}] - {due_label}"
             options.append(
                 app_commands.Choice(
                     name=label[:100],
