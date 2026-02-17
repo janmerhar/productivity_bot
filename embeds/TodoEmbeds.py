@@ -6,7 +6,11 @@ from typing import Optional, Union, List, Dict, Any
 import discord
 
 from classes.TodoFunctions import TodoFunctions
-from services.error_reporting import UserVisibleError, ValidationError, handle_interaction_error
+from services.error_reporting import (
+    UserVisibleError,
+    ValidationError,
+    handle_interaction_error,
+)
 
 _MODAL_SELECTS_SUPPORTED = True
 
@@ -170,9 +174,7 @@ class TodoItemEditModal(discord.ui.Modal):
         self.current_status = current_status
         self.current_list_id = str(item.get("list_id") or "")
         self.current_list_name = str(
-            item.get("list_name")
-            or parent_view.todo_list.get("name")
-            or ""
+            item.get("list_name") or parent_view.todo_list.get("name") or ""
         ).strip()
         assignees = item.get("assignees") or []
         current_assignee = f"<@{assignees[0]}>" if assignees else "none"
@@ -485,7 +487,11 @@ class TodoItemEditModal(discord.ui.Modal):
             )
             return
 
-        await interaction.followup.send(ephemeral=True, content=f"Updated item #{self.item_number}.")
+        if self.source_message is None:
+            await interaction.followup.send(
+                ephemeral=True,
+                content=f"Updated item #{self.item_number}.",
+            )
 
 
 class TodoListItemsView(discord.ui.View):
@@ -604,7 +610,9 @@ class TodoListItemsView(discord.ui.View):
 
     @staticmethod
     def _member_option_label(member: Any) -> str:
-        display_name = str(getattr(member, "display_name", "") or getattr(member, "name", ""))
+        display_name = str(
+            getattr(member, "display_name", "") or getattr(member, "name", "")
+        )
         username = str(getattr(member, "name", "")).strip()
         if display_name and username and display_name != username:
             return f"{display_name} (@{username})"[:100]
@@ -642,7 +650,10 @@ class TodoListItemsView(discord.ui.View):
         )
         seen_values.add(me_value)
 
-        if current_assignee_id is not None and current_assignee_id != interaction.user.id:
+        if (
+            current_assignee_id is not None
+            and current_assignee_id != interaction.user.id
+        ):
             current_value = f"user:{current_assignee_id}"
             options.append(
                 discord.SelectOption(
@@ -656,7 +667,9 @@ class TodoListItemsView(discord.ui.View):
         guild = interaction.guild
         members = []
         if guild is not None:
-            members = list(getattr(interaction.channel, "members", None) or guild.members)
+            members = list(
+                getattr(interaction.channel, "members", None) or guild.members
+            )
 
         for member in members:
             if getattr(member, "bot", False):
@@ -687,7 +700,9 @@ class TodoListItemsView(discord.ui.View):
         list_docs: List[Dict[str, Any]],
     ) -> List[discord.SelectOption]:
         current_list_id = str(item.get("list_id") or "")
-        current_list_name = str(item.get("list_name") or self.todo_list.get("name") or "Current list")
+        current_list_name = str(
+            item.get("list_name") or self.todo_list.get("name") or "Current list"
+        )
 
         options: List[discord.SelectOption] = []
         seen_ids: set[str] = set()
@@ -799,10 +814,6 @@ class TodoListItemsView(discord.ui.View):
                     refreshed = await self._safe_refresh_message(interaction)
                     if not refreshed:
                         return
-                    await interaction.followup.send(
-                        ephemeral=True,
-                        content=f"Item #{item_number} is already Done.",
-                    )
                     return
                 updated = await asyncio.to_thread(
                     TodoFunctions.set_item_status,
@@ -820,13 +831,6 @@ class TodoListItemsView(discord.ui.View):
                 refreshed = await self._safe_refresh_message(interaction)
                 if not refreshed:
                     return
-                await interaction.followup.send(
-                    ephemeral=True,
-                    content=(
-                        f"Updated item #{item_number} to "
-                        f"{TodoFunctions.status_label(next_status)}."
-                    ),
-                )
 
             complete_button.callback = _callback
             self.add_item(complete_button)
@@ -863,7 +867,9 @@ class TodoListItemsView(discord.ui.View):
                     list_options = []
 
                 modal_item_number = (
-                    item_number_value if item_number_value is not None else display_number
+                    item_number_value
+                    if item_number_value is not None
+                    else display_number
                 )
                 if _MODAL_SELECTS_SUPPORTED:
                     try:
@@ -1041,10 +1047,13 @@ class TodoDeleteConfirmView(discord.ui.View):
                 )
                 return
 
-        await interaction.followup.send(
-            ephemeral=True,
-            content=f"Deleted item #{self.item_label}.",
-        )
+        try:
+            await interaction.edit_original_response(
+                content=f"Deleted item #{self.item_label}.",
+                view=self,
+            )
+        except Exception:
+            pass
 
     @discord.ui.button(emoji="✖️", style=discord.ButtonStyle.secondary)
     async def cancel_delete(
@@ -1185,22 +1194,25 @@ class TodoAssignPickerView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         assigned = await self._apply_assignment(interaction, target_user_id)
         self._disable_components()
-        try:
-            await interaction.edit_original_response(view=self)
-        except Exception:
-            pass
 
         if not assigned:
+            try:
+                await interaction.edit_original_response(view=self)
+            except Exception:
+                pass
             await interaction.followup.send(
                 ephemeral=True,
                 content=f"Couldn't assign item #{self.item_label}.",
             )
             return
 
-        await interaction.followup.send(
-            ephemeral=True,
-            content=f"Assigned item #{self.item_label} to <@{target_user_id}>.",
-        )
+        try:
+            await interaction.edit_original_response(
+                content=f"Assigned item #{self.item_label} to <@{target_user_id}>.",
+                view=self,
+            )
+        except Exception:
+            pass
 
     @discord.ui.button(emoji="➖", style=discord.ButtonStyle.secondary, row=1)
     async def unassign(
@@ -1218,22 +1230,25 @@ class TodoAssignPickerView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         unassigned = await self._apply_assignment(interaction, None)
         self._disable_components()
-        try:
-            await interaction.edit_original_response(view=self)
-        except Exception:
-            pass
 
         if not unassigned:
+            try:
+                await interaction.edit_original_response(view=self)
+            except Exception:
+                pass
             await interaction.followup.send(
                 ephemeral=True,
                 content=f"Couldn't unassign item #{self.item_label}.",
             )
             return
 
-        await interaction.followup.send(
-            ephemeral=True,
-            content=f"Unassigned item #{self.item_label}.",
-        )
+        try:
+            await interaction.edit_original_response(
+                content=f"Unassigned item #{self.item_label}.",
+                view=self,
+            )
+        except Exception:
+            pass
 
     @discord.ui.button(emoji="✖️", style=discord.ButtonStyle.secondary, row=1)
     async def cancel(
@@ -1406,7 +1421,9 @@ class TodoItemActionsView(discord.ui.View):
                 interaction.user.id,
                 25,
             )
-            list_options = parent_view._build_list_select_options(current_item, list_docs)
+            list_options = parent_view._build_list_select_options(
+                current_item, list_docs
+            )
         except Exception:
             list_options = []
 
@@ -1467,10 +1484,6 @@ class TodoItemActionsView(discord.ui.View):
         next_status = self._next_progress_status(current_status)
         if next_status is None:
             await self._refresh_source_card(interaction, current_list, current_item)
-            await interaction.followup.send(
-                ephemeral=True,
-                content=f"Item #{self.item_label} is already Done.",
-            )
             return
 
         updated_item = await asyncio.to_thread(
@@ -1487,13 +1500,6 @@ class TodoItemActionsView(discord.ui.View):
 
         updated_list = await self._resolve_list_for_item(updated_item)
         await self._refresh_source_card(interaction, updated_list, updated_item)
-        await interaction.followup.send(
-            ephemeral=True,
-            content=(
-                f"Updated item #{self.item_label} to "
-                f"{TodoFunctions.status_label(next_status)}."
-            ),
-        )
 
     @discord.ui.button(emoji="🗑️", style=discord.ButtonStyle.danger, row=0)
     async def delete_todo(
@@ -1543,8 +1549,9 @@ class TodoItemActionsView(discord.ui.View):
             return
 
         assignees = current_item.get("assignees") or []
-        is_assigned_to_me = interaction.user.id in assignees
-        target_assignee_id: Optional[int] = None if is_assigned_to_me else interaction.user.id
+        target_assignee_id: Optional[int] = (
+            None if interaction.user.id in assignees else interaction.user.id
+        )
 
         updated_item = await asyncio.to_thread(
             TodoFunctions.set_item_assignee,
@@ -1560,15 +1567,6 @@ class TodoItemActionsView(discord.ui.View):
 
         updated_list = await self._resolve_list_for_item(updated_item)
         await self._refresh_source_card(interaction, updated_list, updated_item)
-
-        if is_assigned_to_me:
-            message = f"Unassigned item #{self.item_label}."
-        else:
-            message = f"Assigned item #{self.item_label} to you."
-        await interaction.followup.send(
-            ephemeral=True,
-            content=message,
-        )
 
     @discord.ui.button(emoji="👥", style=discord.ButtonStyle.secondary, row=0)
     async def assign_to_user(
@@ -2010,4 +2008,3 @@ class TodoEmbeds:
         if include_actions:
             payload["view"] = TodoItemActionsView(todo_list, item)
         return payload
-
