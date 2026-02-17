@@ -144,10 +144,14 @@ class TodoItemEditModal(discord.ui.Modal):
         return_item_embed: bool = False,
         refresh_source_as_item_embed: bool = False,
     ) -> None:
-        super().__init__(title=f"Edit Item #{item_number}")
+        modal_title = f"Edit {TodoFunctions.task_name_from_item(item)}"
+        if len(modal_title) > 45:
+            modal_title = modal_title[:42].rstrip() + "..."
+        super().__init__(title=modal_title)
         self.parent_view = parent_view
         self.item_id = str(item.get("_id") or "")
         self.item_number = item_number
+        self.item_name = TodoFunctions.task_name_from_item(item)
         self.source_message = source_message
         self.return_item_embed = return_item_embed
         self.refresh_source_as_item_embed = refresh_source_as_item_embed
@@ -490,7 +494,7 @@ class TodoItemEditModal(discord.ui.Modal):
         if self.source_message is None:
             await interaction.followup.send(
                 ephemeral=True,
-                content=f"Updated item #{self.item_number}.",
+                content=f"Updated task {TodoFunctions.task_ref_from_item(final_item)}.",
             )
 
 
@@ -755,6 +759,7 @@ class TodoListItemsView(discord.ui.View):
         for display_index, item in enumerate(page_items, start=1):
             item_id = str(item.get("_id") or "")
             item_no = item.get("item_no")
+            item_name = TodoFunctions.task_name_from_item(item)
             item_status = TodoFunctions.item_status(item)
             if item_status == "todo":
                 progress_emoji = "🟡"
@@ -780,6 +785,7 @@ class TodoListItemsView(discord.ui.View):
                 interaction: discord.Interaction,
                 item_object_id: str = item_id,
                 item_number: Any = item_no,
+                task_name: str = item_name,
             ) -> None:
                 await interaction.response.defer()
                 if not item_object_id:
@@ -796,7 +802,7 @@ class TodoListItemsView(discord.ui.View):
                 if not current_item:
                     await interaction.followup.send(
                         ephemeral=True,
-                        content=f"Item #{item_number} no longer exists.",
+                        content=f"Task {TodoFunctions.task_ref(task_name)} no longer exists.",
                     )
                     return
 
@@ -823,7 +829,7 @@ class TodoListItemsView(discord.ui.View):
                 if not updated:
                     await interaction.followup.send(
                         ephemeral=True,
-                        content=f"Couldn't update item #{item_number}.",
+                        content=f"Couldn't update task {TodoFunctions.task_ref(task_name)}.",
                     )
                     return
                 await self._reload_items()
@@ -993,13 +999,14 @@ class TodoDeleteConfirmView(discord.ui.View):
         self,
         item_id: str,
         item_number: Any,
+        item_name: str,
         list_name: str,
         source_message: Optional[discord.Message],
     ) -> None:
         super().__init__(timeout=90)
         self.item_id = item_id
         self.item_number = item_number
-        self.item_label = str(item_number if item_number is not None else "?")
+        self.item_name = str(item_name).strip()
         self.list_name = list_name
         self.source_message = source_message
 
@@ -1026,14 +1033,14 @@ class TodoDeleteConfirmView(discord.ui.View):
         if not deleted:
             await interaction.followup.send(
                 ephemeral=True,
-                content=f"Couldn't delete item #{self.item_label}.",
+                content=f"Couldn't delete task {TodoFunctions.task_ref(self.item_name)}.",
             )
             return
 
         if self.source_message is not None:
             try:
                 deleted_embed = discord.Embed(
-                    title=f"{self.list_name or 'List'} | Item #{self.item_label}",
+                    title=f"{self.list_name or 'List'} | {self.item_name}",
                     description="This todo was deleted.",
                     color=discord.Colour.dark_grey(),
                 )
@@ -1049,7 +1056,7 @@ class TodoDeleteConfirmView(discord.ui.View):
 
         try:
             await interaction.edit_original_response(
-                content=f"Deleted item #{self.item_label}.",
+                content=f"Deleted task {TodoFunctions.task_ref(self.item_name)}.",
                 view=self,
             )
         except Exception:
@@ -1079,7 +1086,7 @@ class TodoAssignPickerView(discord.ui.View):
         self.todo_list = todo_list
         self.item_id = str(item.get("_id") or "")
         self.item_number = item.get("item_no")
-        self.item_label = str(self.item_number if self.item_number is not None else "?")
+        self.item_name = TodoFunctions.task_name_from_item(item)
         self.guild_id = item.get("guild_id")
         self.source_message = source_message
 
@@ -1202,13 +1209,16 @@ class TodoAssignPickerView(discord.ui.View):
                 pass
             await interaction.followup.send(
                 ephemeral=True,
-                content=f"Couldn't assign item #{self.item_label}.",
+                content=f"Couldn't assign task {TodoFunctions.task_ref(self.item_name)}.",
             )
             return
 
         try:
             await interaction.edit_original_response(
-                content=f"Assigned item #{self.item_label} to <@{target_user_id}>.",
+                content=(
+                    f"Assigned task {TodoFunctions.task_ref(self.item_name)} "
+                    f"to <@{target_user_id}>."
+                ),
                 view=self,
             )
         except Exception:
@@ -1238,13 +1248,13 @@ class TodoAssignPickerView(discord.ui.View):
                 pass
             await interaction.followup.send(
                 ephemeral=True,
-                content=f"Couldn't unassign item #{self.item_label}.",
+                content=f"Couldn't unassign task {TodoFunctions.task_ref(self.item_name)}.",
             )
             return
 
         try:
             await interaction.edit_original_response(
-                content=f"Unassigned item #{self.item_label}.",
+                content=f"Unassigned task {TodoFunctions.task_ref(self.item_name)}.",
                 view=self,
             )
         except Exception:
@@ -1273,7 +1283,7 @@ class TodoItemActionsView(discord.ui.View):
         self.todo_list = todo_list
         self.item_id = str(item.get("_id") or "")
         self.item_number = item.get("item_no")
-        self.item_label = str(self.item_number if self.item_number is not None else "?")
+        self.item_name = TodoFunctions.task_name_from_item(item)
         self.guild_id = item.get("guild_id")
 
         item_status = TodoFunctions.item_status(item)
@@ -1494,7 +1504,7 @@ class TodoItemActionsView(discord.ui.View):
         if not updated_item:
             await interaction.followup.send(
                 ephemeral=True,
-                content=f"Couldn't update item #{self.item_label}.",
+                content=f"Couldn't update task {TodoFunctions.task_ref(self.item_name)}.",
             )
             return
 
@@ -1517,12 +1527,13 @@ class TodoItemActionsView(discord.ui.View):
         confirm_view = TodoDeleteConfirmView(
             item_id=self.item_id,
             item_number=self.item_number,
+            item_name=self.item_name,
             list_name=str(self.todo_list.get("name") or "List"),
             source_message=interaction.message,
         )
         await interaction.response.send_message(
             ephemeral=True,
-            content=f"Delete item #{self.item_label}?",
+            content=f"Delete task {TodoFunctions.task_ref(self.item_name)}?",
             view=confirm_view,
         )
 
@@ -1988,15 +1999,15 @@ class TodoEmbeds:
         item: Dict[str, Any],
         include_actions: bool = True,
     ) -> dict:
-        item_no = item.get("item_no")
         text = TodoFunctions.item_text(item) or "No text"
+        task_name = TodoFunctions.task_name_from_item(item)
         status = TodoFunctions.status_label(TodoFunctions.item_status(item))
         due_text = TodoEmbeds._due_relative(item.get("due")) or "Not set"
         assignees = item.get("assignees") or []
         mentions = " ".join(f"<@{uid}>" for uid in assignees) if assignees else "None"
 
         embed = discord.Embed(
-            title=f"{todo_list.get('name') or 'List'} | Item #{item_no}",
+            title=f"{todo_list.get('name') or 'List'} | {task_name}",
             color=discord.Colour.blurple(),
             description=text if len(text) <= 3500 else text[:3497] + "...",
         )
