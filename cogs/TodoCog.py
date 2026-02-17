@@ -305,6 +305,13 @@ class TodoCog(commands.Cog):
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
+        return self._build_list_scope_autocomplete_options(interaction, current)
+
+    def _build_list_scope_autocomplete_options(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
         query = (current or "").strip().lower()
         guild = interaction.guild
         base_options = [
@@ -344,16 +351,64 @@ class TodoCog(commands.Cog):
         return options[:25]
 
     @list_group.command(name="clear", description="Remove all the items from a list")
+    @app_commands.rename(list_target="list")
     @app_commands.describe(
+        list_target="Which list to clear",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def list_clear(
         self,
         interaction: discord.Interaction,
+        list_target: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        target_value = (list_target or "").strip()
+        selected_channel_id: Optional[int] = None
+        selected_channel_name: Optional[str] = None
+        use_all_server_channels = False
+        if not target_value:
+            target_value = "channel" if interaction.guild_id is not None else "personal"
+
+        if interaction.guild_id is None:
+            target_value = "personal"
+
+        if target_value.startswith("channel:"):
+            try:
+                selected_channel_id = int(target_value.split(":", 1)[1])
+            except (ValueError, IndexError):
+                raise ValidationError(
+                    "Please select a valid channel from autocomplete.",
+                    ephemeral=True,
+                )
+            if interaction.guild is None:
+                raise ValidationError(
+                    "Channel targets are only available in servers.",
+                    ephemeral=True,
+                )
+            selected_channel = interaction.guild.get_channel(selected_channel_id)
+            if selected_channel is None:
+                raise ValidationError(
+                    "That channel was not found.",
+                    ephemeral=True,
+                )
+            selected_channel_name = getattr(selected_channel, "name", None)
+            target_value = "channel"
+        elif target_value == "all_server":
+            if interaction.guild_id is None:
+                raise ValidationError(
+                    "All server channels is only available in servers.",
+                    ephemeral=True,
+                )
+            target_value = "channel"
+            use_all_server_channels = True
+        elif target_value not in {"channel", "personal"}:
+            raise ValidationError(
+                "Please select a valid list from autocomplete.",
+                ephemeral=True,
+            )
+
+        scope_value = "personal" if target_value == "personal" else "channel"
         ephemeral = resolve_ephemeral_from_scope(
             interaction.guild_id,
             scope_value,
@@ -362,18 +417,53 @@ class TodoCog(commands.Cog):
         await interaction.response.defer(ephemeral=ephemeral)
 
         try:
-            todo_list = await asyncio.to_thread(
-                TodoFunctions.get_or_create_implicit_list,
-                interaction.guild_id,
-                interaction.channel_id,
-                interaction.user.id,
-                getattr(interaction.channel, "name", None),
-                "channel" if interaction.guild_id is not None else "personal",
-            )
-            deleted_count = await asyncio.to_thread(
-                TodoFunctions.clear_todo_list_items,
-                todo_list["_id"],
-            )
+            if use_all_server_channels:
+                list_name = "All Server Channels"
+                deleted_count = await asyncio.to_thread(
+                    TodoFunctions.clear_items_on_guild,
+                    interaction.guild_id,
+                )
+            elif target_value == "personal":
+                todo_list = await asyncio.to_thread(
+                    TodoFunctions.get_or_create_implicit_list,
+                    interaction.guild_id,
+                    interaction.channel_id,
+                    interaction.user.id,
+                    getattr(interaction.channel, "name", None),
+                    "personal",
+                )
+                list_name = str(todo_list.get("name") or "Personal")
+                deleted_count = await asyncio.to_thread(
+                    TodoFunctions.clear_todo_list_items,
+                    todo_list["_id"],
+                )
+            elif selected_channel_id is not None:
+                todo_list = await asyncio.to_thread(
+                    TodoFunctions.get_or_create_channel_list,
+                    interaction.guild_id,
+                    selected_channel_id,
+                    interaction.user.id,
+                    selected_channel_name,
+                )
+                list_name = str(todo_list.get("name") or "List")
+                deleted_count = await asyncio.to_thread(
+                    TodoFunctions.clear_todo_list_items,
+                    todo_list["_id"],
+                )
+            else:
+                todo_list = await asyncio.to_thread(
+                    TodoFunctions.get_or_create_implicit_list,
+                    interaction.guild_id,
+                    interaction.channel_id,
+                    interaction.user.id,
+                    getattr(interaction.channel, "name", None),
+                    "channel",
+                )
+                list_name = str(todo_list.get("name") or "List")
+                deleted_count = await asyncio.to_thread(
+                    TodoFunctions.clear_todo_list_items,
+                    todo_list["_id"],
+                )
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while clearing that list.",
@@ -383,8 +473,16 @@ class TodoCog(commands.Cog):
 
         await interaction.followup.send(
             ephemeral=ephemeral,
-            content=f"Cleared `{todo_list.get('name')}` ({deleted_count} items removed).",
+            content=f"Cleared `{list_name}` ({deleted_count} items removed).",
         )
+
+    @list_clear.autocomplete("list_target")
+    async def list_clear_target_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        return self._build_list_scope_autocomplete_options(interaction, current)
 
     @todo_group.command(name="add", description="Add an item to a list")
     @app_commands.describe(
