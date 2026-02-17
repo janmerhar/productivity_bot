@@ -340,6 +340,16 @@ class DailyTaskCog(commands.Cog):
                 todo = TodoFunctions.fetch_todo(task_id, job.guild_id)
                 if not todo or todo.get("state") != "todo":
                     continue
+                todo_list = None
+                list_id = todo.get("list_id")
+                if list_id:
+                    try:
+                        todo_list = await asyncio.to_thread(
+                            TodoFunctions.fetch_todo_list_by_id,
+                            list_id,
+                        )
+                    except Exception:
+                        todo_list = None
                 if todo.get("scope") == "personal":
                     user_id = todo.get("user_id")
                     if not user_id:
@@ -347,7 +357,10 @@ class DailyTaskCog(commands.Cog):
                     user = self.bot.get_user(user_id)
                     if user is None:
                         user = await self.bot.fetch_user(user_id)
-                    todo_payload = TodoEmbeds.todo_reminder_payload(todo)
+                    todo_payload = TodoEmbeds.todo_reminder_payload(
+                        todo,
+                        todo_list=todo_list,
+                    )
                     try:
                         await user.send(**todo_payload)
                     except discord.HTTPException:
@@ -361,7 +374,10 @@ class DailyTaskCog(commands.Cog):
                 if channel is None:
                     continue
 
-                todo_payload = TodoEmbeds.todo_reminder_payload(todo)
+                todo_payload = TodoEmbeds.todo_reminder_payload(
+                    todo,
+                    todo_list=todo_list,
+                )
                 await channel.send(**todo_payload)
                 continue
             if job.type == "habit":

@@ -69,10 +69,17 @@ async def add_message_to_todo(
             cause=exc,
         )
 
-    payload = TodoEmbeds.insert_todo_embed(
-        name=document["name"],
-        description=document.get("description"),
-        due=None,
+    try:
+        todo_list = await asyncio.to_thread(
+            TodoFunctions.fetch_todo_list_by_id,
+            document.get("list_id"),
+        )
+    except Exception:
+        todo_list = None
+
+    payload = TodoEmbeds.item_details_embed(
+        todo_list or {"name": "List"},
+        document,
     )
     await interaction.followup.send(ephemeral=ephemeral, **payload)
 
@@ -105,10 +112,17 @@ async def add_message_to_personal_todo(
             cause=exc,
         )
 
-    payload = TodoEmbeds.insert_todo_embed(
-        name=document["name"],
-        description=document.get("description"),
-        due=None,
+    try:
+        todo_list = await asyncio.to_thread(
+            TodoFunctions.fetch_todo_list_by_id,
+            document.get("list_id"),
+        )
+    except Exception:
+        todo_list = None
+
+    payload = TodoEmbeds.item_details_embed(
+        todo_list or {"name": "List"},
+        document,
     )
     await interaction.followup.send(ephemeral=True, **payload)
 

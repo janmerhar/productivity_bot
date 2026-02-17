@@ -1791,34 +1791,17 @@ class TodoEmbeds:
         return {"embed": embed}
 
     @staticmethod
-    def todo_reminder_payload(todo: Dict[str, Any]) -> dict:
-        name = str(todo.get("name") or "Todo")
-        description = todo.get("description")
-        due = todo.get("due")
+    def todo_reminder_payload(
+        todo: Dict[str, Any],
+        todo_list: Optional[Dict[str, Any]] = None,
+    ) -> dict:
         user_id = todo.get("user_id")
-        todo_id = str(todo.get("_id") or "")
-
-        embed = discord.Embed(
-            title="Todo Reminder",
-            color=discord.Colour.orange(),
+        payload = TodoEmbeds.item_details_embed(
+            todo_list or {"name": str(todo.get("list_name") or "List")},
+            todo,
         )
-        lines = []
-        if description:
-            lines.append(str(description))
-        if due:
-            lines.append(f"Due: {TodoEmbeds._format_due(due)}")
-
-        embed.add_field(
-            name=name,
-            value="\n".join(lines) if lines else "No details",
-            inline=False,
-        )
-
-        payload: Dict[str, Any] = {"embed": embed}
         if user_id:
             payload["content"] = f"<@{user_id}>"
-        if todo_id:
-            payload["view"] = TodoReminderView(todo_id, name, user_id)
         return payload
 
     @staticmethod
