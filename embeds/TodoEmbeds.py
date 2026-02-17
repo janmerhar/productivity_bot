@@ -994,41 +994,33 @@ class TodoListItemsView(discord.ui.View):
         self.add_item(filter_button)
 
 
-class TodoDeleteConfirmView(discord.ui.View):
+class TodoDeleteConfirmModal(discord.ui.Modal):
     def __init__(
         self,
         item_id: str,
-        item_number: Any,
         item_name: str,
         list_name: str,
         source_message: Optional[discord.Message],
     ) -> None:
-        super().__init__(timeout=90)
+        modal_title = f"Delete {TodoFunctions.task_ref(item_name)}"
+        if len(modal_title) > 45:
+            modal_title = modal_title[:42].rstrip() + "..."
+        super().__init__(title=modal_title)
         self.item_id = item_id
-        self.item_number = item_number
         self.item_name = str(item_name).strip()
         self.list_name = list_name
         self.source_message = source_message
+        self.add_item(
+            discord.ui.TextDisplay(
+                f"This will permanently delete {TodoFunctions.task_ref(self.item_name)} "
+                f"from `{self.list_name or 'List'}`."
+            )
+        )
 
-    def _disable_buttons(self) -> None:
-        for child in self.children:
-            if isinstance(child, discord.ui.Button):
-                child.disabled = True
-
-    @discord.ui.button(emoji="✅", style=discord.ButtonStyle.danger)
-    async def confirm_delete(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
+    async def on_submit(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
 
         deleted = await asyncio.to_thread(TodoFunctions.delete_item, self.item_id)
-        self._disable_buttons()
-        try:
-            await interaction.edit_original_response(view=self)
-        except Exception:
-            pass
 
         if not deleted:
             await interaction.followup.send(
@@ -1054,24 +1046,9 @@ class TodoDeleteConfirmView(discord.ui.View):
                 )
                 return
 
-        try:
-            await interaction.edit_original_response(
-                content=f"Deleted task {TodoFunctions.task_ref(self.item_name)}.",
-                view=self,
-            )
-        except Exception:
-            pass
-
-    @discord.ui.button(emoji="✖️", style=discord.ButtonStyle.secondary)
-    async def cancel_delete(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        self._disable_buttons()
-        await interaction.response.edit_message(
-            content="Deletion cancelled.",
-            view=self,
+        await interaction.followup.send(
+            ephemeral=True,
+            content=f"Deleted task {TodoFunctions.task_ref(self.item_name)}.",
         )
 
 
@@ -1524,17 +1501,13 @@ class TodoItemActionsView(discord.ui.View):
             )
             return
 
-        confirm_view = TodoDeleteConfirmView(
-            item_id=self.item_id,
-            item_number=self.item_number,
-            item_name=self.item_name,
-            list_name=str(self.todo_list.get("name") or "List"),
-            source_message=interaction.message,
-        )
-        await interaction.response.send_message(
-            ephemeral=True,
-            content=f"Delete task {TodoFunctions.task_ref(self.item_name)}?",
-            view=confirm_view,
+        await interaction.response.send_modal(
+            TodoDeleteConfirmModal(
+                item_id=self.item_id,
+                item_name=self.item_name,
+                list_name=str(self.todo_list.get("name") or "List"),
+                source_message=interaction.message,
+            )
         )
 
     @discord.ui.button(emoji="🙋", style=discord.ButtonStyle.primary, row=0)
