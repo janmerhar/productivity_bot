@@ -199,6 +199,13 @@ class TodoFunctions:
         return cleaned[: max(0, limit - 3)].rstrip() + "..."
 
     @staticmethod
+    def task_ref_from_item(item: Dict[str, Any], limit: int = 80) -> str:
+        task_name = str(item["name"]).strip().replace("`", "'")
+        if len(task_name) > limit:
+            task_name = task_name[: max(0, limit - 3)].rstrip() + "..."
+        return f"`{task_name}`"
+
+    @staticmethod
     def todo_from_message_fields(
         content: Optional[str],
         author_display_name: str,
@@ -292,7 +299,7 @@ class TodoFunctions:
             raise ValueError("Item number must be greater than 0.")
         item = TodoFunctions.fetch_item_on_list(list_id, item_no)
         if not item:
-            raise ValueError(f"Item #{item_no} was not found on that list.")
+            raise ValueError("Selected task was not found on that list.")
         return item
 
     @staticmethod
