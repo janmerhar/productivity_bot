@@ -764,7 +764,7 @@ class TodoCog(commands.Cog):
                 todo_list["_id"],
                 todo,
             )
-            updated = await asyncio.to_thread(
+            updated_item = await asyncio.to_thread(
                 TodoFunctions.set_item_status,
                 item["_id"],
                 status.value,
@@ -778,19 +778,14 @@ class TodoCog(commands.Cog):
                 cause=exc,
             )
 
-        if not updated:
+        if not updated_item:
             raise UserVisibleError(
                 "That item could not be updated.",
                 ephemeral=ephemeral,
             )
 
-        await interaction.followup.send(
-            ephemeral=ephemeral,
-            content=(
-                f"Updated todo {TodoFunctions.task_ref_from_item(item)} on `{todo_list.get('name')}` "
-                f"to {TodoFunctions.status_label(status.value)}."
-            ),
-        )
+        payload = TodoEmbeds.item_details_embed(todo_list, updated_item)
+        await interaction.followup.send(ephemeral=ephemeral, **payload)
 
     @todo_group.command(name="delete", description="Delete an item from a list")
     @app_commands.describe(
