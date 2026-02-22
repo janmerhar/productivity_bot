@@ -140,10 +140,11 @@ class TodoCog(commands.Cog):
         print("TodoCog cog loaded")
 
     @list_group.command(name="show", description="Show all items on a list")
+    @app_commands.rename(list_target="list")
     @app_commands.describe(
         sort="Sort order for items",
         status="Filter by item status",
-        scope="Which todo scope to show",
+        list_target="Which list to show",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
@@ -156,10 +157,10 @@ class TodoCog(commands.Cog):
         interaction: discord.Interaction,
         sort: Optional[app_commands.Choice[str]] = None,
         status: Optional[app_commands.Choice[str]] = None,
-        scope: Optional[str] = None,
+        list_target: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        target_value = (scope or "").strip()
+        target_value = (list_target or "").strip()
         selected_channel_id: Optional[int] = None
         selected_channel_name: Optional[str] = None
         use_all_server_channels = False
@@ -188,6 +189,11 @@ class TodoCog(commands.Cog):
                     "That channel was not found.",
                     ephemeral=True,
                 )
+            if not isinstance(selected_channel, discord.TextChannel):
+                raise ValidationError(
+                    "Please select a text channel from autocomplete.",
+                    ephemeral=True,
+                )
             selected_channel_name = getattr(selected_channel, "name", None)
             target_value = "channel"
         elif target_value == "all_server":
@@ -200,7 +206,7 @@ class TodoCog(commands.Cog):
             use_all_server_channels = True
         elif target_value not in {"channel", "personal"}:
             raise ValidationError(
-                "Please select a valid scope from autocomplete.",
+                "Please select a valid list from autocomplete.",
                 ephemeral=True,
             )
 
@@ -299,15 +305,15 @@ class TodoCog(commands.Cog):
             **view.payload(),
         )
 
-    @list_view.autocomplete("scope")
-    async def list_view_scope_autocomplete(
+    @list_view.autocomplete("list_target")
+    async def list_view_target_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
-        return self._build_list_scope_autocomplete_options(interaction, current)
+        return self._build_list_target_autocomplete_options(interaction, current)
 
-    def _build_list_scope_autocomplete_options(
+    def _build_list_target_autocomplete_options(
         self,
         interaction: discord.Interaction,
         current: str,
@@ -332,12 +338,15 @@ class TodoCog(commands.Cog):
         if guild is None:
             return options[:25]
 
-        for channel in guild.channels:
+        for channel in guild.text_channels:
             channel_name = getattr(channel, "name", None)
             channel_id = getattr(channel, "id", None)
             if channel_name is None or channel_id is None:
                 continue
             if query and query not in channel_name.lower():
+                continue
+            permissions = channel.permissions_for(interaction.user)
+            if not permissions.view_channel or not permissions.send_messages:
                 continue
             options.append(
                 app_commands.Choice(
@@ -390,6 +399,11 @@ class TodoCog(commands.Cog):
             if selected_channel is None:
                 raise ValidationError(
                     "That channel was not found.",
+                    ephemeral=True,
+                )
+            if not isinstance(selected_channel, discord.TextChannel):
+                raise ValidationError(
+                    "Please select a text channel from autocomplete.",
                     ephemeral=True,
                 )
             selected_channel_name = getattr(selected_channel, "name", None)
@@ -482,7 +496,7 @@ class TodoCog(commands.Cog):
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
-        return self._build_list_scope_autocomplete_options(interaction, current)
+        return self._build_list_target_autocomplete_options(interaction, current)
 
     @todo_group.command(name="add", description="Add an item to a list")
     @app_commands.describe(
