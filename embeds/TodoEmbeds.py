@@ -184,6 +184,8 @@ class TodoItemEditModal(discord.ui.Modal):
         current_assignee = f"<@{assignees[0]}>" if assignees else "none"
         self.assignee_select: Optional[discord.ui.Select] = None
         self.list_select: Optional[discord.ui.Select] = None
+        self.assignee_select_label: Optional[discord.ui.Label] = None
+        self.list_select_label: Optional[discord.ui.Label] = None
         self.assignee_input: Optional[discord.ui.TextInput] = None
         self.list_input: Optional[discord.ui.TextInput] = None
 
@@ -220,20 +222,28 @@ class TodoItemEditModal(discord.ui.Modal):
                     min_values=1,
                     max_values=1,
                     options=assignee_options[:25],
-                    row=3,
                 )
                 self.list_select = discord.ui.Select(
                     placeholder="List",
                     min_values=1,
                     max_values=1,
                     options=list_options[:25],
-                    row=4,
                 )
-                self.add_item(self.assignee_select)
-                self.add_item(self.list_select)
+                self.assignee_select_label = discord.ui.Label(
+                    text="Assignee",
+                    component=self.assignee_select,
+                )
+                self.list_select_label = discord.ui.Label(
+                    text="List",
+                    component=self.list_select,
+                )
+                self.add_item(self.assignee_select_label)
+                self.add_item(self.list_select_label)
             except Exception:
                 self.assignee_select = None
                 self.list_select = None
+                self.assignee_select_label = None
+                self.list_select_label = None
                 self.clear_items()
                 self.add_item(self.task_input)
                 self.add_item(self.description_input)
