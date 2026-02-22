@@ -188,7 +188,7 @@ class TodoItemEditModal(discord.ui.Modal):
         self.list_input: Optional[discord.ui.TextInput] = None
 
         self.task_input = discord.ui.TextInput(
-            label="Task text",
+            label="Todo",
             style=discord.TextStyle.short,
             required=True,
             default=current_task[:100],
@@ -202,7 +202,7 @@ class TodoItemEditModal(discord.ui.Modal):
             max_length=800,
         )
         self.due_input = discord.ui.TextInput(
-            label="Due (optional)",
+            label="Due",
             placeholder="YYYY-MM-DD HH:MM, ISO, or natural language",
             required=False,
             default=current_due[:100],
