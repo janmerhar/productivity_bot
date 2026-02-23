@@ -3,6 +3,7 @@ import logging
 import datetime
 import json
 from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import discord
 import dateparser
@@ -20,31 +21,55 @@ from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from views.PomodoroRestartView import PomodoroRestartView
 from classes.HabitFunctions import HabitFunctions
 from services.discord_helpers import resolve_messageable_channel
-from services.cron_schedule import CronConversionError, resolve_cron_expression
+from services.cron_schedule import (
+    CronConversionError,
+    is_valid_cron_expression,
+    resolve_cron_expression,
+)
 from services.error_reporting import UserVisibleError, ValidationError
+from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
-def parse_time_string(raw: str) -> Optional[datetime.datetime]:
+def parse_time_string(
+    raw: str,
+    timezone: Optional[str] = None,
+) -> Optional[datetime.datetime]:
     text = raw.strip()
     if not text:
         return None
 
-    now = datetime.datetime.now()
+    timezone_value = (timezone or "").strip()
+    tzinfo = None
+    if timezone_value:
+        try:
+            tzinfo = ZoneInfo(timezone_value)
+        except ZoneInfoNotFoundError:
+            tzinfo = None
+
+    now = datetime.datetime.now(tzinfo) if tzinfo else datetime.datetime.now()
+    settings = {
+        "PREFER_DATES_FROM": "future",
+        "RETURN_AS_TIMEZONE_AWARE": bool(tzinfo),
+        "PREFER_DAY_OF_MONTH": "current",
+    }
+    if timezone_value:
+        settings["TIMEZONE"] = timezone_value
+        settings["RELATIVE_BASE"] = now
 
     dt = dateparser.parse(
         text,
-        settings={
-            "PREFER_DATES_FROM": "future",
-            "RETURN_AS_TIMEZONE_AWARE": False,
-            "PREFER_DAY_OF_MONTH": "current",
-        },
+        settings=settings,
     )
 
     if dt is not None:
+        if tzinfo is not None and dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tzinfo)
         dt = dt.replace(second=0, microsecond=0)
         if dt <= now:
             dt += datetime.timedelta(days=1)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone().replace(tzinfo=None)
         return dt
 
     return None
@@ -81,7 +106,101 @@ class DailyTaskCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="private")
-        scheduled_dt = parse_time_string(time)
+        async def _continue_with_timezone(
+            followup_interaction: discord.Interaction,
+            resolved_timezone: str,
+        ) -> None:
+            await self._create_reminder(
+                interaction=followup_interaction,
+                time=time,
+                message=message,
+                ephemeral=ephemeral,
+                timezone=resolved_timezone,
+            )
+
+        timezone = await ensure_user_timezone(
+            interaction,
+            _continue_with_timezone,
+            continue_message="Timezone saved as `{timezone}`. Continuing `/reminder create`.",
+        )
+        if timezone is None:
+            return
+
+        await interaction.response.defer(ephemeral=ephemeral)
+        await self._create_reminder(
+            interaction=interaction,
+            time=time,
+            message=message,
+            ephemeral=ephemeral,
+            timezone=timezone,
+        )
+
+    @jobs.command(name="create", description="Create a recurring job")
+    @app_commands.describe(
+        schedule="Cron expression or natural language schedule",
+        type="Type of the job to create",
+        data="JSON payload for the job; plain text allowed for message jobs",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(
+        type=[
+            app_commands.Choice(name="Crypto", value="crypto"),
+            app_commands.Choice(name="Stock", value="stock"),
+            app_commands.Choice(name="Message", value="message"),
+        ],
+        visibility=VISIBILITY_CHOICES,
+    )
+    async def job(
+        self,
+        interaction: discord.Interaction,
+        schedule: str,
+        type: app_commands.Choice[str],
+        data: str,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        ephemeral = resolve_visibility(visibility, default="private")
+        timezone = None
+        if not is_valid_cron_expression(schedule):
+            async def _continue_with_timezone(
+                followup_interaction: discord.Interaction,
+                resolved_timezone: str,
+            ) -> None:
+                await self._create_job(
+                    interaction=followup_interaction,
+                    schedule=schedule,
+                    job_type=type.value,
+                    data=data,
+                    ephemeral=ephemeral,
+                    timezone=resolved_timezone,
+                )
+
+            timezone = await ensure_user_timezone(
+                interaction,
+                _continue_with_timezone,
+                continue_message="Timezone saved as `{timezone}`. Continuing `/jobs create`.",
+            )
+            if timezone is None:
+                return
+
+        await interaction.response.defer(ephemeral=ephemeral)
+        await self._create_job(
+            interaction=interaction,
+            schedule=schedule,
+            job_type=type.value,
+            data=data,
+            ephemeral=ephemeral,
+            timezone=timezone,
+        )
+
+    async def _create_reminder(
+        self,
+        interaction: discord.Interaction,
+        time: str,
+        message: str,
+        ephemeral: bool,
+        timezone: Optional[str],
+    ) -> None:
+        scheduled_dt = parse_time_string(time, timezone=timezone)
         if scheduled_dt is None:
             raise ValidationError(
                 "I couldn't understand that time.",
@@ -116,7 +235,6 @@ class DailyTaskCog(commands.Cog):
                 f"{confirmation_time}."
             )
 
-        await interaction.response.defer(ephemeral=ephemeral)
         manager = DailyJobManager()
         try:
             await asyncio.to_thread(
@@ -137,46 +255,33 @@ class DailyTaskCog(commands.Cog):
             ephemeral=ephemeral, **DailyTaskEmbeds.reminder_embed(confirmation, ok=True)
         )
 
-    @jobs.command(name="create", description="Create a recurring job")
-    @app_commands.describe(
-        schedule="Cron expression or natural language schedule",
-        type="Type of the job to create",
-        data="JSON payload for the job; plain text allowed for message jobs",
-        visibility=VISIBILITY_DESC,
-    )
-    @app_commands.choices(
-        type=[
-            app_commands.Choice(name="Crypto", value="crypto"),
-            app_commands.Choice(name="Stock", value="stock"),
-            app_commands.Choice(name="Message", value="message"),
-        ],
-        visibility=VISIBILITY_CHOICES,
-    )
-    async def job(
+    async def _create_job(
         self,
         interaction: discord.Interaction,
         schedule: str,
-        type: app_commands.Choice[str],
+        job_type: str,
         data: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        ephemeral: bool,
+        timezone: Optional[str],
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
-        await interaction.response.defer(ephemeral=ephemeral)
-
         try:
-            cron_expression = await asyncio.to_thread(resolve_cron_expression, schedule)
+            cron_expression = await asyncio.to_thread(
+                resolve_cron_expression,
+                schedule,
+                timezone=timezone,
+            )
         except CronConversionError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
 
-        job_type = type.value
         raw_data = data.strip()
-
         if job_type == "message":
             payload: Dict[str, Any] = {"message": raw_data}
         elif job_type == "crypto":
-            payload: Dict[str, Any] = {"tickers": [raw_data]}
+            payload = {"tickers": [raw_data]}
         elif job_type == "stock":
-            payload: Dict[str, Any] = {"tickers": [raw_data]}
+            payload = {"tickers": [raw_data]}
+        else:
+            payload = {"message": raw_data}
 
         manager = DailyJobManager()
         schedule_config = CronSchedule(expression=cron_expression)

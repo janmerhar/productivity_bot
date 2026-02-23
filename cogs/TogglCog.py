@@ -1,27 +1,25 @@
 # Color palette
 # https://colorswall.com/palette/72717/
 import asyncio
-from typing import Optional
+from typing import Callable, Optional
 
 import discord
 from discord.ext import commands
 from discord import app_commands
 
 from embeds.TogglEmbeds import TogglEmbeds
-from classes.TogglCredentials import TogglCredentials
 from services.error_reporting import ValidationError
+from services.toggl_key_gate import ensure_toggl_api_key
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
 class TogglCog(commands.Cog):
     toggl = app_commands.Group(name="toggl", description="Toggl commands")
     project = app_commands.Group(name="project", description="Manage Toggl projects")
-    key = app_commands.Group(name="key", description="Manage Toggl API key")
     timer_group = app_commands.Group(name="timer", description="Manage Toggl timers")
     saved = app_commands.Group(name="saved", description="Manage saved timers")
     alias_group = app_commands.Group(name="alias", description="Manage Toggl aliases")
     toggl.add_command(project)
-    toggl.add_command(key)
     toggl.add_command(timer_group)
     toggl.add_command(saved)
     toggl.add_command(alias_group)
@@ -34,6 +32,50 @@ class TogglCog(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         print("TogglCog cog loaded")
+
+    async def _send_payload(
+        self,
+        interaction: discord.Interaction,
+        payload: dict,
+        ephemeral: bool,
+    ) -> None:
+        if interaction.response.is_done():
+            await interaction.followup.send(ephemeral=ephemeral, **payload)
+            return
+
+        await interaction.response.send_message(ephemeral=ephemeral, **payload)
+
+    async def _execute_with_toggl_key(
+        self,
+        interaction: discord.Interaction,
+        *,
+        ephemeral: bool,
+        command_label: str,
+        payload_builder: Callable[[], dict],
+    ) -> None:
+        if interaction.guild_id is None:
+            raise ValidationError(
+                "Use this command inside a server.",
+                ephemeral=ephemeral,
+            )
+
+        async def _continue_with_key(
+            followup_interaction: discord.Interaction,
+            _api_key: str,
+        ) -> None:
+            payload = await asyncio.to_thread(payload_builder)
+            await self._send_payload(followup_interaction, payload, ephemeral)
+
+        api_key = await ensure_toggl_api_key(
+            interaction,
+            _continue_with_key,
+            continue_message=f"Toggl API key saved. Continuing `{command_label}`.",
+        )
+        if api_key is None:
+            return
+
+        payload = await asyncio.to_thread(payload_builder)
+        await self._send_payload(interaction, payload, ephemeral)
 
     # Commands
 
@@ -49,81 +91,14 @@ class TogglCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
         ephemeral = resolve_visibility(visibility, default="public")
-        param = TogglEmbeds.aboutme_embed(
-            interaction.guild_id,
-            interaction.user.id,
-        )
-
-        await interaction.response.send_message(ephemeral=ephemeral, **param)
-
-    @key.command(name="set", description="Save your Toggl API key for this server")
-    @app_commands.describe(
-        api_key="Your Toggl API token",
-        visibility=VISIBILITY_DESC,
-    )
-    @app_commands.choices(visibility=VISIBILITY_CHOICES)
-    async def togglkey(
-        self,
-        interaction: discord.Interaction,
-        api_key: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ):
-        ephemeral = resolve_visibility(visibility, default="private")
-        if interaction.guild_id is None:
-            raise ValidationError(
-                "Use this command inside a server to save your key.",
-                ephemeral=ephemeral,
-            )
-
-        cleaned = api_key.strip()
-        if not cleaned:
-            raise ValidationError(
-                "API key cannot be empty.",
-                ephemeral=ephemeral,
-            )
-
-        await asyncio.to_thread(
-            TogglCredentials.set_key,
-            interaction.guild_id,
-            interaction.user.id,
-            cleaned,
-        )
-        await interaction.response.send_message(
+        await self._execute_with_toggl_key(
+            interaction,
             ephemeral=ephemeral,
-            content="Saved your Toggl API key for this server.",
-        )
-
-    @key.command(
-        name="clear",
-        description="Remove your Toggl API key for this server",
-    )
-    @app_commands.describe(visibility=VISIBILITY_DESC)
-    @app_commands.choices(visibility=VISIBILITY_CHOICES)
-    async def togglkeyclear(
-        self,
-        interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ):
-        ephemeral = resolve_visibility(visibility, default="private")
-        if interaction.guild_id is None:
-            raise ValidationError(
-                "Use this command inside a server to remove your key.",
-                ephemeral=ephemeral,
-            )
-
-        removed = await asyncio.to_thread(
-            TogglCredentials.clear_key,
-            interaction.guild_id,
-            interaction.user.id,
-        )
-        message = (
-            "Removed your Toggl API key for this server."
-            if removed
-            else "No Toggl API key was saved for this server."
-        )
-        await interaction.response.send_message(
-            ephemeral=ephemeral,
-            content=message,
+            command_label="/toggl about",
+            payload_builder=lambda: TogglEmbeds.aboutme_embed(
+                interaction.guild_id,
+                interaction.user.id,
+            ),
         )
 
     #
@@ -144,14 +119,17 @@ class TogglCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
         ephemeral = resolve_visibility(visibility, default="public")
-        param = TogglEmbeds.start_embed(
-            interaction.guild_id,
-            interaction.user.id,
-            project=project,
-            description=description,
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl timer start",
+            payload_builder=lambda: TogglEmbeds.start_embed(
+                interaction.guild_id,
+                interaction.user.id,
+                project=project,
+                description=description,
+            ),
         )
-
-        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
     @timer_group.command(name="current", description="Get active Toggl timer")
     @app_commands.describe(visibility=VISIBILITY_DESC)
@@ -162,11 +140,15 @@ class TogglCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
         ephemeral = resolve_visibility(visibility, default="public")
-        param = TogglEmbeds.timer_embed(
-            interaction.guild_id,
-            interaction.user.id,
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl timer current",
+            payload_builder=lambda: TogglEmbeds.timer_embed(
+                interaction.guild_id,
+                interaction.user.id,
+            ),
         )
-        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
     @timer_group.command(name="stop", description="Stop active Toggl time")
     @app_commands.describe(visibility=VISIBILITY_DESC)
@@ -177,12 +159,15 @@ class TogglCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
         ephemeral = resolve_visibility(visibility, default="public")
-        param = TogglEmbeds.stop_embed(
-            interaction.guild_id,
-            interaction.user.id,
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl timer stop",
+            payload_builder=lambda: TogglEmbeds.stop_embed(
+                interaction.guild_id,
+                interaction.user.id,
+            ),
         )
-
-        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
     @timer_group.command(name="insert", description="Insert past Toggl time")
     @app_commands.describe(visibility=VISIBILITY_DESC)
@@ -229,18 +214,21 @@ class TogglCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
         ephemeral = resolve_visibility(visibility, default="public")
-        param = TogglEmbeds.savetimer_embed(
-            guild_id=interaction.guild_id,
-            user_id=interaction.user.id,
-            command=command,
-            workspace_id=workspace_id,
-            billable=billable,
-            description=description,
-            pid=pid,
-            tags=tags,
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl saved create",
+            payload_builder=lambda: TogglEmbeds.savetimer_embed(
+                guild_id=interaction.guild_id,
+                user_id=interaction.user.id,
+                command=command,
+                workspace_id=workspace_id,
+                billable=billable,
+                description=description,
+                pid=pid,
+                tags=tags,
+            ),
         )
-
-        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
     @saved.command(name="delete", description="Delete a saved timer")
     @app_commands.describe(
@@ -255,13 +243,16 @@ class TogglCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
         ephemeral = resolve_visibility(visibility, default="public")
-        param = TogglEmbeds.removetimer_embed(
-            identifier=identifier,
-            guild_id=interaction.guild_id,
-            user_id=interaction.user.id,
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl saved delete",
+            payload_builder=lambda: TogglEmbeds.removetimer_embed(
+                identifier=identifier,
+                guild_id=interaction.guild_id,
+                user_id=interaction.user.id,
+            ),
         )
-
-        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
     @saved.command(name="start", description="Start a saved timer")
     @app_commands.describe(
@@ -276,13 +267,16 @@ class TogglCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
         ephemeral = resolve_visibility(visibility, default="public")
-        param = TogglEmbeds.startsaved_embed(
-            identifier=identifier,
-            guild_id=interaction.guild_id,
-            user_id=interaction.user.id,
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl saved start",
+            payload_builder=lambda: TogglEmbeds.startsaved_embed(
+                identifier=identifier,
+                guild_id=interaction.guild_id,
+                user_id=interaction.user.id,
+            ),
         )
-
-        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
     @startsaved.autocomplete("identifier")
     async def starsaved_autocomplete(
@@ -309,13 +303,16 @@ class TogglCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
         ephemeral = resolve_visibility(visibility, default="public")
-        param = TogglEmbeds.populartimers_embed(
-            n=n,
-            guild_id=interaction.guild_id,
-            user_id=interaction.user.id,
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl saved popular",
+            payload_builder=lambda: TogglEmbeds.populartimers_embed(
+                n=n,
+                guild_id=interaction.guild_id,
+                user_id=interaction.user.id,
+            ),
         )
-
-        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
     @timer_group.command(name="history", description="Get Toggl timer history")
     @app_commands.describe(
@@ -330,13 +327,16 @@ class TogglCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
         ephemeral = resolve_visibility(visibility, default="public")
-        param = TogglEmbeds.timerhistory_embed(
-            n=n,
-            guild_id=interaction.guild_id,
-            user_id=interaction.user.id,
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl timer history",
+            payload_builder=lambda: TogglEmbeds.timerhistory_embed(
+                n=n,
+                guild_id=interaction.guild_id,
+                user_id=interaction.user.id,
+            ),
         )
-
-        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
     #
     # Projects
@@ -354,13 +354,16 @@ class TogglCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
         ephemeral = resolve_visibility(visibility, default="public")
-        param = TogglEmbeds.newproject_embed(
-            name=name,
-            guild_id=interaction.guild_id,
-            user_id=interaction.user.id,
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl project create",
+            payload_builder=lambda: TogglEmbeds.newproject_embed(
+                name=name,
+                guild_id=interaction.guild_id,
+                user_id=interaction.user.id,
+            ),
         )
-
-        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
     @project.command(name="list", description="List Toggl projects")
     @app_commands.describe(visibility=VISIBILITY_DESC)
@@ -371,12 +374,15 @@ class TogglCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
         ephemeral = resolve_visibility(visibility, default="public")
-        param = TogglEmbeds.workspaceprojects_embed(
-            guild_id=interaction.guild_id,
-            user_id=interaction.user.id,
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl project list",
+            payload_builder=lambda: TogglEmbeds.workspaceprojects_embed(
+                guild_id=interaction.guild_id,
+                user_id=interaction.user.id,
+            ),
         )
-
-        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
     @project.command(name="get", description="Get a Toggl project by id")
     @app_commands.describe(
@@ -391,13 +397,16 @@ class TogglCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
         ephemeral = resolve_visibility(visibility, default="public")
-        param = TogglEmbeds.getproject_embed(
-            project_id=project_id,
-            guild_id=interaction.guild_id,
-            user_id=interaction.user.id,
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl project get",
+            payload_builder=lambda: TogglEmbeds.getproject_embed(
+                project_id=project_id,
+                guild_id=interaction.guild_id,
+                user_id=interaction.user.id,
+            ),
         )
-
-        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
     #
     # Shortcuts
@@ -416,8 +425,6 @@ class TogglCog(commands.Cog):
     def _alias_command_map() -> dict:
         return {
             "about": "aboutme",
-            "key set": "togglkey",
-            "key clear": "togglkeyclear",
             "timer start": "start",
             "timer stop": "stop",
             "timer current": "timer",
@@ -483,17 +490,19 @@ class TogglCog(commands.Cog):
             command = normalized_command
         cog_fn = self.getFunctionByName(name=command)
         cog_param = self.getDefaultParameters(cog_fn=cog_fn)
-
-        param = TogglEmbeds.createalias_embed(
-            guild_id=interaction.guild_id,
-            user_id=interaction.user.id,
-            command=command,
-            alias=alias,
-            arguments=arguments,
-            cog_param=cog_param,
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl alias create",
+            payload_builder=lambda: TogglEmbeds.createalias_embed(
+                guild_id=interaction.guild_id,
+                user_id=interaction.user.id,
+                command=command,
+                alias=alias,
+                arguments=arguments,
+                cog_param=cog_param,
+            ),
         )
-
-        await interaction.response.send_message(ephemeral=ephemeral, **param)
 
 
 async def setup(client):
