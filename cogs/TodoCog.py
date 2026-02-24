@@ -215,6 +215,7 @@ class TodoCog(commands.Cog):
             interaction.guild_id,
             scope_value,
             visibility,
+            dm_default_visibility="public",
         )
         sort_value = sort.value if sort else "ascending"
         status_value = status.value if status else "all"

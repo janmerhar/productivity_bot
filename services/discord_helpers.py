@@ -165,7 +165,7 @@ def resolve_ephemeral_from_scope(
     visibility: Optional[app_commands.Choice[str]],
     private_scope_values: Iterable[str] = ("personal",),
     guild_default_visibility: str = "public",
-    dm_default_visibility: str = "private",
+    dm_default_visibility: str = "public",
 ) -> bool:
     private_scope_set = set(private_scope_values)
     default_visibility = (
