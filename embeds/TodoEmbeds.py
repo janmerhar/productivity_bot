@@ -1062,12 +1062,138 @@ class TodoDeleteConfirmModal(discord.ui.Modal):
         )
 
 
+class TodoAssignSelectModal(discord.ui.Modal):
+    def __init__(
+        self,
+        todo_list: Dict[str, Any],
+        item: Dict[str, Any],
+        source_message: Optional[discord.Message],
+        assignee_options: List[discord.SelectOption],
+    ) -> None:
+        modal_title = (
+            f"Assign {TodoFunctions.task_ref(TodoFunctions.task_name_from_item(item))}"
+        )
+        if len(modal_title) > 45:
+            modal_title = modal_title[:42].rstrip() + "..."
+        super().__init__(title=modal_title)
+        self.todo_list = todo_list
+        self.item_id = str(item.get("_id") or "")
+        self.item_name = TodoFunctions.task_name_from_item(item)
+        self.source_message = source_message
+
+        self.assignee_select = discord.ui.Select(
+            placeholder="Assignee",
+            min_values=1,
+            max_values=1,
+            options=assignee_options[:25],
+        )
+        self.assignee_select_label = discord.ui.Label(
+            text="Assignee",
+            component=self.assignee_select,
+        )
+        self.add_item(self.assignee_select_label)
+
+    async def _resolve_list_for_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        list_id = item.get("list_id")
+        if not list_id:
+            return self.todo_list
+        try:
+            resolved_list = await asyncio.to_thread(
+                TodoFunctions.fetch_todo_list_by_id,
+                list_id,
+            )
+            if resolved_list is not None:
+                return resolved_list
+        except Exception:
+            pass
+        return self.todo_list
+
+    async def _refresh_source_card(
+        self,
+        interaction: discord.Interaction,
+        todo_list: Dict[str, Any],
+        item: Dict[str, Any],
+    ) -> bool:
+        if self.source_message is None:
+            return False
+        payload = TodoEmbeds.item_details_embed(todo_list, item)
+        try:
+            await self.source_message.edit(**payload)
+            return True
+        except discord.NotFound:
+            return False
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Todo updated, but refreshing the card failed.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return False
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        if not self.item_id:
+            await handle_interaction_error(
+                interaction,
+                ValidationError("That item could not be assigned.", ephemeral=True),
+            )
+            return
+
+        selected_token = (
+            self.assignee_select.values[0]
+            if self.assignee_select.values
+            else "__none__"
+        )
+
+        try:
+            assignee_id = TodoFunctions.parse_assignee_token(
+                selected_token,
+                interaction.user.id,
+            )
+            updated_item = await asyncio.to_thread(
+                TodoFunctions.set_item_assignee,
+                self.item_id,
+                assignee_id,
+            )
+        except ValueError as exc:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(str(exc), ephemeral=True, cause=exc),
+            )
+            return
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while updating assignment.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
+
+        if not updated_item:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError("That item could not be assigned.", ephemeral=True),
+            )
+            return
+
+        updated_list = await self._resolve_list_for_item(updated_item)
+        await self._refresh_source_card(interaction, updated_list, updated_item)
+
+
 class TodoAssignPickerView(discord.ui.View):
     def __init__(
         self,
         todo_list: Dict[str, Any],
         item: Dict[str, Any],
         source_message: Optional[discord.Message],
+        assignee_options: Optional[List[discord.SelectOption]] = None,
     ) -> None:
         super().__init__(timeout=180)
         self.todo_list = todo_list
@@ -1077,34 +1203,123 @@ class TodoAssignPickerView(discord.ui.View):
         self.guild_id = item.get("guild_id")
         self.source_message = source_message
 
-        assignees = item.get("assignees") or []
-        self.selected_user_id: Optional[int] = assignees[0] if assignees else None
-        self.user_select: Optional[discord.ui.UserSelect] = None
+        self.selected_assignee_token: Optional[str] = None
+        self.assignee_select: Optional[discord.ui.Select] = None
 
-        if self.guild_id is not None:
-            select = discord.ui.UserSelect(
-                placeholder="Select user",
+        if assignee_options:
+            select = discord.ui.Select(
+                placeholder="Assignee",
                 min_values=1,
                 max_values=1,
+                options=assignee_options[:25],
                 row=0,
             )
-            select.callback = self._on_select_user
-            self.user_select = select
+            select.callback = self._on_select_assignee
+            self.assignee_select = select
             self.add_item(select)
+            default_option = next(
+                (opt for opt in assignee_options if getattr(opt, "default", False)),
+                assignee_options[0],
+            )
+            self.selected_assignee_token = default_option.value
 
     def _disable_components(self) -> None:
         for child in self.children:
-            if isinstance(child, (discord.ui.Button, discord.ui.UserSelect)):
+            if isinstance(child, (discord.ui.Button, discord.ui.Select)):
                 child.disabled = True
 
-    async def _on_select_user(self, interaction: discord.Interaction) -> None:
-        if self.user_select is None or not self.user_select.values:
+    @staticmethod
+    def _build_assignee_select_options(
+        interaction: discord.Interaction,
+        item: Dict[str, Any],
+    ) -> List[discord.SelectOption]:
+        assignees = item.get("assignees") or []
+        current_assignee_id = assignees[0] if assignees else None
+
+        options: List[discord.SelectOption] = []
+        seen_values: set[str] = set()
+
+        options.append(
+            discord.SelectOption(
+                label="None (Unassign)",
+                value="__none__",
+                default=current_assignee_id is None,
+            )
+        )
+        seen_values.add("__none__")
+
+        options.append(
+            discord.SelectOption(
+                label="Me",
+                value="__me__",
+                default=current_assignee_id == interaction.user.id,
+            )
+        )
+        seen_values.add("__me__")
+
+        if (
+            current_assignee_id is not None
+            and current_assignee_id != interaction.user.id
+        ):
+            current_value = f"user:{current_assignee_id}"
+            options.append(
+                discord.SelectOption(
+                    label=f"Current <@{current_assignee_id}>"[:100],
+                    value=current_value,
+                    default=True,
+                )
+            )
+            seen_values.add(current_value)
+
+        guild = interaction.guild
+        members = []
+        if guild is not None:
+            members = list(
+                getattr(interaction.channel, "members", None) or guild.members
+            )
+
+        for member in members:
+            if getattr(member, "bot", False):
+                continue
+            member_id = getattr(member, "id", None)
+            if member_id is None:
+                continue
+            value = f"user:{member_id}"
+            if value in seen_values:
+                continue
+            options.append(
+                discord.SelectOption(
+                    label=TodoListItemsView._member_option_label(member),
+                    value=value,
+                    default=(current_assignee_id == member_id),
+                )
+            )
+            seen_values.add(value)
+            if len(options) >= 25:
+                break
+
+        return options[:25]
+
+    async def _on_select_assignee(self, interaction: discord.Interaction) -> None:
+        if self.assignee_select is None or not self.assignee_select.values:
             await interaction.response.defer()
             return
-        selected = self.user_select.values[0]
-        self.selected_user_id = selected.id
+
+        selected_value = self.assignee_select.values[0]
+        self.selected_assignee_token = selected_value
+
+        label = selected_value
+        if selected_value == "__none__":
+            label = "None (Unassign)"
+        elif selected_value == "__me__":
+            label = f"Me (<@{interaction.user.id}>)"
+        elif selected_value.startswith("user:"):
+            raw_id = selected_value.split(":", 1)[1].strip()
+            if raw_id.isdigit():
+                label = f"<@{raw_id}>"
+
         await interaction.response.edit_message(
-            content=f"Selected assignee: <@{selected.id}>",
+            content=f"Selected assignee: {label}",
             view=self,
         )
 
@@ -1177,11 +1392,23 @@ class TodoAssignPickerView(discord.ui.View):
             )
             return
 
-        target_user_id = self.selected_user_id
-        if target_user_id is None:
+        target_token = self.selected_assignee_token
+        if not target_token:
             await interaction.response.send_message(
                 ephemeral=True,
-                content="Select a user first.",
+                content="Select an assignee first.",
+            )
+            return
+
+        try:
+            target_user_id = TodoFunctions.parse_assignee_token(
+                target_token,
+                interaction.user.id,
+            )
+        except ValueError:
+            await interaction.response.send_message(
+                ephemeral=True,
+                content="Please select a valid assignee option.",
             )
             return
 
@@ -1201,11 +1428,15 @@ class TodoAssignPickerView(discord.ui.View):
             return
 
         try:
-            await interaction.edit_original_response(
-                content=(
+            if target_user_id is None:
+                message = f"Unassigned task {TodoFunctions.task_ref(self.item_name)}."
+            else:
+                message = (
                     f"Assigned task {TodoFunctions.task_ref(self.item_name)} "
                     f"to <@{target_user_id}>."
-                ),
+                )
+            await interaction.edit_original_response(
+                content=message,
                 view=self,
             )
         except Exception:
@@ -1568,6 +1799,7 @@ class TodoItemActionsView(discord.ui.View):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
+        global _MODAL_SELECTS_SUPPORTED
         current_list, current_item = await self._load_current_item_and_list()
         if current_list is None or current_item is None:
             await interaction.response.send_message(
@@ -1576,10 +1808,33 @@ class TodoItemActionsView(discord.ui.View):
             )
             return
 
+        assignee_options = TodoAssignPickerView._build_assignee_select_options(
+            interaction,
+            current_item,
+        )
+
+        if _MODAL_SELECTS_SUPPORTED:
+            try:
+                await interaction.response.send_modal(
+                    TodoAssignSelectModal(
+                        todo_list=current_list,
+                        item=current_item,
+                        source_message=interaction.message,
+                        assignee_options=assignee_options,
+                    )
+                )
+                return
+            except discord.HTTPException as exc:
+                if exc.code == 50035 and "must be one of (4,)" in str(exc):
+                    _MODAL_SELECTS_SUPPORTED = False
+                else:
+                    raise
+
         assign_view = TodoAssignPickerView(
             todo_list=current_list,
             item=current_item,
             source_message=interaction.message,
+            assignee_options=assignee_options,
         )
         await interaction.response.send_message(
             ephemeral=True,
