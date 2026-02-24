@@ -12,3 +12,5 @@ token.pickle
 # Log files
 *.log
 assets/*
+
+.venv
