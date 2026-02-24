@@ -199,6 +199,24 @@ class TodoFunctions:
         return cleaned[: max(0, limit - 3)].rstrip() + "..."
 
     @staticmethod
+    def task_name_from_item(item: Dict[str, Any]) -> str:
+        return str(item["name"]).strip()
+
+    @staticmethod
+    def task_ref(task_name: str, limit: int = 80) -> str:
+        sanitized = str(task_name).strip().replace("`", "'")
+        if len(sanitized) > limit:
+            sanitized = sanitized[: max(0, limit - 3)].rstrip() + "..."
+        return f"`{sanitized}`"
+
+    @staticmethod
+    def task_ref_from_item(item: Dict[str, Any], limit: int = 80) -> str:
+        return TodoFunctions.task_ref(
+            TodoFunctions.task_name_from_item(item),
+            limit=limit,
+        )
+
+    @staticmethod
     def todo_from_message_fields(
         content: Optional[str],
         author_display_name: str,
@@ -292,7 +310,7 @@ class TodoFunctions:
             raise ValueError("Item number must be greater than 0.")
         item = TodoFunctions.fetch_item_on_list(list_id, item_no)
         if not item:
-            raise ValueError(f"Item #{item_no} was not found on that list.")
+            raise ValueError("Selected task was not found on that list.")
         return item
 
     @staticmethod
@@ -815,6 +833,20 @@ class TodoFunctions:
         if object_id is None:
             return 0
         deleted = mongo_db["todos"].delete_many({"list_id": object_id})
+        return deleted.deleted_count
+
+    @staticmethod
+    def clear_items_on_guild(guild_id: Optional[int]) -> int:
+        if guild_id is None:
+            return 0
+
+        deleted = mongo_db["todos"].delete_many(
+            {
+                "guild_id": guild_id,
+                "scope": {"$ne": "personal"},
+                "list_id": {"$exists": True},
+            }
+        )
         return deleted.deleted_count
 
     @staticmethod
