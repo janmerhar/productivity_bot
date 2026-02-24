@@ -1041,12 +1041,11 @@ class TodoDeleteConfirmModal(discord.ui.Modal):
 
         if self.source_message is not None:
             try:
-                deleted_embed = discord.Embed(
-                    title=f"{self.list_name or 'List'} | {self.item_name}",
-                    description="This todo was deleted.",
-                    color=discord.Colour.dark_grey(),
+                deleted_payload = TodoEmbeds.deleted_item_embed(
+                    self.list_name or "List",
+                    self.item_name,
                 )
-                await self.source_message.edit(embed=deleted_embed, view=None)
+                await self.source_message.edit(view=None, **deleted_payload)
             except discord.NotFound:
                 pass
             except Exception:
@@ -1055,10 +1054,15 @@ class TodoDeleteConfirmModal(discord.ui.Modal):
                     content="Item deleted, but updating the card failed.",
                 )
                 return
+            return
 
+        deleted_payload = TodoEmbeds.deleted_item_embed(
+            self.list_name or "List",
+            self.item_name,
+        )
         await interaction.followup.send(
             ephemeral=True,
-            content=f"Deleted task {TodoFunctions.task_ref(self.item_name)}.",
+            **deleted_payload,
         )
 
 
@@ -2257,3 +2261,12 @@ class TodoEmbeds:
         if include_actions:
             payload["view"] = TodoItemActionsView(todo_list, item)
         return payload
+
+    @staticmethod
+    def deleted_item_embed(list_name: str, item_name: str) -> dict:
+        embed = discord.Embed(
+            title=f"{list_name or 'List'} | {item_name or 'Untitled'}",
+            description="This todo was deleted.",
+            color=discord.Colour.dark_grey(),
+        )
+        return {"embed": embed}

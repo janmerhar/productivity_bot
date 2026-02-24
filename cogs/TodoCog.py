@@ -949,12 +949,13 @@ class TodoCog(commands.Cog):
                 ephemeral=ephemeral,
             )
 
+        deleted_payload = TodoEmbeds.deleted_item_embed(
+            str(todo_list.get("name") or "List"),
+            TodoFunctions.task_name_from_item(item),
+        )
         await interaction.followup.send(
             ephemeral=ephemeral,
-            content=(
-                f"Deleted todo {TodoFunctions.task_ref_from_item(item)} "
-                f"from `{todo_list.get('name')}`."
-            ),
+            **deleted_payload,
         )
 
     @todo_group.command(name="assign", description="Assign or unassign an item")
@@ -1099,7 +1100,9 @@ class TodoCog(commands.Cog):
             todo_name = str(item.get("name") or "").strip() or "Untitled"
             status = TodoFunctions.status_label(TodoFunctions.item_status(item))
             due_value = item.get("due")
-            due_label = TodoFunctions.format_due(due_value) if due_value else "No due date"
+            due_label = (
+                TodoFunctions.format_due(due_value) if due_value else "No due date"
+            )
             search_text = f"{todo_name} {status} {due_label}".lower()
             if query and query not in search_text:
                 continue
