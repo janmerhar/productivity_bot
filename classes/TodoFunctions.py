@@ -1,14 +1,13 @@
 import datetime
 import re
-from typing import Optional, Tuple, Dict, Any, List, Union
+from typing import Optional, Tuple, Dict, Any, List
 
 from bson.objectid import ObjectId
 from pymongo import ReturnDocument
 
 from classes.DailyJob import OneTimeSchedule2
-from classes.OpenAIFunctions import OpenAIFunctions
 from config.db import mongo_db
-from config.env import env
+from services.due_datetime import DueDateService
 
 
 class TodoFunctions:
@@ -20,29 +19,6 @@ class TodoFunctions:
     @staticmethod
     def _normalize_scope(scope: str) -> str:
         return scope if scope in ("channel", "personal") else "channel"
-
-    @staticmethod
-    def _parse_due_datetime(
-        due: Optional[str],
-        timezone: Optional[str] = None,
-    ) -> Optional[datetime.datetime]:
-        due_text = due.strip() if due else ""
-        if not due_text:
-            return None
-
-        api_key = env.get("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OpenAI API key is not configured.")
-        due_dt = OpenAIFunctions.parse_due_datetime(
-            due_text,
-            api_key=api_key,
-            timezone=timezone,
-        )
-        if due_dt is None:
-            raise ValueError(
-                "I couldn't understand that due time. Try 'tomorrow 8pm'."
-            )
-        return due_dt
 
     @staticmethod
     def _clean_list_name(name: str) -> str:
@@ -79,9 +55,7 @@ class TodoFunctions:
     def _normalize_item_status(status: str) -> str:
         normalized = status.strip().lower().replace(" ", "_")
         if normalized not in TodoFunctions._ALLOWED_ITEM_STATUSES:
-            raise ValueError(
-                "Invalid status. Use one of: todo, in_progress, done."
-            )
+            raise ValueError("Invalid status. Use one of: todo, in_progress, done.")
         return normalized
 
     @staticmethod
@@ -109,20 +83,6 @@ class TodoFunctions:
                 f"Description must be at most {TodoFunctions._MAX_ITEM_TEXT_LEN} characters."
             )
         return cleaned
-
-    @staticmethod
-    def _parse_due_input_value(due: Optional[str]) -> Optional[str]:
-        due_text = (due or "").strip()
-        if not due_text:
-            return None
-
-        try:
-            return datetime.datetime.fromisoformat(due_text).isoformat()
-        except ValueError:
-            pass
-
-        parsed = TodoFunctions._parse_due_datetime(due_text)
-        return parsed.isoformat() if parsed else None
 
     @staticmethod
     def parse_assignee_modal_input(
@@ -235,7 +195,9 @@ class TodoFunctions:
 
         name = TodoFunctions.trim_text(name_source, TodoFunctions._MAX_TITLE_LEN)
         description = (
-            TodoFunctions.trim_text(normalized_content, TodoFunctions._MAX_ITEM_TEXT_LEN)
+            TodoFunctions.trim_text(
+                normalized_content, TodoFunctions._MAX_ITEM_TEXT_LEN
+            )
             if normalized_content
             else None
         )
@@ -320,7 +282,9 @@ class TodoFunctions:
     ) -> str:
         cleaned_name = (channel_name or "").strip()
         if cleaned_name:
-            return TodoFunctions.trim_text(cleaned_name, TodoFunctions._MAX_LIST_NAME_LEN)
+            return TodoFunctions.trim_text(
+                cleaned_name, TodoFunctions._MAX_LIST_NAME_LEN
+            )
         if channel_id is not None:
             return f"channel-{channel_id}"
         return "direct-messages"
@@ -369,6 +333,38 @@ class TodoFunctions:
             "created_at": datetime.datetime.utcnow().isoformat(),
         }
 
+        result = mongo_db["todo_lists"].insert_one(document)
+        document["_id"] = result.inserted_id
+        return document
+
+    @staticmethod
+    def get_or_create_server_global_list(
+        guild_id: Optional[int],
+        user_id: int,
+    ) -> Dict[str, Any]:
+        if guild_id is None:
+            raise ValueError("Server-global lists are only available in servers.")
+
+        list_name = "Server"
+        query: Dict[str, Any] = {
+            "scope": "channel",
+            "guild_id": guild_id,
+            "channel_id": None,
+            "name_key": list_name.lower(),
+        }
+        existing = mongo_db["todo_lists"].find_one(query)
+        if existing:
+            return existing
+
+        document: Dict[str, Any] = {
+            "name": list_name,
+            "name_key": list_name.lower(),
+            "scope": "channel",
+            "guild_id": guild_id,
+            "channel_id": None,
+            "user_id": user_id,
+            "created_at": datetime.datetime.utcnow().isoformat(),
+        }
         result = mongo_db["todo_lists"].insert_one(document)
         document["_id"] = result.inserted_id
         return document
@@ -437,20 +433,10 @@ class TodoFunctions:
             try:
                 return int(raw_id)
             except ValueError as exc:
-                raise ValueError("Please select an assignee from autocomplete options.") from exc
+                raise ValueError(
+                    "Please select an assignee from autocomplete options."
+                ) from exc
         raise ValueError("Please select an assignee from autocomplete options.")
-
-    @staticmethod
-    def format_due(due: Optional[Union[datetime.datetime, str]]) -> str:
-        if due is None:
-            return "Not set"
-        if isinstance(due, str):
-            try:
-                parsed = datetime.datetime.fromisoformat(due)
-                return parsed.strftime("%Y-%m-%d %H:%M")
-            except ValueError:
-                return due
-        return due.strftime("%Y-%m-%d %H:%M")
 
     @staticmethod
     def item_text(item: Dict[str, Any]) -> str:
@@ -517,7 +503,7 @@ class TodoFunctions:
         if cleaned_description == "":
             cleaned_description = None
 
-        due_dt = TodoFunctions._parse_due_datetime(due)
+        due_dt = DueDateService.parse_due_datetime(due)
         scope_value = TodoFunctions._normalize_scope(scope)
         stored_guild_id = None if scope_value == "personal" else guild_id
         stored_channel_id = None if scope_value == "personal" else channel_id
@@ -697,7 +683,9 @@ class TodoFunctions:
         acting_user_id: int,
         limit: int = 25,
     ) -> List[Dict[str, Any]]:
-        scope_value = TodoFunctions._normalize_scope(str(item.get("scope") or "channel"))
+        scope_value = TodoFunctions._normalize_scope(
+            str(item.get("scope") or "channel")
+        )
         if scope_value == "personal":
             owner_id = int(item.get("user_id") or acting_user_id)
             query: Dict[str, Any] = {
@@ -730,7 +718,9 @@ class TodoFunctions:
     ) -> Dict[str, Any]:
         cleaned_name = TodoFunctions._clean_list_name(list_name)
         name_key = cleaned_name.lower()
-        scope_value = TodoFunctions._normalize_scope(str(item.get("scope") or "channel"))
+        scope_value = TodoFunctions._normalize_scope(
+            str(item.get("scope") or "channel")
+        )
 
         if scope_value == "personal":
             owner_id = int(item.get("user_id") or acting_user_id)
@@ -751,7 +741,9 @@ class TodoFunctions:
 
         target_list = mongo_db["todo_lists"].find_one(query)
         if not target_list:
-            raise ValueError(f"List `{cleaned_name}` was not found for this item scope.")
+            raise ValueError(
+                f"List `{cleaned_name}` was not found for this item scope."
+            )
         return target_list
 
     @staticmethod
@@ -764,10 +756,29 @@ class TodoFunctions:
         if not token:
             raise ValueError("List value cannot be empty.")
 
+        token_lower = token.lower()
+        if token_lower == "__personal__":
+            return TodoFunctions.get_or_create_implicit_list(
+                guild_id=None,
+                channel_id=None,
+                user_id=acting_user_id,
+                channel_name=None,
+                target="personal",
+            )
+        if token_lower == "__server_global__":
+            return TodoFunctions.get_or_create_server_global_list(
+                guild_id=item.get("guild_id"),
+                user_id=acting_user_id,
+            )
+
         by_id = TodoFunctions.fetch_todo_list_by_id(token)
         if by_id is not None:
-            item_scope = TodoFunctions._normalize_scope(str(item.get("scope") or "channel"))
-            list_scope = TodoFunctions._normalize_scope(str(by_id.get("scope") or "channel"))
+            item_scope = TodoFunctions._normalize_scope(
+                str(item.get("scope") or "channel")
+            )
+            list_scope = TodoFunctions._normalize_scope(
+                str(by_id.get("scope") or "channel")
+            )
             if item_scope != list_scope:
                 raise ValueError("That list does not match this item scope.")
             if item_scope == "channel":
@@ -776,7 +787,9 @@ class TodoFunctions:
             else:
                 owner_id = int(item.get("user_id") or acting_user_id)
                 if int(by_id.get("user_id") or 0) != owner_id:
-                    raise ValueError("That list is not available for this personal item.")
+                    raise ValueError(
+                        "That list is not available for this personal item."
+                    )
             return by_id
 
         return TodoFunctions.find_list_for_item_scope(item, token, acting_user_id)
@@ -800,7 +813,9 @@ class TodoFunctions:
             return mongo_db["todos"].find_one({"_id": object_id})
 
         next_item_no = TodoFunctions._next_item_number(target_list_id)
-        target_scope = TodoFunctions._normalize_scope(str(target_list.get("scope") or "channel"))
+        target_scope = TodoFunctions._normalize_scope(
+            str(target_list.get("scope") or "channel")
+        )
 
         updated = mongo_db["todos"].find_one_and_update(
             {"_id": object_id},
@@ -871,13 +886,18 @@ class TodoFunctions:
         status: str = "todo",
         assignee_id: Optional[int] = None,
         timezone: Optional[str] = None,
+        locale_code: Optional[str] = None,
     ) -> Tuple[Dict[str, Any], Optional[datetime.datetime]]:
         list_id = TodoFunctions._coerce_object_id(todo_list.get("_id"))
         if list_id is None:
             raise ValueError("That list is invalid.")
 
         cleaned_text = TodoFunctions._clean_item_text(text)
-        due_dt = TodoFunctions._parse_due_datetime(due, timezone=timezone)
+        due_dt = DueDateService.parse_due_datetime(
+            due,
+            timezone=timezone,
+            locale_code=locale_code,
+        )
         item_no = TodoFunctions._next_item_number(list_id)
         title = TodoFunctions._item_title_from_text(cleaned_text)
         normalized_status = (status or "todo").strip().lower()
@@ -915,8 +935,10 @@ class TodoFunctions:
             return []
 
         sort_direction = 1 if sort == "ascending" else -1
-        cursor = mongo_db["todos"].find({"list_id": object_id}).sort(
-            "item_no", sort_direction
+        cursor = (
+            mongo_db["todos"]
+            .find({"list_id": object_id})
+            .sort("item_no", sort_direction)
         )
         return list(cursor)
 
@@ -939,13 +961,17 @@ class TodoFunctions:
             if isinstance(doc.get("_id"), ObjectId)
         }
 
-        cursor = mongo_db["todos"].find(
-            {
-                "guild_id": guild_id,
-                "scope": {"$ne": "personal"},
-                "list_id": {"$exists": True},
-            }
-        ).sort("_id", sort_direction)
+        cursor = (
+            mongo_db["todos"]
+            .find(
+                {
+                    "guild_id": guild_id,
+                    "scope": {"$ne": "personal"},
+                    "list_id": {"$exists": True},
+                }
+            )
+            .sort("_id", sort_direction)
+        )
         items = list(cursor)
 
         for item in items:
@@ -997,6 +1023,8 @@ class TodoFunctions:
         description: Optional[str],
         status: str,
         due: Optional[str],
+        timezone: Optional[str] = None,
+        locale_code: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         object_id = TodoFunctions._coerce_object_id(item_id)
         if object_id is None:
@@ -1005,14 +1033,16 @@ class TodoFunctions:
         title = TodoFunctions._clean_item_title(task_text)
         cleaned_description = TodoFunctions._clean_item_description(description)
         combined_text = (
-            f"{title}\n{cleaned_description}"
-            if cleaned_description
-            else title
+            f"{title}\n{cleaned_description}" if cleaned_description else title
         )
         cleaned_text = TodoFunctions._clean_item_text(combined_text)
         normalized_status = TodoFunctions._normalize_item_status(status)
         state_value = "done" if normalized_status == "done" else "todo"
-        due_value = TodoFunctions._parse_due_input_value(due)
+        due_value = DueDateService.parse_due_input_value(
+            due,
+            timezone=timezone,
+            locale_code=locale_code,
+        )
 
         updated = mongo_db["todos"].find_one_and_update(
             {"_id": object_id},
