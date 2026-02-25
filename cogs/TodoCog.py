@@ -6,7 +6,9 @@ from discord import app_commands
 from discord.ext import commands
 
 from classes.TodoFunctions import TodoFunctions
+from classes.UserSettingsFunctions import UserSettingsFunctions
 from embeds.TodoEmbeds import TodoEmbeds, TodoListItemsView, TodoItemEditModal
+from services.due_datetime import DueDateService
 from services.discord_helpers import resolve_ephemeral_from_scope
 from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
@@ -546,6 +548,7 @@ class TodoCog(commands.Cog):
         notify_enabled = (notify_assignee.value if notify_assignee else "yes") == "yes"
         channel_id = interaction.channel_id
         channel_name = getattr(interaction.channel, "name", None)
+        locale_code = str(getattr(interaction, "locale", "") or "").strip() or None
         timezone = None
         if (due or "").strip():
 
@@ -564,6 +567,7 @@ class TodoCog(commands.Cog):
                     notify_enabled=notify_enabled,
                     ephemeral=ephemeral,
                     timezone=resolved_timezone,
+                    locale_code=locale_code,
                     channel_id=channel_id,
                     channel_name=channel_name,
                 )
@@ -588,6 +592,7 @@ class TodoCog(commands.Cog):
             notify_enabled=notify_enabled,
             ephemeral=ephemeral,
             timezone=timezone,
+            locale_code=locale_code,
             channel_id=channel_id,
             channel_name=channel_name,
         )
@@ -604,6 +609,7 @@ class TodoCog(commands.Cog):
         notify_enabled: bool,
         ephemeral: bool,
         timezone: Optional[str],
+        locale_code: Optional[str],
         channel_id: int,
         channel_name: Optional[str],
     ) -> None:
@@ -638,6 +644,7 @@ class TodoCog(commands.Cog):
                 status_value,
                 assignee_id,
                 timezone,
+                locale_code,
             )
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
@@ -807,6 +814,15 @@ class TodoCog(commands.Cog):
         except Exception:
             list_options = []
 
+        modal_locale = str(getattr(interaction, "locale", "") or "").strip() or None
+        try:
+            modal_timezone = await asyncio.to_thread(
+                UserSettingsFunctions.get_timezone,
+                interaction.user.id,
+            )
+        except Exception:
+            modal_timezone = None
+
         try:
             await interaction.response.send_modal(
                 TodoItemEditModal(
@@ -817,6 +833,8 @@ class TodoCog(commands.Cog):
                     assignee_options=assignee_options,
                     list_options=list_options,
                     return_item_embed=True,
+                    locale_code=modal_locale,
+                    timezone=modal_timezone,
                 )
             )
         except discord.HTTPException as exc:
@@ -828,6 +846,8 @@ class TodoCog(commands.Cog):
                         item_number=todo,
                         source_message=None,
                         return_item_embed=True,
+                        locale_code=modal_locale,
+                        timezone=modal_timezone,
                     )
                 )
                 return
@@ -1102,7 +1122,7 @@ class TodoCog(commands.Cog):
             status = TodoFunctions.status_label(TodoFunctions.item_status(item))
             due_value = item.get("due")
             due_label = (
-                TodoFunctions.format_due(due_value) if due_value else "No due date"
+                DueDateService.format_due(due_value) if due_value else "No due date"
             )
             search_text = f"{todo_name} {status} {due_label}".lower()
             if query and query not in search_text:
