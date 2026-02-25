@@ -528,6 +528,257 @@ class TodoItemEditModal(discord.ui.Modal):
             )
 
 
+class TodoItemCreateModal(discord.ui.Modal):
+    def __init__(
+        self,
+        parent_view: "TodoListItemsView",
+        todo_list: Dict[str, Any],
+        source_message: Optional[discord.Message],
+        assignee_options: Optional[List[discord.SelectOption]] = None,
+        list_options: Optional[List[discord.SelectOption]] = None,
+        locale_code: Optional[str] = None,
+        timezone: Optional[str] = None,
+    ) -> None:
+        modal_title = f"Add to {str(todo_list.get('name') or 'List')}"
+        if len(modal_title) > 45:
+            modal_title = modal_title[:42].rstrip() + "..."
+        super().__init__(title=modal_title)
+        self.parent_view = parent_view
+        self.todo_list = todo_list
+        self.source_message = source_message
+        self.locale_code = DueDateService.normalize_locale_code(locale_code)
+        self.timezone = timezone
+        self.current_list_id = str(todo_list.get("_id") or "")
+        self.current_list_name = str(todo_list.get("name") or "List").strip() or "List"
+        self.scope_item: Dict[str, Any] = {
+            "scope": str(todo_list.get("scope") or "channel"),
+            "guild_id": todo_list.get("guild_id"),
+            "channel_id": todo_list.get("channel_id"),
+            "user_id": todo_list.get("user_id"),
+            "list_id": todo_list.get("_id"),
+            "list_name": self.current_list_name,
+        }
+
+        self.assignee_select: Optional[discord.ui.Select] = None
+        self.list_select: Optional[discord.ui.Select] = None
+        self.assignee_select_label: Optional[discord.ui.Label] = None
+        self.list_select_label: Optional[discord.ui.Label] = None
+        self.assignee_input: Optional[discord.ui.TextInput] = None
+        self.list_input: Optional[discord.ui.TextInput] = None
+
+        self.task_input = discord.ui.TextInput(
+            label="Todo",
+            style=discord.TextStyle.short,
+            required=True,
+            max_length=100,
+        )
+        self.description_input = discord.ui.TextInput(
+            label="Description",
+            style=discord.TextStyle.paragraph,
+            required=False,
+            max_length=800,
+        )
+        due_placeholder = DueDateService.due_placeholder(
+            timezone=self.timezone,
+            locale_code=self.locale_code,
+        )
+        self.due_input = discord.ui.TextInput(
+            label="Due",
+            placeholder=due_placeholder,
+            required=False,
+            max_length=100,
+        )
+
+        self.add_item(self.task_input)
+        self.add_item(self.description_input)
+        self.add_item(self.due_input)
+
+        if assignee_options and list_options:
+            try:
+                self.assignee_select = discord.ui.Select(
+                    placeholder="Assignee",
+                    min_values=1,
+                    max_values=1,
+                    options=assignee_options[:25],
+                )
+                self.list_select = discord.ui.Select(
+                    placeholder="List",
+                    min_values=1,
+                    max_values=1,
+                    options=list_options[:25],
+                )
+                self.assignee_select_label = discord.ui.Label(
+                    text="Assignee",
+                    component=self.assignee_select,
+                )
+                self.list_select_label = discord.ui.Label(
+                    text="List",
+                    component=self.list_select,
+                )
+                self.add_item(self.assignee_select_label)
+                self.add_item(self.list_select_label)
+            except Exception:
+                self.assignee_select = None
+                self.list_select = None
+                self.assignee_select_label = None
+                self.list_select_label = None
+                self.clear_items()
+                self.add_item(self.task_input)
+                self.add_item(self.description_input)
+                self.add_item(self.due_input)
+
+        if self.assignee_select is None or self.list_select is None:
+            self.assignee_input = discord.ui.TextInput(
+                label="Assignee",
+                placeholder="none, me, user:<id>, <@id>, or ID",
+                required=False,
+                default="none",
+                max_length=64,
+            )
+            self.list_input = discord.ui.TextInput(
+                label="List",
+                placeholder="Existing list name or list ID",
+                required=True,
+                default=self.current_list_name[:80],
+                max_length=80,
+            )
+            self.add_item(self.assignee_input)
+            self.add_item(self.list_input)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        list_id = self.todo_list.get("_id")
+        if not list_id:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(
+                    "Creating from this view is only supported on a single list.",
+                    ephemeral=True,
+                ),
+            )
+            return
+
+        try:
+            target_list = self.todo_list
+            if self.list_select is not None:
+                list_token = (
+                    self.list_select.values[0] if self.list_select.values else ""
+                )
+            else:
+                list_token = (
+                    str(self.list_input.value or "").strip()
+                    if self.list_input is not None
+                    else ""
+                )
+            if list_token:
+                target_list = await asyncio.to_thread(
+                    TodoFunctions.find_list_for_item_scope_by_token,
+                    self.scope_item,
+                    list_token,
+                    interaction.user.id,
+                )
+
+            if self.assignee_select is not None:
+                selected_assignee = (
+                    self.assignee_select.values[0]
+                    if self.assignee_select.values
+                    else "__none__"
+                )
+                assignee_id = TodoFunctions.parse_assignee_token(
+                    selected_assignee,
+                    interaction.user.id,
+                )
+            else:
+                assignee_value = (
+                    str(self.assignee_input.value or "").strip()
+                    if self.assignee_input is not None
+                    else ""
+                )
+                if assignee_value:
+                    assignee_id = TodoFunctions.parse_assignee_modal_input(
+                        assignee_value,
+                        interaction.user.id,
+                    )
+                else:
+                    assignee_id = None
+        except ValueError as exc:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(str(exc), ephemeral=True, cause=exc),
+            )
+            return
+
+        task_text = str(self.task_input.value or "").strip()
+        description_text = str(self.description_input.value or "").strip()
+        item_text = task_text
+        if description_text:
+            item_text = f"{task_text}\n{description_text}"
+
+        try:
+            created_item, _ = await asyncio.to_thread(
+                TodoFunctions.add_item_to_list,
+                target_list,
+                interaction.user.id,
+                item_text,
+                str(self.due_input.value or "").strip(),
+                "todo",
+                assignee_id,
+                self.timezone,
+                self.locale_code,
+            )
+        except ValueError as exc:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(str(exc), ephemeral=True, cause=exc),
+            )
+            return
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while creating that item.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
+
+        target_list_id = str(target_list.get("_id") or "")
+        try:
+            await self.parent_view._reload_items()
+            if target_list_id == self.current_list_id:
+                if self.parent_view.sort == "ascending":
+                    self.parent_view.page = self.parent_view.total_pages
+                else:
+                    self.parent_view.page = 1
+            self.parent_view._build()
+            if self.source_message is not None:
+                await self.source_message.edit(
+                    view=self.parent_view,
+                    **self.parent_view.payload(),
+                )
+        except discord.NotFound:
+            pass
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Item created, but refreshing the list failed.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
+
+        if self.source_message is None or target_list_id != self.current_list_id:
+            payload = TodoEmbeds.item_details_embed(target_list, created_item)
+            await interaction.followup.send(
+                ephemeral=True,
+                **payload,
+            )
+
+
 class TodoListItemsView(discord.ui.View):
     def __init__(
         self,
@@ -1016,10 +1267,11 @@ class TodoListItemsView(discord.ui.View):
             disabled=self.page <= 1,
             row=2,
         )
-        refresh_button = discord.ui.Button(
-            style=discord.ButtonStyle.secondary,
-            emoji="🔄",
+        add_button = discord.ui.Button(
+            style=discord.ButtonStyle.success,
+            emoji="➕",
             row=2,
+            disabled=(self.view_scope != "list") or (self.todo_list.get("_id") is None),
         )
         next_button = discord.ui.Button(
             style=discord.ButtonStyle.secondary,
@@ -1059,11 +1311,77 @@ class TodoListItemsView(discord.ui.View):
             self._build()
             await self._safe_refresh_message(interaction)
 
-        async def _refresh_callback(interaction: discord.Interaction) -> None:
-            await interaction.response.defer()
-            await self._reload_items()
-            self._build()
-            await self._safe_refresh_message(interaction)
+        async def _add_callback(interaction: discord.Interaction) -> None:
+            global _MODAL_SELECTS_SUPPORTED
+            if self.view_scope != "list" or self.todo_list.get("_id") is None:
+                await interaction.response.send_message(
+                    ephemeral=True,
+                    content="Open a specific list to create a task from this view.",
+                )
+                return
+
+            modal_locale = str(getattr(interaction, "locale", "") or "").strip() or None
+            try:
+                modal_timezone = await asyncio.to_thread(
+                    UserSettingsFunctions.get_timezone,
+                    interaction.user.id,
+                )
+            except Exception:
+                modal_timezone = None
+
+            assignee_options = self._build_assignee_select_options(
+                interaction,
+                {"assignees": []},
+            )
+            scope_item = {
+                "scope": str(self.todo_list.get("scope") or "channel"),
+                "guild_id": self.todo_list.get("guild_id"),
+                "channel_id": self.todo_list.get("channel_id"),
+                "user_id": self.todo_list.get("user_id") or interaction.user.id,
+                "list_id": self.todo_list.get("_id"),
+                "list_name": str(self.todo_list.get("name") or "List"),
+            }
+            list_options: List[discord.SelectOption] = []
+            try:
+                list_docs = await asyncio.to_thread(
+                    TodoFunctions.list_candidate_lists_for_item_scope,
+                    scope_item,
+                    interaction.user.id,
+                    25,
+                )
+                list_options = self._build_list_select_options(scope_item, list_docs)
+            except Exception:
+                list_options = []
+
+            if _MODAL_SELECTS_SUPPORTED:
+                try:
+                    await interaction.response.send_modal(
+                        TodoItemCreateModal(
+                            parent_view=self,
+                            todo_list=self.todo_list,
+                            source_message=interaction.message,
+                            assignee_options=assignee_options,
+                            list_options=list_options,
+                            locale_code=modal_locale,
+                            timezone=modal_timezone,
+                        )
+                    )
+                    return
+                except discord.HTTPException as exc:
+                    if exc.code == 50035 and "must be one of (4,)" in str(exc):
+                        _MODAL_SELECTS_SUPPORTED = False
+                    else:
+                        raise
+
+            await interaction.response.send_modal(
+                TodoItemCreateModal(
+                    parent_view=self,
+                    todo_list=self.todo_list,
+                    source_message=interaction.message,
+                    locale_code=modal_locale,
+                    timezone=modal_timezone,
+                )
+            )
 
         async def _sort_toggle_callback(interaction: discord.Interaction) -> None:
             await interaction.response.defer()
@@ -1084,14 +1402,14 @@ class TodoListItemsView(discord.ui.View):
             await self._safe_refresh_message(interaction)
 
         prev_button.callback = _prev_callback
-        refresh_button.callback = _refresh_callback
         next_button.callback = _next_callback
+        add_button.callback = _add_callback
         sort_button.callback = _sort_toggle_callback
         filter_button.callback = _mine_toggle_callback
 
         self.add_item(prev_button)
-        self.add_item(refresh_button)
         self.add_item(next_button)
+        self.add_item(add_button)
         self.add_item(sort_button)
         self.add_item(filter_button)
 
