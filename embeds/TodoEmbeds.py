@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import datetime
 import math
 from typing import Optional, Union, List, Dict, Any
@@ -786,6 +786,8 @@ class TodoListItemsView(discord.ui.View):
         items: List[Dict[str, Any]],
         sort: str,
         status_filter: str = "all",
+        assignee_filter_id: Optional[int] = None,
+        assignee_filter_unassigned: bool = False,
         user_id: Optional[int] = None,
         view_scope: str = "list",
         guild_id: Optional[int] = None,
@@ -807,6 +809,10 @@ class TodoListItemsView(discord.ui.View):
                 "done",
             }
             else "all"
+        )
+        self.assignee_filter_unassigned = bool(assignee_filter_unassigned)
+        self.assignee_filter_id = (
+            None if self.assignee_filter_unassigned else assignee_filter_id
         )
         self.user_id = user_id
         self.view_scope = view_scope
@@ -853,6 +859,16 @@ class TodoListItemsView(discord.ui.View):
 
     def _apply_filters(self) -> None:
         filtered_items = list(self._all_items)
+        if self.assignee_filter_unassigned:
+            filtered_items = [
+                item for item in filtered_items if not (item.get("assignees") or [])
+            ]
+        elif self.assignee_filter_id is not None:
+            filtered_items = [
+                item
+                for item in filtered_items
+                if self.assignee_filter_id in (item.get("assignees") or [])
+            ]
         if self.only_assigned_to_me and self.user_id is not None:
             filtered_items = [
                 item
@@ -917,7 +933,7 @@ class TodoListItemsView(discord.ui.View):
         none_default = current_assignee_id is None
         options.append(
             discord.SelectOption(
-                label="None (Unassign)",
+                label="None",
                 value="__none__",
                 default=none_default,
             )
@@ -1655,7 +1671,7 @@ class TodoAssignPickerView(discord.ui.View):
 
         options.append(
             discord.SelectOption(
-                label="None (Unassign)",
+                label="None",
                 value="__none__",
                 default=current_assignee_id is None,
             )
@@ -1724,7 +1740,7 @@ class TodoAssignPickerView(discord.ui.View):
 
         label = selected_value
         if selected_value == "__none__":
-            label = "None (Unassign)"
+            label = "None"
         elif selected_value == "__me__":
             label = f"Me (<@{interaction.user.id}>)"
         elif selected_value.startswith("user:"):

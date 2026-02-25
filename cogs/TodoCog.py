@@ -147,6 +147,7 @@ class TodoCog(commands.Cog):
         sort="Sort order for items",
         status="Filter by item status",
         list_target="Which list to show",
+        assignee="Filter by assignee (None = unassigned, Me = yourself)",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
@@ -160,6 +161,7 @@ class TodoCog(commands.Cog):
         sort: Optional[app_commands.Choice[str]] = None,
         status: Optional[app_commands.Choice[str]] = None,
         list_target: Optional[str] = None,
+        assignee: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         target_value = (list_target or "").strip()
@@ -221,6 +223,20 @@ class TodoCog(commands.Cog):
         )
         sort_value = sort.value if sort else "ascending"
         status_value = status.value if status else "all"
+        assignee_filter_user_id: Optional[int] = None
+        assignee_filter_unassigned = False
+        assignee_value = (assignee or "").strip()
+        if assignee_value:
+            if assignee_value == "__none__":
+                assignee_filter_unassigned = True
+            else:
+                try:
+                    assignee_filter_user_id = TodoFunctions.parse_assignee_token(
+                        assignee_value,
+                        interaction.user.id,
+                    )
+                except ValueError as exc:
+                    raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
         await interaction.response.defer(ephemeral=ephemeral)
 
         try:
@@ -298,6 +314,8 @@ class TodoCog(commands.Cog):
             items=items,
             sort=sort_value,
             status_filter=status_value,
+            assignee_filter_id=assignee_filter_user_id,
+            assignee_filter_unassigned=assignee_filter_unassigned,
             user_id=interaction.user.id,
             view_scope="all_server" if use_all_server_channels else "list",
             guild_id=interaction.guild_id,
@@ -315,6 +333,14 @@ class TodoCog(commands.Cog):
         current: str,
     ) -> List[app_commands.Choice[str]]:
         return self._build_list_target_autocomplete_options(interaction, current)
+
+    @list_view.autocomplete("assignee")
+    async def list_view_assignee_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        return await self.todo_assign_autocomplete(interaction, current)
 
     def _build_list_target_autocomplete_options(
         self,
@@ -1054,7 +1080,7 @@ class TodoCog(commands.Cog):
     ) -> List[app_commands.Choice[str]]:
         query = (current or "").strip().lower()
         options: List[app_commands.Choice[str]] = [
-            app_commands.Choice(name="None (Unassign)", value="__none__"),
+            app_commands.Choice(name="None", value="__none__"),
             app_commands.Choice(name="Me", value="__me__"),
         ]
 
