@@ -6,6 +6,8 @@ from typing import Optional, Union, List, Dict, Any
 import discord
 
 from classes.TodoFunctions import TodoFunctions
+from classes.UserSettingsFunctions import UserSettingsFunctions
+from services.due_datetime import DueDateService
 from services.error_reporting import (
     UserVisibleError,
     ValidationError,
@@ -143,6 +145,8 @@ class TodoItemEditModal(discord.ui.Modal):
         list_options: Optional[List[discord.SelectOption]] = None,
         return_item_embed: bool = False,
         refresh_source_as_item_embed: bool = False,
+        locale_code: Optional[str] = None,
+        timezone: Optional[str] = None,
     ) -> None:
         modal_title = f"Edit {TodoFunctions.task_name_from_item(item)}"
         if len(modal_title) > 45:
@@ -155,6 +159,8 @@ class TodoItemEditModal(discord.ui.Modal):
         self.source_message = source_message
         self.return_item_embed = return_item_embed
         self.refresh_source_as_item_embed = refresh_source_as_item_embed
+        self.locale_code = DueDateService.normalize_locale_code(locale_code)
+        self.timezone = timezone
 
         current_task = str(item.get("name") or "").strip() or "Untitled"
         current_text = TodoFunctions.item_text(item)
@@ -172,7 +178,15 @@ class TodoItemEditModal(discord.ui.Modal):
 
         current_status = TodoFunctions.item_status(item)
         due_value = item.get("due")
-        current_due = "" if not due_value else TodoFunctions.format_due(due_value)
+        current_due = (
+            ""
+            if not due_value
+            else DueDateService.format_due(
+                due_value,
+                locale_code=self.locale_code,
+                timezone=self.timezone,
+            )
+        )
         self.initial_due_raw = str(due_value) if due_value else None
         self.initial_due_display = current_due
         self.current_status = current_status
@@ -203,9 +217,13 @@ class TodoItemEditModal(discord.ui.Modal):
             default=current_description[:800],
             max_length=800,
         )
+        due_placeholder = DueDateService.due_placeholder(
+            timezone=self.timezone,
+            locale_code=self.locale_code,
+        )
         self.due_input = discord.ui.TextInput(
             label="Due",
-            placeholder="YYYY-MM-DD HH:MM, ISO, or natural language",
+            placeholder=due_placeholder,
             required=False,
             default=current_due[:100],
             max_length=100,
@@ -293,6 +311,8 @@ class TodoItemEditModal(discord.ui.Modal):
                 str(self.description_input.value or ""),
                 self.current_status,
                 due_value_to_save,
+                self.timezone,
+                self.locale_code,
             )
         except ValueError as exc:
             await handle_interaction_error(
@@ -717,9 +737,21 @@ class TodoListItemsView(discord.ui.View):
         current_list_name = str(
             item.get("list_name") or self.todo_list.get("name") or "Current list"
         )
+        current_scope = TodoFunctions._normalize_scope(
+            str(item.get("scope") or "channel")
+        )
+        current_channel_id = item.get("channel_id")
+        guild_id = item.get("guild_id")
 
         options: List[discord.SelectOption] = []
         seen_ids: set[str] = set()
+        has_default = False
+        has_server_global_entry = False
+
+        reserve_special = 0
+        if current_scope == "channel" and guild_id is not None:
+            reserve_special = 2  # server-global + personal target
+        max_doc_options = max(1, 25 - reserve_special - 1)  # reserve fallback current
 
         for list_doc in list_docs:
             raw_id = list_doc.get("_id")
@@ -732,33 +764,79 @@ class TodoListItemsView(discord.ui.View):
             name = str(list_doc.get("name") or "Unnamed")
             scope = str(list_doc.get("scope") or "")
             channel_id = list_doc.get("channel_id")
-            if scope == "personal":
-                label = f"{name} (personal)"
-            elif channel_id is not None:
-                label = f"{name} (ch:{channel_id})"
+            if scope == "channel" and channel_id is not None:
+                label = name if name.startswith("#") else f"#{name}"
+            elif scope == "channel":
+                has_server_global_entry = True
+                label = (
+                    "Server (global)"
+                    if name.strip().lower() == "server"
+                    else f"Server (global) - {name}"
+                )
+            elif scope == "personal":
+                label = (
+                    "Personal"
+                    if name.strip().lower() == "personal"
+                    else f"Personal - {name}"
+                )
             else:
                 label = name
 
+            is_default = current_list_id == list_id
             options.append(
                 discord.SelectOption(
                     label=label[:100],
                     value=list_id,
-                    default=(current_list_id == list_id),
+                    default=is_default,
                 )
             )
+            if is_default:
+                has_default = True
             seen_ids.add(list_id)
-            if len(options) >= 25:
+            if len(options) >= max_doc_options:
                 break
 
         if current_list_id and current_list_id not in seen_ids:
+            fallback_label = current_list_name
+            if current_scope == "channel" and current_channel_id is not None:
+                fallback_label = (
+                    current_list_name
+                    if current_list_name.startswith("#")
+                    else f"#{current_list_name}"
+                )
+            elif current_scope == "personal":
+                fallback_label = (
+                    "Personal"
+                    if current_list_name.strip().lower() == "personal"
+                    else f"Personal - {current_list_name}"
+                )
             options.insert(
                 0,
                 discord.SelectOption(
-                    label=current_list_name[:100],
+                    label=fallback_label[:100],
                     value=current_list_id,
                     default=True,
                 ),
             )
+            has_default = True
+
+        if current_scope == "channel" and guild_id is not None:
+            top_options: List[discord.SelectOption] = [
+                discord.SelectOption(
+                    label="Personal",
+                    value="__personal__",
+                    default=False,
+                )
+            ]
+            if not has_server_global_entry:
+                top_options.append(
+                    discord.SelectOption(
+                        label="Global",
+                        value="__server_global__",
+                        default=(current_channel_id is None and not has_default),
+                    )
+                )
+            options = top_options + options
 
         return options[:25]
 
@@ -887,6 +965,16 @@ class TodoListItemsView(discord.ui.View):
                     if item_number_value is not None
                     else display_number
                 )
+                modal_locale = str(getattr(interaction, "locale", "") or "").strip()
+                if not modal_locale:
+                    modal_locale = None
+                try:
+                    modal_timezone = await asyncio.to_thread(
+                        UserSettingsFunctions.get_timezone,
+                        interaction.user.id,
+                    )
+                except Exception:
+                    modal_timezone = None
                 if _MODAL_SELECTS_SUPPORTED:
                     try:
                         await interaction.response.send_modal(
@@ -897,6 +985,8 @@ class TodoListItemsView(discord.ui.View):
                                 source_message=interaction.message,
                                 assignee_options=assignee_options,
                                 list_options=list_options,
+                                locale_code=modal_locale,
+                                timezone=modal_timezone,
                             )
                         )
                         return
@@ -912,6 +1002,8 @@ class TodoListItemsView(discord.ui.View):
                         item=item_data,
                         item_number=modal_item_number,
                         source_message=interaction.message,
+                        locale_code=modal_locale,
+                        timezone=modal_timezone,
                     )
                 )
 
@@ -1660,6 +1752,16 @@ class TodoItemActionsView(discord.ui.View):
             list_options = []
 
         modal_item_number = current_item.get("item_no") or self.item_number
+        modal_locale = str(getattr(interaction, "locale", "") or "").strip()
+        if not modal_locale:
+            modal_locale = None
+        try:
+            modal_timezone = await asyncio.to_thread(
+                UserSettingsFunctions.get_timezone,
+                interaction.user.id,
+            )
+        except Exception:
+            modal_timezone = None
         if _MODAL_SELECTS_SUPPORTED:
             try:
                 await interaction.response.send_modal(
@@ -1671,6 +1773,8 @@ class TodoItemActionsView(discord.ui.View):
                         assignee_options=assignee_options,
                         list_options=list_options,
                         refresh_source_as_item_embed=True,
+                        locale_code=modal_locale,
+                        timezone=modal_timezone,
                     )
                 )
                 return
@@ -1687,6 +1791,8 @@ class TodoItemActionsView(discord.ui.View):
                 item_number=modal_item_number,
                 source_message=interaction.message,
                 refresh_source_as_item_embed=True,
+                locale_code=modal_locale,
+                timezone=modal_timezone,
             )
         )
 
@@ -1971,7 +2077,7 @@ class TodoEmbeds:
 
         due_dt = TodoEmbeds._parse_due_dt(due)
         if due_dt is None:
-            return f"🗓️ Due: {TodoFunctions.format_due(due)}"
+            return f"🗓️ Due: {DueDateService.format_due(due)}"
 
         if due_dt.tzinfo is not None and due_dt.utcoffset() is not None:
             now = datetime.datetime.now(datetime.timezone.utc).astimezone(due_dt.tzinfo)
@@ -2015,7 +2121,7 @@ class TodoEmbeds:
 
     @staticmethod
     def _format_due(due: Optional[Union[datetime.datetime, str]]) -> str:
-        return TodoFunctions.format_due(due)
+        return DueDateService.format_due(due)
 
     @staticmethod
     def insert_todo_embed(
