@@ -506,14 +506,14 @@ class TodoCog(commands.Cog):
         text="Item text",
         description="Additional details (optional)",
         due="Due date/time (natural language, same as /reminder)",
-        scope="Where to add this item",
+        list="Where to add this item",
         status="Initial progress status",
         assignee="Who should be assigned (optional)",
         notify_assignee="Mention the assignee with the todo embed",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
-        scope=_ADD_SCOPE_CHOICES,
+        list=_ADD_SCOPE_CHOICES,
         status=_ITEM_STATUS_CHOICES,
         notify_assignee=_YES_NO_CHOICES,
         visibility=VISIBILITY_CHOICES,
@@ -524,15 +524,15 @@ class TodoCog(commands.Cog):
         text: str,
         description: Optional[str] = None,
         due: Optional[str] = None,
-        scope: Optional[app_commands.Choice[str]] = None,
+        list: Optional[app_commands.Choice[str]] = None,
         status: Optional[app_commands.Choice[str]] = None,
         assignee: Optional[str] = None,
         notify_assignee: Optional[app_commands.Choice[str]] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         target_value = (
-            scope.value
-            if scope
+            list.value
+            if list
             else ("channel" if interaction.guild_id is not None else "personal")
         )
         if interaction.guild_id is None:
