@@ -6,7 +6,9 @@ from discord import app_commands
 from discord.ext import commands
 
 from classes.TodoFunctions import TodoFunctions
+from classes.UserSettingsFunctions import UserSettingsFunctions
 from embeds.TodoEmbeds import TodoEmbeds, TodoListItemsView, TodoItemEditModal
+from services.due_datetime import DueDateService
 from services.discord_helpers import resolve_ephemeral_from_scope
 from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
@@ -145,6 +147,7 @@ class TodoCog(commands.Cog):
         sort="Sort order for items",
         status="Filter by item status",
         list_target="Which list to show",
+        assignee="Filter by assignee (None = unassigned, Me = yourself)",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
@@ -158,6 +161,7 @@ class TodoCog(commands.Cog):
         sort: Optional[app_commands.Choice[str]] = None,
         status: Optional[app_commands.Choice[str]] = None,
         list_target: Optional[str] = None,
+        assignee: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         target_value = (list_target or "").strip()
@@ -215,9 +219,24 @@ class TodoCog(commands.Cog):
             interaction.guild_id,
             scope_value,
             visibility,
+            dm_default_visibility="public",
         )
         sort_value = sort.value if sort else "ascending"
         status_value = status.value if status else "all"
+        assignee_filter_user_id: Optional[int] = None
+        assignee_filter_unassigned = False
+        assignee_value = (assignee or "").strip()
+        if assignee_value:
+            if assignee_value == "__none__":
+                assignee_filter_unassigned = True
+            else:
+                try:
+                    assignee_filter_user_id = TodoFunctions.parse_assignee_token(
+                        assignee_value,
+                        interaction.user.id,
+                    )
+                except ValueError as exc:
+                    raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
         await interaction.response.defer(ephemeral=ephemeral)
 
         try:
@@ -295,6 +314,8 @@ class TodoCog(commands.Cog):
             items=items,
             sort=sort_value,
             status_filter=status_value,
+            assignee_filter_id=assignee_filter_user_id,
+            assignee_filter_unassigned=assignee_filter_unassigned,
             user_id=interaction.user.id,
             view_scope="all_server" if use_all_server_channels else "list",
             guild_id=interaction.guild_id,
@@ -312,6 +333,14 @@ class TodoCog(commands.Cog):
         current: str,
     ) -> List[app_commands.Choice[str]]:
         return self._build_list_target_autocomplete_options(interaction, current)
+
+    @list_view.autocomplete("assignee")
+    async def list_view_assignee_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        return await self.todo_assign_autocomplete(interaction, current)
 
     def _build_list_target_autocomplete_options(
         self,
@@ -503,14 +532,14 @@ class TodoCog(commands.Cog):
         text="Item text",
         description="Additional details (optional)",
         due="Due date/time (natural language, same as /reminder)",
-        scope="Where to add this item",
+        list="Where to add this item",
         status="Initial progress status",
         assignee="Who should be assigned (optional)",
         notify_assignee="Mention the assignee with the todo embed",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
-        scope=_ADD_SCOPE_CHOICES,
+        list=_ADD_SCOPE_CHOICES,
         status=_ITEM_STATUS_CHOICES,
         notify_assignee=_YES_NO_CHOICES,
         visibility=VISIBILITY_CHOICES,
@@ -521,15 +550,15 @@ class TodoCog(commands.Cog):
         text: str,
         description: Optional[str] = None,
         due: Optional[str] = None,
-        scope: Optional[app_commands.Choice[str]] = None,
+        list: Optional[app_commands.Choice[str]] = None,
         status: Optional[app_commands.Choice[str]] = None,
         assignee: Optional[str] = None,
         notify_assignee: Optional[app_commands.Choice[str]] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         target_value = (
-            scope.value
-            if scope
+            list.value
+            if list
             else ("channel" if interaction.guild_id is not None else "personal")
         )
         if interaction.guild_id is None:
@@ -545,6 +574,7 @@ class TodoCog(commands.Cog):
         notify_enabled = (notify_assignee.value if notify_assignee else "yes") == "yes"
         channel_id = interaction.channel_id
         channel_name = getattr(interaction.channel, "name", None)
+        locale_code = str(getattr(interaction, "locale", "") or "").strip() or None
         timezone = None
         if (due or "").strip():
 
@@ -563,6 +593,7 @@ class TodoCog(commands.Cog):
                     notify_enabled=notify_enabled,
                     ephemeral=ephemeral,
                     timezone=resolved_timezone,
+                    locale_code=locale_code,
                     channel_id=channel_id,
                     channel_name=channel_name,
                 )
@@ -587,6 +618,7 @@ class TodoCog(commands.Cog):
             notify_enabled=notify_enabled,
             ephemeral=ephemeral,
             timezone=timezone,
+            locale_code=locale_code,
             channel_id=channel_id,
             channel_name=channel_name,
         )
@@ -603,6 +635,7 @@ class TodoCog(commands.Cog):
         notify_enabled: bool,
         ephemeral: bool,
         timezone: Optional[str],
+        locale_code: Optional[str],
         channel_id: int,
         channel_name: Optional[str],
     ) -> None:
@@ -637,6 +670,7 @@ class TodoCog(commands.Cog):
                 status_value,
                 assignee_id,
                 timezone,
+                locale_code,
             )
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
@@ -806,6 +840,15 @@ class TodoCog(commands.Cog):
         except Exception:
             list_options = []
 
+        modal_locale = str(getattr(interaction, "locale", "") or "").strip() or None
+        try:
+            modal_timezone = await asyncio.to_thread(
+                UserSettingsFunctions.get_timezone,
+                interaction.user.id,
+            )
+        except Exception:
+            modal_timezone = None
+
         try:
             await interaction.response.send_modal(
                 TodoItemEditModal(
@@ -816,6 +859,8 @@ class TodoCog(commands.Cog):
                     assignee_options=assignee_options,
                     list_options=list_options,
                     return_item_embed=True,
+                    locale_code=modal_locale,
+                    timezone=modal_timezone,
                 )
             )
         except discord.HTTPException as exc:
@@ -827,6 +872,8 @@ class TodoCog(commands.Cog):
                         item_number=todo,
                         source_message=None,
                         return_item_embed=True,
+                        locale_code=modal_locale,
+                        timezone=modal_timezone,
                     )
                 )
                 return
@@ -949,12 +996,13 @@ class TodoCog(commands.Cog):
                 ephemeral=ephemeral,
             )
 
+        deleted_payload = TodoEmbeds.deleted_item_embed(
+            str(todo_list.get("name") or "List"),
+            TodoFunctions.task_name_from_item(item),
+        )
         await interaction.followup.send(
             ephemeral=ephemeral,
-            content=(
-                f"Deleted todo {TodoFunctions.task_ref_from_item(item)} "
-                f"from `{todo_list.get('name')}`."
-            ),
+            **deleted_payload,
         )
 
     @todo_group.command(name="assign", description="Assign or unassign an item")
@@ -1032,7 +1080,7 @@ class TodoCog(commands.Cog):
     ) -> List[app_commands.Choice[str]]:
         query = (current or "").strip().lower()
         options: List[app_commands.Choice[str]] = [
-            app_commands.Choice(name="None (Unassign)", value="__none__"),
+            app_commands.Choice(name="None", value="__none__"),
             app_commands.Choice(name="Me", value="__me__"),
         ]
 
@@ -1099,7 +1147,9 @@ class TodoCog(commands.Cog):
             todo_name = str(item.get("name") or "").strip() or "Untitled"
             status = TodoFunctions.status_label(TodoFunctions.item_status(item))
             due_value = item.get("due")
-            due_label = TodoFunctions.format_due(due_value) if due_value else "No due date"
+            due_label = (
+                DueDateService.format_due(due_value) if due_value else "No due date"
+            )
             search_text = f"{todo_name} {status} {due_label}".lower()
             if query and query not in search_text:
                 continue
