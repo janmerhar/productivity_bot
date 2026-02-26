@@ -12,6 +12,12 @@ class PomodoroEmbeds:
         return end_time.strftime("%H:%M")
 
     @staticmethod
+    def _format_relative_end_time(end_time: Optional[datetime.datetime]) -> str:
+        if end_time is None:
+            return "soon"
+        return f"<t:{int(end_time.timestamp())}:R>"
+
+    @staticmethod
     def insert_timer_embed(
         mode: str,
         duration_minutes: Union[int, str],
@@ -27,8 +33,8 @@ class PomodoroEmbeds:
             name="Duration", value=f"{duration_minutes} minutes", inline=True
         )
         embed.add_field(
-            name="Ends at",
-            value=PomodoroEmbeds._format_end_time(end_time),
+            name="Ends",
+            value=PomodoroEmbeds._format_relative_end_time(end_time),
             inline=True,
         )
 

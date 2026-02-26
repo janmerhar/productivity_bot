@@ -40,7 +40,7 @@ class PomodoroCog(commands.Cog):
     async def pomodoro(
         self,
         interaction: discord.Interaction,
-        mode: app_commands.Choice[str],
+        mode: Optional[app_commands.Choice[str]] = None,
         duration: Optional[int] = None,
         voice_channel: Optional[discord.VoiceChannel] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
@@ -55,7 +55,7 @@ class PomodoroCog(commands.Cog):
         await interaction.response.defer(ephemeral=ephemeral)
 
         channel_id = interaction.channel_id
-        mode_value = mode.value
+        mode_value = mode.value if mode is not None else "focus"
         duration_value = duration
         user_id = interaction.user.id
         voice_error: Optional[str] = None
