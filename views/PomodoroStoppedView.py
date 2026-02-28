@@ -77,7 +77,7 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
                     interaction,
                     ValidationError(
                         "Duration must be a whole number of minutes.",
-                        ephemeral=True,
+                        ephemeral=False,
                         cause=exc,
                     ),
                 )
@@ -87,7 +87,7 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
                     interaction,
                     ValidationError(
                         "Duration must be greater than zero.",
-                        ephemeral=True,
+                        ephemeral=False,
                     ),
                 )
                 return
@@ -107,7 +107,7 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
                     interaction,
                     ValidationError(
                         "Voice channel selection isn't available in DMs.",
-                        ephemeral=True,
+                        ephemeral=False,
                     ),
                 )
                 return
@@ -120,7 +120,7 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
                     interaction,
                     ValidationError(
                         "That voice channel was not found.",
-                        ephemeral=True,
+                        ephemeral=False,
                     ),
                 )
                 return
@@ -146,7 +146,7 @@ class PomodoroStoppedView(discord.ui.View):
         if interaction.user.id == self._user_id:
             return True
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=False,
             content="Only the user who stopped this pomodoro can do this.",
         )
         return False
@@ -201,7 +201,7 @@ class PomodoroStoppedView(discord.ui.View):
         if not await self._ensure_user(interaction):
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=False)
 
         try:
             end_time, resolved_duration = await asyncio.to_thread(
@@ -217,7 +217,7 @@ class PomodoroStoppedView(discord.ui.View):
                 interaction,
                 ValidationError(
                     str(exc),
-                    ephemeral=True,
+                    ephemeral=False,
                     cause=exc,
                 ),
             )
@@ -227,7 +227,7 @@ class PomodoroStoppedView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while starting that pomodoro.",
-                    ephemeral=True,
+                    ephemeral=False,
                     cause=exc,
                 ),
             )
@@ -269,10 +269,10 @@ class PomodoroStoppedView(discord.ui.View):
             end_time=end_time,
             voice_channel_select_enabled=interaction.guild is not None,
         )
-        await interaction.followup.send(ephemeral=True, **payload)
+        await interaction.followup.send(ephemeral=False, **payload)
 
         if voice_error:
-            await interaction.followup.send(ephemeral=True, content=voice_error)
+            await interaction.followup.send(ephemeral=False, content=voice_error)
 
         self._disable_buttons()
         if interaction.message is not None:
@@ -339,7 +339,7 @@ class PomodoroStoppedView(discord.ui.View):
                     raise
 
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=False,
             content=(
                 "Custom timer popup with dropdowns is not supported here. "
                 "Use `/pomodoro start` for custom mode, duration, and voice options."

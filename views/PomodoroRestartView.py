@@ -17,7 +17,7 @@ class PomodoroRestartView(discord.ui.View):
     async def _start(
         self, interaction: discord.Interaction, mode: str
     ) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=False)
 
         try:
             end_time, resolved_duration = await asyncio.to_thread(
@@ -33,7 +33,7 @@ class PomodoroRestartView(discord.ui.View):
                 interaction,
                 ValidationError(
                     str(exc),
-                    ephemeral=True,
+                    ephemeral=False,
                     cause=exc,
                 ),
             )
@@ -43,7 +43,7 @@ class PomodoroRestartView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while starting that pomodoro.",
-                    ephemeral=True,
+                    ephemeral=False,
                     cause=exc,
                 ),
             )
@@ -83,10 +83,10 @@ class PomodoroRestartView(discord.ui.View):
             voice_channel_select_enabled=interaction.guild is not None,
         )
 
-        await interaction.followup.send(ephemeral=True, **payload)
+        await interaction.followup.send(ephemeral=False, **payload)
 
         if voice_error:
-            await interaction.followup.send(ephemeral=True, content=voice_error)
+            await interaction.followup.send(ephemeral=False, content=voice_error)
 
     @discord.ui.button(label="Start Focus", style=discord.ButtonStyle.success)
     async def start_focus(

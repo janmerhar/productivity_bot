@@ -107,14 +107,14 @@ class PomodoroVoiceChannelSelectView(discord.ui.View):
 
         if interaction.user.id != self._user_id:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=False,
                 content="Only the user who started this pomodoro can do this.",
             )
             return
 
         if interaction.guild is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=False,
                 content="Voice playback isn't available in DMs.",
             )
             return
@@ -136,7 +136,7 @@ class PomodoroVoiceChannelSelectView(discord.ui.View):
         channel = self._resolve_selected_voice_channel(interaction.guild, selected_value)
         if channel is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=False,
                 content="That voice channel was not found.",
             )
             return
@@ -150,7 +150,7 @@ class PomodoroVoiceChannelSelectView(discord.ui.View):
             self._mode,
         )
         if error:
-            await interaction.response.send_message(ephemeral=True, content=error)
+            await interaction.response.send_message(ephemeral=False, content=error)
             return
 
         await interaction.response.edit_message(
@@ -187,16 +187,16 @@ class PomodoroVoiceChannelSelectModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction) -> None:
         if interaction.user.id != self._user_id:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=False,
                 content="Only the user who started this pomodoro can do this.",
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=False)
 
         if interaction.guild is None:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=False,
                 content="Voice playback isn't available in DMs.",
             )
             return
@@ -212,7 +212,7 @@ class PomodoroVoiceChannelSelectModal(discord.ui.Modal):
                 force=True,
             )
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=False,
                 content="Selected voice channel: None (left voice).",
             )
             return
@@ -223,7 +223,7 @@ class PomodoroVoiceChannelSelectModal(discord.ui.Modal):
         )
         if channel is None:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=False,
                 content="That voice channel was not found.",
             )
             return
@@ -237,11 +237,11 @@ class PomodoroVoiceChannelSelectModal(discord.ui.Modal):
             self._mode,
         )
         if error:
-            await interaction.followup.send(ephemeral=True, content=error)
+            await interaction.followup.send(ephemeral=False, content=error)
             return
 
         await interaction.followup.send(
-            ephemeral=True,
+            ephemeral=False,
             content=f"Selected voice channel: {channel.name}",
         )
 
@@ -310,14 +310,14 @@ class PomodoroStartView(discord.ui.View):
 
         if interaction.user.id != self._user_id:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=False,
                 content="Only the user who started this pomodoro can do this.",
             )
             return
 
         if interaction.guild is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=False,
                 content="Voice channel selection isn't available in DMs.",
             )
             return
@@ -327,7 +327,7 @@ class PomodoroStartView(discord.ui.View):
         )
         if not voice_channel_options:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=False,
                 content="No available voice channels found.",
             )
             return
@@ -356,7 +356,7 @@ class PomodoroStartView(discord.ui.View):
             end_time=self._end_time,
         )
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=False,
             content="Choose a voice channel:",
             view=picker_view,
         )
@@ -367,7 +367,7 @@ class PomodoroStartView(discord.ui.View):
     ) -> None:
         if interaction.user.id != self._user_id:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=False,
                 content="Only the user who started this pomodoro can do this.",
             )
             return
@@ -381,7 +381,7 @@ class PomodoroStartView(discord.ui.View):
         )
         if not result.ok or result.end_time is None or result.duration_minutes is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=False,
                 content=result.message,
             )
             return
@@ -396,7 +396,7 @@ class PomodoroStartView(discord.ui.View):
         )
         if updated_embed is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=False,
                 content=(
                     "Extended by 5 minutes, but I couldn't refresh the timer card. "
                     f"New end: {self._relative_timestamp(result.end_time)}"
@@ -413,12 +413,12 @@ class PomodoroStartView(discord.ui.View):
             )
             if interaction.response.is_done():
                 await interaction.followup.send(
-                    ephemeral=True,
+                    ephemeral=False,
                     content=fallback_message,
                 )
             else:
                 await interaction.response.send_message(
-                    ephemeral=True,
+                    ephemeral=False,
                     content=fallback_message,
                 )
 
@@ -428,21 +428,21 @@ class PomodoroStartView(discord.ui.View):
     ) -> None:
         if interaction.user.id != self._user_id:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=False,
                 content="Only the user who started this pomodoro can stop it.",
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=False)
         from classes.PomodoroFunctions import PomodoroFunctions
         from embeds.PomodoroEmbeds import PomodoroEmbeds
         from views.PomodoroStoppedView import PomodoroStoppedView
 
         result = await PomodoroFunctions.stop_user_pomodoro(interaction)
         if not result.ok:
-            await interaction.followup.send(ephemeral=True, content=result.message)
+            await interaction.followup.send(ephemeral=False, content=result.message)
             return
 
         payload = PomodoroEmbeds.timer_stopped_embed(result.message)
         payload["view"] = PomodoroStoppedView(interaction.user.id)
-        await interaction.followup.send(ephemeral=True, **payload)
+        await interaction.followup.send(ephemeral=False, **payload)
