@@ -98,12 +98,17 @@ class PomodoroCog(commands.Cog):
         mode="Pick focus or break",
         duration="Duration in minutes (optional)",
         voice_channel="Voice channel to join (optional)",
+        autojoin="Automatically join your current voice channel",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
         mode=[
             app_commands.Choice(name="Focus", value="focus"),
             app_commands.Choice(name="Break", value="break"),
+        ],
+        autojoin=[
+            app_commands.Choice(name="On", value="on"),
+            app_commands.Choice(name="Off", value="off"),
         ],
         visibility=VISIBILITY_CHOICES,
     )
@@ -113,6 +118,7 @@ class PomodoroCog(commands.Cog):
         mode: Optional[app_commands.Choice[str]] = None,
         duration: Optional[int] = None,
         voice_channel: Optional[discord.VoiceChannel] = None,
+        autojoin: Optional[app_commands.Choice[str]] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="public")
@@ -130,6 +136,7 @@ class PomodoroCog(commands.Cog):
         user_id = interaction.user.id
         voice_error: Optional[str] = None
         target_channel: Optional[discord.VoiceChannel] = None
+        autojoin_enabled = autojoin is None or autojoin.value == "on"
 
         try:
             end_time, resolved_duration = await asyncio.to_thread(
@@ -154,7 +161,7 @@ class PomodoroCog(commands.Cog):
             )
 
         target_channel = voice_channel
-        if target_channel is None:
+        if target_channel is None and autojoin_enabled:
             member = interaction.user
             if isinstance(member, discord.Member) and member.voice:
                 target_channel = member.voice.channel
@@ -162,7 +169,11 @@ class PomodoroCog(commands.Cog):
         if interaction.guild is None:
             voice_error = None
         elif target_channel is None:
-            voice_error = "Join a voice channel or pick one so I can play audio."
+            voice_error = (
+                "Join a voice channel or pick one so I can play audio."
+                if autojoin_enabled
+                else None
+            )
         else:
             voice_error = await PomodoroVoiceManager.start_session(
                 interaction.guild,
