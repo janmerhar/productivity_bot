@@ -258,11 +258,11 @@ class PomodoroCog(commands.Cog):
 
         pomodoro_jobs = [job for job in jobs if job.type == "pomodoro"]
         if not pomodoro_jobs:
-            scope = "this server" if interaction.guild_id is not None else "this DM"
-            await interaction.followup.send(
-                ephemeral=ephemeral,
-                content=f"No active pomodoro timers in {scope}.",
+            payload = PomodoroEmbeds.timer_stopped_embed(
+                "No active pomodoro timers were running."
             )
+            payload["view"] = PomodoroStoppedView(interaction.user.id)
+            await interaction.followup.send(ephemeral=ephemeral, **payload)
             return
 
         selected_job = pomodoro_jobs[0]
