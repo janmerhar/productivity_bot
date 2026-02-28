@@ -34,8 +34,6 @@ class PomodoroFunctions:
         duration_minutes: Optional[int],
         user_id: Union[int, str],
     ) -> Tuple[datetime.datetime, int]:
-        from classes.DailyJobManager import DailyJobManager
-
         end_time, resolved_duration, data, schedule = (
             PomodoroFunctions.insert_pomodoro_timer(
                 channel_id=channel_id,
@@ -45,6 +43,13 @@ class PomodoroFunctions:
             )
         )
         manager = DailyJobManager()
+        if guild_id is not None:
+            active_jobs = manager.list_jobs(channel_id=None, guild_id=guild_id)
+            if any(job.type == "pomodoro" for job in active_jobs):
+                raise ValueError(
+                    "Only one pomodoro timer can be active per server. "
+                    "Stop the current timer first."
+                )
         manager.insert_job(guild_id, channel_id, "pomodoro", data, schedule)
 
         return end_time, resolved_duration

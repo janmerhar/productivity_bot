@@ -7,7 +7,7 @@ from classes.PomodoroFunctions import PomodoroFunctions
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from embeds.PomodoroEmbeds import PomodoroEmbeds
 from views.PomodoroStartView import PomodoroStartView
-from services.error_reporting import UserVisibleError, handle_interaction_error
+from services.error_reporting import ValidationError, UserVisibleError, handle_interaction_error
 
 
 class PomodoroRestartView(discord.ui.View):
@@ -28,6 +28,16 @@ class PomodoroRestartView(discord.ui.View):
                 None,
                 interaction.user.id,
             )
+        except ValueError as exc:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(
+                    str(exc),
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
         except Exception as exc:
             await handle_interaction_error(
                 interaction,

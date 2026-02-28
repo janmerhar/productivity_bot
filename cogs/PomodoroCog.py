@@ -70,6 +70,12 @@ class PomodoroCog(commands.Cog):
                 duration_value,
                 user_id,
             )
+        except ValueError as exc:
+            raise ValidationError(
+                str(exc),
+                ephemeral=ephemeral,
+                cause=exc,
+            )
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while starting that pomodoro.",
