@@ -45,7 +45,7 @@ class PomodoroCog(commands.Cog):
         voice_channel: Optional[discord.VoiceChannel] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
+        ephemeral = resolve_visibility(visibility, default="public")
         if duration is not None and duration <= 0:
             raise ValidationError(
                 "Duration must be greater than zero.",
@@ -124,7 +124,7 @@ class PomodoroCog(commands.Cog):
         interaction: discord.Interaction,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
+        ephemeral = resolve_visibility(visibility, default="public")
         await interaction.response.defer(ephemeral=ephemeral)
         result = await PomodoroFunctions.stop_user_pomodoro(interaction)
         await interaction.followup.send(ephemeral=ephemeral, content=result.message)

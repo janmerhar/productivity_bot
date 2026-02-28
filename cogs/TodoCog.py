@@ -781,12 +781,22 @@ class TodoCog(commands.Cog):
     @todo_group.command(name="edit", description="Edit the text of an existing item")
     @app_commands.describe(
         todo="Todo from autocomplete",
+        visibility=VISIBILITY_DESC,
     )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def item_edit(
         self,
         interaction: discord.Interaction,
         todo: int,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
+        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        ephemeral = resolve_ephemeral_from_scope(
+            interaction.guild_id,
+            scope_value,
+            visibility,
+        )
+
         try:
             todo_list = await asyncio.to_thread(
                 TodoFunctions.get_or_create_implicit_list,
@@ -807,11 +817,11 @@ class TodoCog(commands.Cog):
                 todo,
             )
         except ValueError as exc:
-            raise ValidationError(str(exc), ephemeral=True, cause=exc)
+            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while loading that item.",
-                ephemeral=True,
+                ephemeral=ephemeral,
                 cause=exc,
             )
 
@@ -880,7 +890,7 @@ class TodoCog(commands.Cog):
 
             raise UserVisibleError(
                 "Something went wrong while opening the edit dialog.",
-                ephemeral=True,
+                ephemeral=ephemeral,
                 cause=exc,
             )
 
