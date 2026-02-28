@@ -105,6 +105,8 @@ class PomodoroCog(commands.Cog):
         payload["view"] = PomodoroStartView(
             interaction.user.id,
             join_url=join_url if voice_error is None else None,
+            mode=mode_value,
+            end_time=end_time,
         )
 
         await interaction.followup.send(ephemeral=ephemeral, **payload)

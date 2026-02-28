@@ -68,6 +68,8 @@ class PomodoroRestartView(discord.ui.View):
         payload["view"] = PomodoroStartView(
             interaction.user.id,
             join_url=join_url,
+            mode=mode,
+            end_time=end_time,
         )
 
         await interaction.followup.send(ephemeral=True, **payload)
