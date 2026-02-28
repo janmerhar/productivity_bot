@@ -15,6 +15,74 @@ from services.error_reporting import UserVisibleError, ValidationError
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
+@app_commands.context_menu(name="Start Pomodoro")
+async def start_pomodoro_context_menu(
+    interaction: discord.Interaction,
+    _: discord.Message,
+) -> None:
+    await interaction.response.defer()
+
+    mode_value = "focus"
+    duration_value: Optional[int] = None
+    user_id = interaction.user.id
+    voice_error: Optional[str] = None
+    target_channel: Optional[discord.VoiceChannel] = None
+
+    try:
+        end_time, resolved_duration = await asyncio.to_thread(
+            PomodoroFunctions.create_timer,
+            interaction.guild_id,
+            interaction.channel_id,
+            mode_value,
+            duration_value,
+            user_id,
+        )
+    except ValueError as exc:
+        raise ValidationError(str(exc), ephemeral=True, cause=exc)
+    except Exception as exc:
+        raise UserVisibleError(
+            "Something went wrong while starting that pomodoro.",
+            ephemeral=True,
+            cause=exc,
+        )
+
+    if interaction.guild is not None:
+        member = interaction.user
+        if isinstance(member, discord.Member) and member.voice:
+            target_channel = member.voice.channel
+
+    if interaction.guild is None:
+        voice_error = None
+    elif target_channel is None:
+        voice_error = "Join a voice channel so I can play audio."
+    else:
+        voice_error = await PomodoroVoiceManager.start_session(
+            interaction.guild,
+            target_channel,
+            end_time,
+            mode_value,
+        )
+
+    payload = PomodoroEmbeds.insert_timer_embed(
+        mode_value,
+        resolved_duration,
+        end_time,
+    )
+    join_url = target_channel.jump_url if target_channel else None
+    payload["view"] = PomodoroStartView(
+        interaction.user.id,
+        join_url=join_url if voice_error is None else None,
+        mode=mode_value,
+        end_time=end_time,
+        voice_channel_select_enabled=interaction.guild is not None,
+    )
+
+    await interaction.followup.send(**payload)
+
+    if voice_error:
+        await interaction.followup.send(ephemeral=True, content=voice_error)
+
+
 class PomodoroCog(commands.Cog):
     pomodoro_group = app_commands.Group(name="pomodoro", description="Pomodoro timers")
 
@@ -248,3 +316,4 @@ class PomodoroCog(commands.Cog):
 
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(PomodoroCog(client))
+    client.tree.add_command(start_pomodoro_context_menu)
