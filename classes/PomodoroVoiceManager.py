@@ -131,3 +131,15 @@ class PomodoroVoiceManager:
             logger.exception("Failed to disconnect voice client for guild %s", guild_id)
         finally:
             cls.sessions.pop(guild_id, None)
+
+    @classmethod
+    def extend_end_time_for_guild(
+        cls,
+        guild_id: int,
+        end_time: datetime.datetime,
+    ) -> None:
+        session = cls.sessions.get(guild_id)
+        if session is None:
+            return
+        if session.end_time is None or end_time > session.end_time:
+            session.end_time = end_time

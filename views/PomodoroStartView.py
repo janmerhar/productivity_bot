@@ -222,6 +222,37 @@ class PomodoroStartView(discord.ui.View):
         if join_url:
             self.add_item(discord.ui.Button(label="Join Voice", url=join_url))
 
+    @staticmethod
+    def _relative_timestamp(end_time: datetime.datetime) -> str:
+        return f"<t:{int(end_time.timestamp())}:R>"
+
+    @staticmethod
+    def _with_updated_timer_fields(
+        embed: Optional[discord.Embed],
+        end_time: datetime.datetime,
+        duration_minutes: int,
+    ) -> Optional[discord.Embed]:
+        if embed is None:
+            return None
+        updated = embed.copy()
+        for idx, field in enumerate(updated.fields):
+            field_name = (field.name or "").strip().lower()
+            if field_name == "ends":
+                updated.set_field_at(
+                    idx,
+                    name=field.name,
+                    value=PomodoroStartView._relative_timestamp(end_time),
+                    inline=field.inline,
+                )
+            elif field_name == "duration":
+                updated.set_field_at(
+                    idx,
+                    name=field.name,
+                    value=f"{duration_minutes} minutes",
+                    inline=field.inline,
+                )
+        return updated
+
     @discord.ui.button(label="Select Voice Channel", style=discord.ButtonStyle.primary)
     async def select_voice_channel_button(
         self, interaction: discord.Interaction, _: discord.ui.Button
@@ -280,6 +311,67 @@ class PomodoroStartView(discord.ui.View):
             content="Choose a voice channel:",
             view=picker_view,
         )
+
+    @discord.ui.button(label="Extend +5 min", style=discord.ButtonStyle.secondary)
+    async def extend_timer_button(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        if interaction.user.id != self._user_id:
+            await interaction.response.send_message(
+                ephemeral=True,
+                content="Only the user who started this pomodoro can do this.",
+            )
+            return
+
+        from classes.PomodoroFunctions import PomodoroFunctions
+
+        result = await PomodoroFunctions.extend_user_pomodoro(
+            interaction,
+            minutes=5,
+            expected_end_time=self._end_time,
+        )
+        if not result.ok or result.end_time is None or result.duration_minutes is None:
+            await interaction.response.send_message(
+                ephemeral=True,
+                content=result.message,
+            )
+            return
+
+        self._end_time = result.end_time
+        updated_embed = self._with_updated_timer_fields(
+            interaction.message.embeds[0]
+            if interaction.message and interaction.message.embeds
+            else None,
+            result.end_time,
+            result.duration_minutes,
+        )
+        if updated_embed is None:
+            await interaction.response.send_message(
+                ephemeral=True,
+                content=(
+                    "Extended by 5 minutes, but I couldn't refresh the timer card. "
+                    f"New end: {self._relative_timestamp(result.end_time)}"
+                ),
+            )
+            return
+
+        try:
+            await interaction.response.edit_message(embed=updated_embed, view=self)
+        except discord.HTTPException:
+            fallback_message = (
+                "Extended by 5 minutes, but that timer message no longer exists. "
+                f"New end: {self._relative_timestamp(result.end_time)}"
+            )
+            if interaction.response.is_done():
+                await interaction.followup.send(
+                    ephemeral=True,
+                    content=fallback_message,
+                )
+            else:
+                await interaction.response.send_message(
+                    ephemeral=True,
+                    content=fallback_message,
+                )
 
     @discord.ui.button(label="Stop Pomodoro", style=discord.ButtonStyle.danger)
     async def stop_button(
