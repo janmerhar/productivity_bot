@@ -53,7 +53,7 @@ class PomodoroRestartView(discord.ui.View):
         target_channel: Optional[discord.VoiceChannel] = None
 
         if interaction.guild is None:
-            voice_error = "Voice playback isn't available in DMs."
+            voice_error = None
         else:
             member = interaction.user
             if isinstance(member, discord.Member) and member.voice:

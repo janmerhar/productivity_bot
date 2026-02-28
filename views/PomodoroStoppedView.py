@@ -239,7 +239,7 @@ class PomodoroStoppedView(discord.ui.View):
         if skip_voice:
             voice_error = None
         elif interaction.guild is None:
-            voice_error = "Voice playback isn't available in DMs."
+            voice_error = None
         else:
             member = interaction.user
             if resolved_target_channel is None and use_member_voice:

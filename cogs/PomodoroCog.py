@@ -92,7 +92,7 @@ class PomodoroCog(commands.Cog):
                 target_channel = member.voice.channel
 
         if interaction.guild is None:
-            voice_error = "Voice playback isn't available in DMs."
+            voice_error = None
         elif target_channel is None:
             voice_error = "Join a voice channel or pick one so I can play audio."
         else:
