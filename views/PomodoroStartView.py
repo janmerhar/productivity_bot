@@ -47,14 +47,29 @@ class PomodoroVoiceChannelSelectView(discord.ui.View):
         if guild is None:
             return []
 
-        member_channel_id = None
+        default_channel_id = None
+        voice_client = guild.voice_client
+        if (
+            voice_client is not None
+            and voice_client.is_connected()
+            and isinstance(voice_client.channel, discord.VoiceChannel)
+        ):
+            default_channel_id = voice_client.channel.id
+
         member = interaction.user
         if isinstance(member, discord.Member) and member.voice:
             member_channel = member.voice.channel
-            if isinstance(member_channel, discord.VoiceChannel):
-                member_channel_id = member_channel.id
+            if isinstance(member_channel, discord.VoiceChannel) and default_channel_id is None:
+                default_channel_id = member_channel.id
 
         options: List[discord.SelectOption] = []
+        options.append(
+            discord.SelectOption(
+                label="None",
+                value="__none__",
+                default=default_channel_id is None,
+            )
+        )
         for channel in guild.voice_channels:
             permissions = channel.permissions_for(interaction.user)
             if not permissions.view_channel:
@@ -63,7 +78,7 @@ class PomodoroVoiceChannelSelectView(discord.ui.View):
                 discord.SelectOption(
                     label=channel.name[:100],
                     value=f"voice:{channel.id}",
-                    default=channel.id == member_channel_id,
+                    default=channel.id == default_channel_id,
                 )
             )
             if len(options) >= 25:
@@ -105,6 +120,19 @@ class PomodoroVoiceChannelSelectView(discord.ui.View):
             return
 
         selected_value = self.voice_select.values[0]
+        if selected_value == "__none__":
+            from classes.PomodoroVoiceManager import PomodoroVoiceManager
+
+            await PomodoroVoiceManager.stop_for_guild(
+                interaction.guild.id,
+                force=True,
+            )
+            await interaction.response.edit_message(
+                content="Selected voice channel: None (left voice).",
+                view=self,
+            )
+            return
+
         channel = self._resolve_selected_voice_channel(interaction.guild, selected_value)
         if channel is None:
             await interaction.response.send_message(
@@ -176,6 +204,19 @@ class PomodoroVoiceChannelSelectModal(discord.ui.Modal):
         selected_value = (
             self.voice_select.values[0] if self.voice_select.values else ""
         )
+        if selected_value == "__none__":
+            from classes.PomodoroVoiceManager import PomodoroVoiceManager
+
+            await PomodoroVoiceManager.stop_for_guild(
+                interaction.guild.id,
+                force=True,
+            )
+            await interaction.followup.send(
+                ephemeral=True,
+                content="Selected voice channel: None (left voice).",
+            )
+            return
+
         channel = PomodoroVoiceChannelSelectView._resolve_selected_voice_channel(
             interaction.guild,
             selected_value,
