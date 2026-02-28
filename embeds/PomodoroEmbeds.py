@@ -66,3 +66,18 @@ class PomodoroEmbeds:
         if user_id:
             payload["content"] = f"<@{user_id}>"
         return payload
+
+    @staticmethod
+    def timer_stopped_embed(status_message: str) -> dict:
+        embed = discord.Embed(
+            title="Pomodoro Stopped",
+            description="Your pomodoro timer has been stopped.",
+            color=discord.Colour.orange(),
+        )
+        embed.add_field(name="Status", value=status_message, inline=False)
+        embed.add_field(
+            name="Next",
+            value="Start a new focus or break timer using the buttons below.",
+            inline=False,
+        )
+        return {"embed": embed}

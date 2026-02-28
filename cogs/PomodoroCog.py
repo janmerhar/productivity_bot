@@ -10,6 +10,7 @@ from classes.PomodoroFunctions import PomodoroFunctions
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from embeds.PomodoroEmbeds import PomodoroEmbeds
 from views.PomodoroStartView import PomodoroStartView
+from views.PomodoroStoppedView import PomodoroStoppedView
 from services.error_reporting import UserVisibleError, ValidationError
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
@@ -134,7 +135,13 @@ class PomodoroCog(commands.Cog):
         ephemeral = resolve_visibility(visibility, default="public")
         await interaction.response.defer(ephemeral=ephemeral)
         result = await PomodoroFunctions.stop_user_pomodoro(interaction)
-        await interaction.followup.send(ephemeral=ephemeral, content=result.message)
+        if not result.ok:
+            await interaction.followup.send(ephemeral=ephemeral, content=result.message)
+            return
+
+        payload = PomodoroEmbeds.timer_stopped_embed(result.message)
+        payload["view"] = PomodoroStoppedView(interaction.user.id)
+        await interaction.followup.send(ephemeral=ephemeral, **payload)
 
     @pomodoro_group.command(name="active", description="Show active pomodoro timers")
     @app_commands.describe(visibility=VISIBILITY_DESC)

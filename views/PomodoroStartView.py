@@ -427,6 +427,14 @@ class PomodoroStartView(discord.ui.View):
 
         await interaction.response.defer(ephemeral=True)
         from classes.PomodoroFunctions import PomodoroFunctions
+        from embeds.PomodoroEmbeds import PomodoroEmbeds
+        from views.PomodoroStoppedView import PomodoroStoppedView
 
         result = await PomodoroFunctions.stop_user_pomodoro(interaction)
-        await interaction.followup.send(ephemeral=True, content=result.message)
+        if not result.ok:
+            await interaction.followup.send(ephemeral=True, content=result.message)
+            return
+
+        payload = PomodoroEmbeds.timer_stopped_embed(result.message)
+        payload["view"] = PomodoroStoppedView(interaction.user.id)
+        await interaction.followup.send(ephemeral=True, **payload)
