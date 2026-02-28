@@ -267,6 +267,7 @@ class PomodoroStoppedView(discord.ui.View):
             join_url=join_url if voice_error is None else None,
             mode=mode,
             end_time=end_time,
+            voice_channel_select_enabled=interaction.guild is not None,
         )
         await interaction.followup.send(ephemeral=True, **payload)
 

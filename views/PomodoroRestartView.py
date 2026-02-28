@@ -80,6 +80,7 @@ class PomodoroRestartView(discord.ui.View):
             join_url=join_url,
             mode=mode,
             end_time=end_time,
+            voice_channel_select_enabled=interaction.guild is not None,
         )
 
         await interaction.followup.send(ephemeral=True, **payload)

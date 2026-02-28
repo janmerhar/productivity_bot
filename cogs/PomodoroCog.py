@@ -115,6 +115,7 @@ class PomodoroCog(commands.Cog):
             join_url=join_url if voice_error is None else None,
             mode=mode_value,
             end_time=end_time,
+            voice_channel_select_enabled=interaction.guild is not None,
         )
 
         await interaction.followup.send(ephemeral=ephemeral, **payload)
@@ -228,6 +229,7 @@ class PomodoroCog(commands.Cog):
             join_url=join_url,
             mode=mode,
             end_time=selected_end_time,
+            voice_channel_select_enabled=interaction.guild is not None,
         )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 

@@ -253,6 +253,7 @@ class PomodoroStartView(discord.ui.View):
         join_url: Optional[str] = None,
         mode: str = "focus",
         end_time: Optional[datetime.datetime] = None,
+        voice_channel_select_enabled: bool = True,
         *,
         timeout: float = 21600,
     ) -> None:
@@ -260,6 +261,13 @@ class PomodoroStartView(discord.ui.View):
         self._user_id = user_id
         self._mode = mode
         self._end_time = end_time
+        self._voice_channel_select_enabled = voice_channel_select_enabled
+
+        if not self._voice_channel_select_enabled:
+            self.select_voice_channel_button.disabled = True
+            self.select_voice_channel_button.label = "Select Voice Channel (Server only)"
+            self.select_voice_channel_button.style = discord.ButtonStyle.secondary
+
         if join_url:
             self.add_item(discord.ui.Button(label="Join Voice", url=join_url))
 
