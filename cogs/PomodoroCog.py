@@ -252,7 +252,47 @@ class PomodoroCog(commands.Cog):
             await interaction.followup.send(ephemeral=ephemeral, content=result.message)
             return
 
-        await interaction.followup.send(ephemeral=ephemeral, content=result.message)
+        mode = result.mode or "focus"
+        remaining_minutes = (
+            result.remaining_minutes if result.remaining_minutes else "?"
+        )
+
+        join_url: Optional[str] = None
+        if interaction.guild is not None:
+            session = PomodoroVoiceManager.sessions.get(interaction.guild.id)
+            if session is not None:
+                channel = interaction.guild.get_channel(session.voice_channel_id)
+                if isinstance(channel, discord.VoiceChannel):
+                    join_url = channel.jump_url
+
+        payload = PomodoroEmbeds.insert_timer_embed(
+            mode,
+            remaining_minutes,
+            None,
+        )
+        embed = payload.get("embed")
+        if isinstance(embed, discord.Embed):
+            embed.title = "Pomodoro Paused"
+            embed.description = f"{mode.capitalize()} timer is paused."
+            embed.color = discord.Colour.orange()
+            for idx, field in enumerate(embed.fields):
+                if (field.name or "").strip().lower() == "ends":
+                    embed.set_field_at(
+                        idx,
+                        name=field.name,
+                        value="Paused",
+                        inline=field.inline,
+                    )
+
+        payload["view"] = PomodoroStartView(
+            interaction.user.id,
+            join_url=join_url,
+            mode=mode,
+            end_time=None,
+            is_paused=True,
+            voice_channel_select_enabled=interaction.guild is not None,
+        )
+        await interaction.followup.send(ephemeral=ephemeral, **payload)
 
     @pomodoro_group.command(
         name="resume", description="Resume your paused pomodoro timer"
@@ -412,14 +452,14 @@ class PomodoroCog(commands.Cog):
                         inline=field.inline,
                     )
 
-        if not is_paused:
-            payload["view"] = PomodoroStartView(
-                owner_id,
-                join_url=join_url,
-                mode=mode,
-                end_time=selected_end_time,
-                voice_channel_select_enabled=interaction.guild is not None,
-            )
+        payload["view"] = PomodoroStartView(
+            owner_id,
+            join_url=join_url,
+            mode=mode,
+            end_time=selected_end_time,
+            is_paused=is_paused,
+            voice_channel_select_enabled=interaction.guild is not None,
+        )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
 
