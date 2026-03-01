@@ -22,18 +22,28 @@ class PomodoroEmbeds:
         mode: str,
         duration_minutes: Union[int, str],
         end_time: Optional[datetime.datetime],
+        title: str = "Pomodoro Scheduled",
+        description: Optional[str] = None,
+        mode_label: str = "Mode",
+        duration_label: str = "Duration",
+        ends_label: str = "Ends",
     ) -> dict:
+        resolved_description = (
+            description
+            if description is not None
+            else f"{mode.capitalize()} timer started."
+        )
         embed = discord.Embed(
-            title="Pomodoro Scheduled",
-            description=f"{mode.capitalize()} timer started.",
+            title=title,
+            description=resolved_description,
             color=discord.Colour.green(),
         )
-        embed.add_field(name="Mode", value=mode.capitalize(), inline=True)
+        embed.add_field(name=mode_label, value=mode.capitalize(), inline=True)
         embed.add_field(
-            name="Duration", value=f"{duration_minutes} minutes", inline=True
+            name=duration_label, value=f"{duration_minutes} minutes", inline=True
         )
         embed.add_field(
-            name="Ends",
+            name=ends_label,
             value=PomodoroEmbeds._format_relative_end_time(end_time),
             inline=True,
         )
