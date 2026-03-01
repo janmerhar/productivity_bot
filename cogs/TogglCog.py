@@ -7,10 +7,13 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
+from config.env import env
 from embeds.TogglEmbeds import TogglEmbeds
 from services.error_reporting import ValidationError
 from services.toggl_key_gate import ensure_toggl_api_key
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+
+alias_disabled = env.get("ALIAS_DISABLED") == "true"
 
 
 class TogglCog(commands.Cog):
@@ -18,11 +21,13 @@ class TogglCog(commands.Cog):
     project = app_commands.Group(name="project", description="Manage Toggl projects")
     timer_group = app_commands.Group(name="timer", description="Manage Toggl timers")
     saved = app_commands.Group(name="saved", description="Manage saved timers")
-    alias_group = app_commands.Group(name="alias", description="Manage Toggl aliases")
+    if not alias_disabled:
+        alias_group = app_commands.Group(name="alias", description="Manage Toggl aliases")
     toggl.add_command(project)
     toggl.add_command(timer_group)
     toggl.add_command(saved)
-    toggl.add_command(alias_group)
+    if not alias_disabled:
+        toggl.add_command(alias_group)
 
     def __init__(self, client):
         self.client = client
@@ -408,102 +413,96 @@ class TogglCog(commands.Cog):
             ),
         )
 
-    #
-    # Shortcuts
-    #
+    if not alias_disabled:
 
-    @staticmethod
-    def _normalize_alias_command(command: str) -> str:
-        if not command:
-            return ""
-        cleaned = " ".join(command.strip().lower().split())
-        if cleaned.startswith("toggl "):
-            cleaned = cleaned[len("toggl ") :].strip()
-        return cleaned
+        @staticmethod
+        def _normalize_alias_command(command: str) -> str:
+            if not command:
+                return ""
+            cleaned = " ".join(command.strip().lower().split())
+            if cleaned.startswith("toggl "):
+                cleaned = cleaned[len("toggl ") :].strip()
+            return cleaned
 
-    @staticmethod
-    def _alias_command_map() -> dict:
-        return {
-            "about": "aboutme",
-            "timer start": "start",
-            "timer stop": "stop",
-            "timer current": "timer",
-            "timer insert": "inserttimer",
-            "timer history": "timerhistory",
-            "saved create": "savetimer",
-            "saved delete": "removetimer",
-            "saved start": "startsaved",
-            "saved popular": "populartimers",
-            "project create": "newproject",
-            "project list": "workspaceprojects",
-            "project get": "getproject",
-            "alias create": "createalias",
-        }
+        @staticmethod
+        def _alias_command_map() -> dict:
+            return {
+                "about": "aboutme",
+                "timer start": "start",
+                "timer stop": "stop",
+                "timer current": "timer",
+                "timer insert": "inserttimer",
+                "timer history": "timerhistory",
+                "saved create": "savetimer",
+                "saved delete": "removetimer",
+                "saved start": "startsaved",
+                "saved popular": "populartimers",
+                "project create": "newproject",
+                "project list": "workspaceprojects",
+                "project get": "getproject",
+                "alias create": "createalias",
+            }
 
-    def getFunctionByName(self, name):
-        key = self._normalize_alias_command(name)
-        if not key:
-            return None
-        alias_map = self._alias_command_map()
-        if key in alias_map:
-            key = alias_map[key]
-        elif " " in key:
-            return None
-        try:
-            fn = getattr(self, f"{key}")
-            return fn
-        except:
-            return None
+        def getFunctionByName(self, name):
+            key = self._normalize_alias_command(name)
+            if not key:
+                return None
+            alias_map = self._alias_command_map()
+            if key in alias_map:
+                key = alias_map[key]
+            elif " " in key:
+                return None
+            try:
+                fn = getattr(self, f"{key}")
+                return fn
+            except:
+                return None
 
-    def getDefaultParameters(self, cog_fn):
-        if cog_fn is None:
-            return {}
-        return {
-            param.name: param.default
-            for param in cog_fn.parameters
-            if param.default is not None
-            and type(param.default) != discord.utils._MissingSentinel
-        }
+        def getDefaultParameters(self, cog_fn):
+            if cog_fn is None:
+                return {}
+            return {
+                param.name: param.default
+                for param in cog_fn.parameters
+                if param.default is not None
+                and type(param.default) != discord.utils._MissingSentinel
+            }
 
-    """
-    """
-
-    @alias_group.command(name="create", description="Create a Toggl alias")
-    @app_commands.describe(
-        command="Command name",
-        alias="Alias for the command",
-        arguments="Semicolon separated arguments",
-        visibility=VISIBILITY_DESC,
-    )
-    @app_commands.choices(visibility=VISIBILITY_CHOICES)
-    async def createalias(
-        self,
-        interaction: discord.Interaction,
-        command: str,
-        alias: str,
-        arguments: str = "",
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ):
-        ephemeral = resolve_visibility(visibility, default="public")
-        normalized_command = self._normalize_alias_command(command)
-        if normalized_command:
-            command = normalized_command
-        cog_fn = self.getFunctionByName(name=command)
-        cog_param = self.getDefaultParameters(cog_fn=cog_fn)
-        await self._execute_with_toggl_key(
-            interaction,
-            ephemeral=ephemeral,
-            command_label="/toggl alias create",
-            payload_builder=lambda: TogglEmbeds.createalias_embed(
-                guild_id=interaction.guild_id,
-                user_id=interaction.user.id,
-                command=command,
-                alias=alias,
-                arguments=arguments,
-                cog_param=cog_param,
-            ),
+        @alias_group.command(name="create", description="Create a Toggl alias")
+        @app_commands.describe(
+            command="Command name",
+            alias="Alias for the command",
+            arguments="Semicolon separated arguments",
+            visibility=VISIBILITY_DESC,
         )
-
+        @app_commands.choices(visibility=VISIBILITY_CHOICES)
+        async def createalias(
+            self,
+            interaction: discord.Interaction,
+            command: str,
+            alias: str,
+            arguments: str = "",
+            visibility: Optional[app_commands.Choice[str]] = None,
+        ):
+            ephemeral = resolve_visibility(visibility, default="public")
+            normalized_command = self._normalize_alias_command(command)
+            if normalized_command:
+                command = normalized_command
+            cog_fn = self.getFunctionByName(name=command)
+            cog_param = self.getDefaultParameters(cog_fn=cog_fn)
+            await self._execute_with_toggl_key(
+                interaction,
+                ephemeral=ephemeral,
+                command_label="/toggl alias create",
+                payload_builder=lambda: TogglEmbeds.createalias_embed(
+                    guild_id=interaction.guild_id,
+                    user_id=interaction.user.id,
+                    command=command,
+                    alias=alias,
+                    arguments=arguments,
+                    cog_param=cog_param,
+                ),
+            )
 
 async def setup(client):
     await client.add_cog(TogglCog(client))

@@ -9,6 +9,7 @@ from config.logger import setup_logging
 from services.error_reporting import handle_app_command_error
 
 tick_disabled = env.get("TICK_DISABLED") == "true"
+alias_disabled = env.get("ALIAS_DISABLED") == "true"
 dev_mode = env.get("DEV_MODE") == "true"
 dev_guild_id = env.get("DEV_GUILD_ID")
 
@@ -80,7 +81,6 @@ async def on_app_command_error(interaction, error):
 
 async def load():
     extensions = [
-        "cogs.AliasCog",
         "cogs.AutomationCog",
         "cogs.BugReportCog",
         "cogs.DailyTaskCog",
@@ -93,6 +93,9 @@ async def load():
         "cogs.CryptoCog",
         "cogs.StocksCog",
     ]
+
+    if not alias_disabled:
+        extensions.append("cogs.AliasCog")
 
     if not tick_disabled:
         extensions.append("cogs.TickTickCog")
