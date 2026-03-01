@@ -158,6 +158,90 @@ class StocksCog(commands.Cog):
 
         return "\n".join(lines)
 
+    @staticmethod
+    def _build_stock_suggestion_details(suggestions: list[dict]) -> list[str]:
+        details: list[str] = []
+        for item in suggestions[:5]:
+            symbol = str(item.get("symbol") or "").strip().upper()
+            if not symbol:
+                continue
+
+            name = str(item.get("name") or "").strip()
+            exchange = str(item.get("exchange") or "").strip()
+            detail = name or "Unknown"
+            if exchange:
+                detail = f"{detail} ({exchange})"
+
+            details.append(f"`{symbol}` - {detail}")
+
+        return details
+
+    async def _resolve_stock_symbol(
+        self,
+        ticker: str,
+        *,
+        ephemeral: bool,
+    ) -> tuple[str, str]:
+        raw_input = (ticker or "").strip()
+        symbol = raw_input.upper()
+        if not symbol:
+            raise ValidationError("Please provide a stock ticker.", ephemeral=ephemeral)
+
+        try:
+            exact_quote = await asyncio.to_thread(StocksFunctions.fetch_price, symbol)
+        except Exception:
+            exact_quote = {}
+
+        if exact_quote.get("price") is not None:
+            return symbol, f"Now tracking `{symbol}`."
+
+        suggestions = await asyncio.to_thread(
+            StocksFunctions.search_candidates,
+            raw_input,
+            5,
+            StocksFunctions.STOCK_QUOTE_TYPES,
+            True,
+        )
+        if not suggestions:
+            raise ValidationError(
+                f"No live price data returned for `{symbol}`.",
+                hint="Try another ticker or retry in a minute.",
+                ephemeral=ephemeral,
+            )
+
+        resolved_symbol = str(suggestions[0].get("symbol") or "").strip().upper()
+        if not resolved_symbol:
+            raise ValidationError(
+                f"No live price data returned for `{symbol}`.",
+                hint="Try another ticker or retry in a minute.",
+                ephemeral=ephemeral,
+            )
+
+        try:
+            resolved_quote = await asyncio.to_thread(
+                StocksFunctions.fetch_price,
+                resolved_symbol,
+            )
+        except Exception:
+            resolved_quote = {}
+
+        if resolved_quote.get("price") is None:
+            raise ValidationError(
+                f"No live price data returned for `{symbol}`.",
+                hint="Try one of the suggestions below.",
+                details=self._build_stock_suggestion_details(suggestions),
+                ephemeral=ephemeral,
+            )
+
+        if resolved_symbol == symbol:
+            tracking_note = f"Now tracking `{resolved_symbol}`."
+        else:
+            tracking_note = (
+                f"Now tracking `{resolved_symbol}` (matched from `{raw_input}`)."
+            )
+
+        return resolved_symbol, tracking_note
+
     @stock_group.command(name="schedule", description="Schedule recurring stock updates")
     @app_commands.describe(
         ticker="Ticker to include (for example: AAPL)",
@@ -175,12 +259,9 @@ class StocksCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="private")
-        symbol = ticker.strip().upper()
-        if not symbol:
-            raise ValidationError(
-                "Please provide a stock ticker.",
-                ephemeral=ephemeral,
-            )
+        raw_ticker = (ticker or "").strip()
+        if not raw_ticker:
+            raise ValidationError("Please provide a stock ticker.", ephemeral=ephemeral)
 
         normalized_header = (header or "").strip()
         timezone = None
@@ -189,6 +270,10 @@ class StocksCog(commands.Cog):
                 followup_interaction: discord.Interaction,
                 resolved_timezone: str,
             ) -> None:
+                symbol, tracking_note = await self._resolve_stock_symbol(
+                    raw_ticker,
+                    ephemeral=ephemeral,
+                )
                 await self._create_stock_schedule(
                     interaction=followup_interaction,
                     ticker=symbol,
@@ -196,6 +281,7 @@ class StocksCog(commands.Cog):
                     header=normalized_header,
                     ephemeral=ephemeral,
                     timezone=resolved_timezone,
+                    tracking_note=tracking_note,
                 )
 
             timezone = await ensure_user_timezone(
@@ -207,6 +293,10 @@ class StocksCog(commands.Cog):
                 return
 
         await interaction.response.defer(ephemeral=ephemeral)
+        symbol, tracking_note = await self._resolve_stock_symbol(
+            raw_ticker,
+            ephemeral=ephemeral,
+        )
         await self._create_stock_schedule(
             interaction=interaction,
             ticker=symbol,
@@ -214,6 +304,7 @@ class StocksCog(commands.Cog):
             header=normalized_header,
             ephemeral=ephemeral,
             timezone=timezone,
+            tracking_note=tracking_note,
         )
 
     async def _create_stock_schedule(
@@ -224,6 +315,7 @@ class StocksCog(commands.Cog):
         header: str,
         ephemeral: bool,
         timezone: Optional[str],
+        tracking_note: str,
     ) -> None:
         try:
             cron_expression = await asyncio.to_thread(
@@ -266,6 +358,7 @@ class StocksCog(commands.Cog):
                 schedule_text=schedule,
                 cron_expression=cron_expression,
                 payload=payload,
+                description=f"Scheduled stock job created.\n{tracking_note}",
                 ok=True,
             ),
             view=ScheduledJobActionView(
@@ -302,8 +395,8 @@ class StocksCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="private")
-        symbol = ticker.strip().upper()
-        if not symbol:
+        raw_ticker = (ticker or "").strip()
+        if not raw_ticker:
             raise ValidationError("Please provide a stock ticker.", ephemeral=ephemeral)
         if target_price <= 0:
             raise ValidationError(
@@ -326,6 +419,10 @@ class StocksCog(commands.Cog):
                 followup_interaction: discord.Interaction,
                 resolved_timezone: str,
             ) -> None:
+                symbol, tracking_note = await self._resolve_stock_symbol(
+                    raw_ticker,
+                    ephemeral=ephemeral,
+                )
                 await self._set_stock_alert(
                     interaction=followup_interaction,
                     symbol=symbol,
@@ -337,6 +434,7 @@ class StocksCog(commands.Cog):
                     destination_label=destination_label,
                     ephemeral=ephemeral,
                     timezone=resolved_timezone,
+                    tracking_note=tracking_note,
                 )
 
             timezone = await ensure_user_timezone(
@@ -348,6 +446,10 @@ class StocksCog(commands.Cog):
                 return
 
         await interaction.response.defer(ephemeral=ephemeral)
+        symbol, tracking_note = await self._resolve_stock_symbol(
+            raw_ticker,
+            ephemeral=ephemeral,
+        )
         await self._set_stock_alert(
             interaction=interaction,
             symbol=symbol,
@@ -359,6 +461,7 @@ class StocksCog(commands.Cog):
             destination_label=destination_label,
             ephemeral=ephemeral,
             timezone=timezone,
+            tracking_note=tracking_note,
         )
 
     async def _set_stock_alert(
@@ -373,6 +476,7 @@ class StocksCog(commands.Cog):
         destination_label: str,
         ephemeral: bool,
         timezone: Optional[str],
+        tracking_note: str,
     ) -> None:
         try:
             quote = await asyncio.to_thread(StocksFunctions.fetch_price, symbol)
@@ -442,8 +546,25 @@ class StocksCog(commands.Cog):
                 target_price_label=target_price_label,
                 destination_label=destination_label,
                 expires_at=expires_at,
+                description=f"Stock alert is active.\n{tracking_note}",
             ),
         )
+
+    @schedule_stock_updates.autocomplete("ticker")
+    async def stock_schedule_ticker_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str = "",
+    ) -> List[app_commands.Choice[str]]:
+        return await self.stock_price_ticker_autocomplete(interaction, current)
+
+    @set_stock_alert.autocomplete("ticker")
+    async def stock_alert_ticker_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str = "",
+    ) -> List[app_commands.Choice[str]]:
+        return await self.stock_price_ticker_autocomplete(interaction, current)
 
     @set_stock_alert.autocomplete("destination")
     async def stock_alert_destination_autocomplete(

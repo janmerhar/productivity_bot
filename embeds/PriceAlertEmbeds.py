@@ -20,10 +20,11 @@ class PriceAlertEmbeds:
         target_price_label: str,
         destination_label: str,
         expires_at: Optional[datetime.datetime] = None,
+        description: Optional[str] = None,
     ) -> dict:
         embed = discord.Embed(
             title="Alert Created",
-            description=f"{asset_label} alert is active.",
+            description=description or f"{asset_label} alert is active.",
             color=discord.Colour.green(),
             timestamp=discord.utils.utcnow(),
         )
