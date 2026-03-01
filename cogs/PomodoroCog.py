@@ -99,6 +99,8 @@ class PomodoroCog(commands.Cog):
         interaction: discord.Interaction,
         *,
         ephemeral: bool,
+        title_override: Optional[str] = None,
+        description_override: Optional[str] = None,
     ) -> Optional[dict]:
         manager = DailyJobManager()
         try:
@@ -177,10 +179,18 @@ class PomodoroCog(commands.Cog):
                 if isinstance(channel, discord.VoiceChannel):
                     join_url = channel.jump_url
 
+        resolved_description: Optional[str] = None
+        if description_override is not None:
+            resolved_description = description_override.format(
+                mode=mode.capitalize()
+            )
+
         payload = PomodoroEmbeds.insert_timer_embed(
             mode,
             duration,
             selected_end_time,
+            title=title_override or "Pomodoro Scheduled",
+            description=resolved_description,
         )
         embed = payload.get("embed")
         if is_paused and isinstance(embed, discord.Embed):
@@ -453,6 +463,16 @@ class PomodoroCog(commands.Cog):
                 payload["view"] = PomodoroStoppedView(interaction.user.id)
                 await interaction.followup.send(ephemeral=ephemeral, **payload)
                 return
+            already_running = "already running" in result.message.lower()
+            if already_running:
+                active_payload = await self._build_active_timer_payload(
+                    interaction,
+                    ephemeral=ephemeral,
+                    description_override="{mode} timer is already running.",
+                )
+                if active_payload is not None:
+                    await interaction.followup.send(ephemeral=ephemeral, **active_payload)
+                    return
             await interaction.followup.send(ephemeral=ephemeral, content=result.message)
             return
 
