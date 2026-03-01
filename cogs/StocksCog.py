@@ -64,6 +64,19 @@ class StocksCog(commands.Cog):
         )
 
         response = await asyncio.to_thread(StocksEmbeds.stock_embed, ticker)
+        if response.get("embed") is None:
+            suggestions = await asyncio.to_thread(
+                StocksFunctions.search_candidates,
+                ticker,
+                5,
+                StocksFunctions.STOCK_QUOTE_TYPES,
+                True,
+            )
+            if suggestions:
+                response["content"] = self._build_stock_suggestion_message(
+                    ticker,
+                    suggestions,
+                )
 
         action_view = None
         if response.get("embed") is not None:
@@ -74,6 +87,76 @@ class StocksCog(commands.Cog):
             embed=response.get("embed"),
             view=action_view,
         )
+
+    @fetch_stock.autocomplete("ticker")
+    async def stock_price_ticker_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str = "",
+    ) -> List[app_commands.Choice[str]]:
+        query = (current or "").strip()
+        if not query:
+            return []
+
+        suggestions = await asyncio.to_thread(
+            StocksFunctions.search_candidates,
+            query,
+            25,
+            StocksFunctions.STOCK_QUOTE_TYPES,
+            False,
+        )
+
+        choices: List[app_commands.Choice[str]] = []
+        for item in suggestions:
+            symbol = item.get("symbol") or ""
+            if not symbol:
+                continue
+
+            label = StocksCog._format_ticker_choice_label(item)
+            choices.append(
+                app_commands.Choice(
+                    name=label[:100],
+                    value=symbol[:100],
+                )
+            )
+
+            if len(choices) >= 25:
+                break
+
+        return choices
+
+    @staticmethod
+    def _format_ticker_choice_label(item: dict) -> str:
+        symbol = str(item.get("symbol") or "").strip().upper()
+        name = str(item.get("name") or "").strip()
+        exchange = str(item.get("exchange") or "").strip()
+
+        parts = [symbol]
+        if name:
+            parts.append(name)
+        if exchange:
+            parts.append(exchange)
+        return " | ".join(parts)
+
+    @staticmethod
+    def _build_stock_suggestion_message(query: str, suggestions: list[dict]) -> str:
+        clean_query = (query or "").strip().upper()
+        lines = [f"No live data returned for `{clean_query}`."]
+        lines.append("Try one of these Yahoo Finance symbols:")
+        for item in suggestions[:5]:
+            symbol = str(item.get("symbol") or "").strip().upper()
+            if not symbol:
+                continue
+
+            name = str(item.get("name") or "").strip()
+            exchange = str(item.get("exchange") or "").strip()
+            details = name or "Unknown"
+            if exchange:
+                details = f"{details} ({exchange})"
+
+            lines.append(f"- `{symbol}` - {details}")
+
+        return "\n".join(lines)
 
     @stock_group.command(name="schedule", description="Schedule recurring stock updates")
     @app_commands.describe(
