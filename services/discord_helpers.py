@@ -163,7 +163,7 @@ def resolve_ephemeral_from_scope(
     guild_id: Optional[int],
     scope_value: str,
     visibility: Optional[app_commands.Choice[str]],
-    private_scope_values: Iterable[str] = ("personal",),
+    private_scope_values: Iterable[str] = (),
     guild_default_visibility: str = "public",
     dm_default_visibility: str = "public",
 ) -> bool:
@@ -200,7 +200,7 @@ def resolve_todo_ephemeral(
         guild_id=guild_id,
         scope_value=scope_value,
         visibility=visibility,
-        private_scope_values=("personal",),
+        private_scope_values=(),
         guild_default_visibility="public",
-        dm_default_visibility="private",
+        dm_default_visibility="public",
     )
