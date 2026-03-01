@@ -94,6 +94,118 @@ class PomodoroCog(commands.Cog):
     async def on_ready(self) -> None:
         print("PomodoroCog cog loaded")
 
+    async def _build_active_timer_payload(
+        self,
+        interaction: discord.Interaction,
+        *,
+        ephemeral: bool,
+    ) -> Optional[dict]:
+        manager = DailyJobManager()
+        try:
+            if interaction.guild_id is None:
+                jobs = await asyncio.to_thread(
+                    manager.list_jobs,
+                    interaction.channel_id,
+                    None,
+                )
+            else:
+                jobs = await asyncio.to_thread(
+                    manager.list_jobs,
+                    None,
+                    interaction.guild_id,
+                )
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while fetching active pomodoros.",
+                ephemeral=ephemeral,
+                cause=exc,
+            )
+
+        pomodoro_jobs = [job for job in jobs if job.type == "pomodoro"]
+        if not pomodoro_jobs:
+            return None
+
+        selected_job = pomodoro_jobs[0]
+        selected_end_time = PomodoroFunctions.parse_schedule_datetime(
+            selected_job.schedule
+        )
+        for job in pomodoro_jobs[1:]:
+            candidate_end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
+            if selected_end_time is None and candidate_end_time is not None:
+                selected_job = job
+                selected_end_time = candidate_end_time
+                continue
+            if (
+                selected_end_time is not None
+                and candidate_end_time is not None
+                and candidate_end_time < selected_end_time
+            ):
+                selected_job = job
+                selected_end_time = candidate_end_time
+
+        data = selected_job.data or {}
+        mode = str(data.get("mode", "focus")).strip().lower()
+        if mode not in ("focus", "break"):
+            mode = "focus"
+        duration = str(data.get("duration", "?")).strip() or "?"
+        paused_value = data.get("paused")
+        if isinstance(paused_value, str):
+            is_paused = paused_value.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            is_paused = bool(paused_value)
+
+        if is_paused:
+            remaining_seconds_raw = str(
+                data.get("paused_remaining_seconds", "")
+            ).strip()
+            try:
+                remaining_seconds = int(remaining_seconds_raw)
+            except ValueError:
+                remaining_seconds = 0
+            if remaining_seconds > 0:
+                duration = str(max(1, math.ceil(remaining_seconds / 60)))
+            selected_end_time = None
+
+        user_raw = str(data.get("user", "")).strip()
+        owner_id = int(user_raw) if user_raw.isdigit() else interaction.user.id
+
+        join_url: Optional[str] = None
+        if interaction.guild is not None:
+            session = PomodoroVoiceManager.sessions.get(interaction.guild.id)
+            if session is not None:
+                channel = interaction.guild.get_channel(session.voice_channel_id)
+                if isinstance(channel, discord.VoiceChannel):
+                    join_url = channel.jump_url
+
+        payload = PomodoroEmbeds.insert_timer_embed(
+            mode,
+            duration,
+            selected_end_time,
+        )
+        embed = payload.get("embed")
+        if is_paused and isinstance(embed, discord.Embed):
+            embed.title = "Pomodoro Paused"
+            embed.description = f"{mode.capitalize()} timer is paused."
+            embed.color = discord.Colour.orange()
+            for idx, field in enumerate(embed.fields):
+                if (field.name or "").strip().lower() == "ends":
+                    embed.set_field_at(
+                        idx,
+                        name=field.name,
+                        value="Paused",
+                        inline=field.inline,
+                    )
+
+        payload["view"] = PomodoroStartView(
+            owner_id,
+            join_url=join_url,
+            mode=mode,
+            end_time=selected_end_time,
+            is_paused=is_paused,
+            voice_channel_select_enabled=interaction.guild is not None,
+        )
+        return payload
+
     @pomodoro_group.command(name="start", description="Start a pomodoro timer")
     @app_commands.describe(
         mode="Pick focus or break",
@@ -149,8 +261,21 @@ class PomodoroCog(commands.Cog):
                 user_id,
             )
         except ValueError as exc:
+            error_message = str(exc).strip()
+            if "only one pomodoro timer can be active per server" in error_message.lower():
+                active_payload = await self._build_active_timer_payload(
+                    interaction,
+                    ephemeral=ephemeral,
+                )
+                if active_payload is not None:
+                    await interaction.followup.send(
+                        ephemeral=ephemeral,
+                        content=error_message,
+                        **active_payload,
+                    )
+                    return
             raise ValidationError(
-                str(exc),
+                error_message,
                 ephemeral=ephemeral,
                 cause=exc,
             )
@@ -224,7 +349,8 @@ class PomodoroCog(commands.Cog):
                 return
 
             payload = PomodoroEmbeds.timer_stopped_embed(
-                "No active pomodoro timers were running."
+                "No active pomodoro timers were running.",
+                description="No active pomodoro timers were found.",
             )
             payload["view"] = PomodoroStoppedView(interaction.user.id)
             await interaction.followup.send(ephemeral=ephemeral, **payload)
@@ -350,119 +476,22 @@ class PomodoroCog(commands.Cog):
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="public")
         await interaction.response.defer(ephemeral=ephemeral)
-
-        manager = DailyJobManager()
-        try:
-            if interaction.guild_id is None:
-                jobs = await asyncio.to_thread(
-                    manager.list_jobs,
-                    interaction.channel_id,
-                    None,
-                )
-            else:
-                jobs = await asyncio.to_thread(
-                    manager.list_jobs,
-                    None,
-                    interaction.guild_id,
-                )
-        except Exception as exc:
-            raise UserVisibleError(
-                "Something went wrong while fetching active pomodoros.",
-                ephemeral=ephemeral,
-                cause=exc,
-            )
-
-        pomodoro_jobs = [job for job in jobs if job.type == "pomodoro"]
-        if not pomodoro_jobs:
+        payload = await self._build_active_timer_payload(
+            interaction,
+            ephemeral=ephemeral,
+        )
+        if payload is None:
             payload = PomodoroEmbeds.timer_stopped_embed(
-                "No active pomodoro timers were running."
+                "No active pomodoro timers were running.",
+                description="No active pomodoro timers were found.",
             )
             payload["view"] = PomodoroStoppedView(interaction.user.id)
             await interaction.followup.send(ephemeral=ephemeral, **payload)
             return
-
-        selected_job = pomodoro_jobs[0]
-        selected_end_time = PomodoroFunctions.parse_schedule_datetime(
-            selected_job.schedule
-        )
-        for job in pomodoro_jobs[1:]:
-            candidate_end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
-            if selected_end_time is None and candidate_end_time is not None:
-                selected_job = job
-                selected_end_time = candidate_end_time
-                continue
-            if (
-                selected_end_time is not None
-                and candidate_end_time is not None
-                and candidate_end_time < selected_end_time
-            ):
-                selected_job = job
-                selected_end_time = candidate_end_time
-
-        data = selected_job.data or {}
-        mode = str(data.get("mode", "focus")).strip().lower()
-        if mode not in ("focus", "break"):
-            mode = "focus"
-        duration = str(data.get("duration", "?")).strip() or "?"
-        paused_value = data.get("paused")
-        if isinstance(paused_value, str):
-            is_paused = paused_value.strip().lower() in ("1", "true", "yes", "on")
-        else:
-            is_paused = bool(paused_value)
-
-        if is_paused:
-            remaining_seconds_raw = str(
-                data.get("paused_remaining_seconds", "")
-            ).strip()
-            try:
-                remaining_seconds = int(remaining_seconds_raw)
-            except ValueError:
-                remaining_seconds = 0
-            if remaining_seconds > 0:
-                duration = str(max(1, math.ceil(remaining_seconds / 60)))
-            selected_end_time = None
-
-        user_raw = str(data.get("user", "")).strip()
-        owner_id = int(user_raw) if user_raw.isdigit() else interaction.user.id
-
-        join_url: Optional[str] = None
-        if interaction.guild is not None:
-            session = PomodoroVoiceManager.sessions.get(interaction.guild.id)
-            if session is not None:
-                channel = interaction.guild.get_channel(session.voice_channel_id)
-                if isinstance(channel, discord.VoiceChannel):
-                    join_url = channel.jump_url
-
-        payload = PomodoroEmbeds.insert_timer_embed(
-            mode,
-            duration,
-            selected_end_time,
-        )
-        embed = payload.get("embed")
-        if is_paused and isinstance(embed, discord.Embed):
-            embed.title = "Pomodoro Paused"
-            embed.description = f"{mode.capitalize()} timer is paused."
-            embed.color = discord.Colour.orange()
-            for idx, field in enumerate(embed.fields):
-                if (field.name or "").strip().lower() == "ends":
-                    embed.set_field_at(
-                        idx,
-                        name=field.name,
-                        value="Paused",
-                        inline=field.inline,
-                    )
-
-        payload["view"] = PomodoroStartView(
-            owner_id,
-            join_url=join_url,
-            mode=mode,
-            end_time=selected_end_time,
-            is_paused=is_paused,
-            voice_channel_select_enabled=interaction.guild is not None,
-        )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
 
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(PomodoroCog(client))
     client.tree.add_command(start_pomodoro_context_menu)
+
