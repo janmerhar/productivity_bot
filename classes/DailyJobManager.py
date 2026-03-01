@@ -34,9 +34,31 @@ class DailyJobManager:
         type: str,
         data: dict,
         schedule: Optional[Union[ScheduleConfig, Mapping[str, Any]]] = None,
-    ):
-        DailyJob.insert(guild_id, channel_id, type, data, schedule)
+    ) -> DailyJob:
+        created_job = DailyJob.insert(guild_id, channel_id, type, data, schedule)
         self.fetch_jobs()
+        return created_job
+
+    @staticmethod
+    def _parse_job_id(job_id: str) -> ObjectId:
+        try:
+            return ObjectId(job_id)
+        except InvalidId:
+            raise ValueError("Invalid job id.")
+
+    def get_job(
+        self,
+        job_id: str,
+        channel_id: Optional[int] = None,
+        guild_id: Optional[int] = None,
+    ) -> Optional[DailyJob]:
+        object_id = self._parse_job_id(job_id)
+        self.fetch_jobs()
+        return DailyJob.fetch_by_id(
+            object_id,
+            channel_id=channel_id,
+            guild_id=guild_id,
+        )
 
     def list_jobs(
         self,
@@ -64,10 +86,7 @@ class DailyJobManager:
         channel_id: Optional[int] = None,
         guild_id: Optional[int] = None,
     ) -> bool:
-        try:
-            object_id = ObjectId(job_id)
-        except InvalidId:
-            raise ValueError("Invalid job id.")
+        object_id = self._parse_job_id(job_id)
 
         deleted = DailyJob.delete(
             object_id,
@@ -79,6 +98,29 @@ class DailyJobManager:
             self.fetch_jobs()
 
         return deleted
+
+    def update_job(
+        self,
+        job_id: str,
+        data: Optional[Dict[str, Any]] = None,
+        schedule: Optional[Union[ScheduleConfig, Mapping[str, Any]]] = None,
+        new_channel_id: Optional[int] = None,
+        channel_id: Optional[int] = None,
+        guild_id: Optional[int] = None,
+    ) -> bool:
+        object_id = self._parse_job_id(job_id)
+
+        updated = DailyJob.update(
+            object_id,
+            data=data,
+            schedule=schedule,
+            new_channel_id=new_channel_id,
+            channel_id=channel_id,
+            guild_id=guild_id,
+        )
+        if updated:
+            self.fetch_jobs()
+        return updated
 
     def get_due_jobs(self) -> List[DailyJob]:
         now = datetime.datetime.now()

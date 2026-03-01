@@ -26,6 +26,7 @@ from embeds.StocksEmbeds import StocksEmbeds
 from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from views.ScheduledJobActionView import ScheduledJobActionView
 from views.StockActionView import StockActionView
 
 
@@ -158,7 +159,7 @@ class StocksCog(commands.Cog):
         schedule_config = CronSchedule(expression=cron_expression)
 
         try:
-            await asyncio.to_thread(
+            created_job = await asyncio.to_thread(
                 manager.insert_job,
                 interaction.guild_id,
                 interaction.channel_id,
@@ -175,12 +176,19 @@ class StocksCog(commands.Cog):
 
         await interaction.followup.send(
             ephemeral=ephemeral,
-            **DailyTaskEmbeds.job_embed(
-                (
-                    f"Scheduled stock updates for `{ticker}` on `{schedule}`. "
-                    f"(Cron: `{cron_expression}`)"
-                ),
+            **DailyTaskEmbeds.job_details_embed(
+                job_id=str(created_job.id),
+                job_type="stock",
+                channel_id=interaction.channel_id,
+                schedule_text=schedule,
+                cron_expression=cron_expression,
+                payload=payload,
                 ok=True,
+            ),
+            view=ScheduledJobActionView(
+                job_id=str(created_job.id),
+                channel_id=interaction.channel_id,
+                guild_id=interaction.guild_id,
             ),
         )
 

@@ -16,6 +16,7 @@ from services.error_reporting import (
     ValidationError,
     handle_interaction_error,
 )
+from views.ScheduledJobActionView import ScheduledJobActionView
 
 
 class StockAlertModal(discord.ui.Modal, title="Create Stock Alert"):
@@ -256,7 +257,7 @@ class StockDailyJobModal(discord.ui.Modal, title="Schedule Daily Stock Check"):
 
         manager = DailyJobManager()
         try:
-            await asyncio.to_thread(
+            created_job = await asyncio.to_thread(
                 manager.insert_job,
                 interaction.guild_id,
                 interaction.channel_id,
@@ -277,12 +278,19 @@ class StockDailyJobModal(discord.ui.Modal, title="Schedule Daily Stock Check"):
 
         await interaction.followup.send(
             ephemeral=True,
-            **DailyTaskEmbeds.job_embed(
-                (
-                    f"Scheduled `stock` job for `{symbol}` on `{raw_schedule}`. "
-                    f"(Cron: `{cron_expression}`)"
-                ),
+            **DailyTaskEmbeds.job_details_embed(
+                job_id=str(created_job.id),
+                job_type="stock",
+                channel_id=interaction.channel_id,
+                schedule_text=raw_schedule,
+                cron_expression=cron_expression,
+                payload=payload,
                 ok=True,
+            ),
+            view=ScheduledJobActionView(
+                job_id=str(created_job.id),
+                channel_id=interaction.channel_id,
+                guild_id=interaction.guild_id,
             ),
         )
 

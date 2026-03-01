@@ -1,9 +1,17 @@
-from typing import List
+import json
+from typing import Any, Dict, List, Mapping, Optional
 
 import discord
 
 
 class DailyTaskEmbeds:
+    @staticmethod
+    def _serialized_payload(payload: Optional[Mapping[str, Any]]) -> str:
+        serialized = json.dumps(dict(payload or {}), ensure_ascii=True, sort_keys=True)
+        if len(serialized) <= 900:
+            return f"`{serialized}`"
+        return f"`{serialized[:897]}...`"
+
     @staticmethod
     def reminder_embed(message: str, ok: bool) -> dict:
         embed = discord.Embed(
@@ -20,6 +28,42 @@ class DailyTaskEmbeds:
             description=message,
             color=discord.Colour.green() if ok else discord.Colour.red(),
         )
+        return {"embed": embed}
+
+    @staticmethod
+    def job_details_embed(
+        job_id: str,
+        job_type: str,
+        channel_id: Optional[int],
+        schedule_text: str,
+        cron_expression: str,
+        payload: Optional[Dict[str, Any]] = None,
+        description: str = "Scheduled job created.",
+        ok: bool = True,
+    ) -> dict:
+        embed = discord.Embed(
+            title="Scheduled Job",
+            description=description,
+            color=discord.Colour.green() if ok else discord.Colour.red(),
+        )
+        embed.add_field(name="ID", value=f"`{job_id}`", inline=True)
+        embed.add_field(name="Type", value=f"`{job_type}`", inline=True)
+        embed.add_field(
+            name="Channel",
+            value=f"<#{channel_id}>" if channel_id else "unknown",
+            inline=True,
+        )
+        embed.add_field(
+            name="Schedule",
+            value=f"`{schedule_text}`\nCron: `{cron_expression}`",
+            inline=False,
+        )
+        embed.add_field(
+            name="Payload",
+            value=DailyTaskEmbeds._serialized_payload(payload),
+            inline=False,
+        )
+        embed.add_field(name="Last Run", value="never", inline=False)
         return {"embed": embed}
 
     @staticmethod

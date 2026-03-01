@@ -21,6 +21,7 @@ from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from views.PomodoroRestartView import PomodoroRestartView
 from classes.HabitFunctions import HabitFunctions
 from services.discord_helpers import resolve_messageable_channel
+from views.ScheduledJobActionView import ScheduledJobActionView
 from services.cron_schedule import (
     CronConversionError,
     is_valid_cron_expression,
@@ -290,7 +291,7 @@ class DailyTaskCog(commands.Cog):
         schedule_config = CronSchedule(expression=cron_expression)
 
         try:
-            await asyncio.to_thread(
+            created_job = await asyncio.to_thread(
                 manager.insert_job,
                 interaction.guild_id,
                 interaction.channel_id,
@@ -309,10 +310,15 @@ class DailyTaskCog(commands.Cog):
             ephemeral=ephemeral,
             **DailyTaskEmbeds.job_embed(
                 (
-                    f"Scheduled `{job_type}` job to run on `{schedule}`. "
-                    f"(Cron: `{cron_expression}`)"
+                    f"Scheduled `{job_type}` job `{created_job.id}` to run on "
+                    f"`{schedule}`. (Cron: `{cron_expression}`)"
                 ),
                 ok=True,
+            ),
+            view=ScheduledJobActionView(
+                job_id=str(created_job.id),
+                channel_id=interaction.channel_id,
+                guild_id=interaction.guild_id,
             ),
         )
 

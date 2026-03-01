@@ -74,6 +74,32 @@ class DailyJob:
         )
 
     @staticmethod
+    def fetch_by_id(
+        job_id: ObjectId,
+        channel_id: Optional[int] = None,
+        guild_id: Optional[int] = None,
+    ) -> Optional["DailyJob"]:
+        filter_query: Dict[str, Any] = {"_id": job_id}
+        if channel_id is not None:
+            filter_query["channel_id"] = channel_id
+        if guild_id is not None:
+            filter_query["guild_id"] = guild_id
+
+        doc = mongo_db["tasks"].find_one(filter_query)
+        if not doc:
+            return None
+
+        return DailyJob(
+            id=doc["_id"],
+            guild_id=doc.get("guild_id"),
+            channel_id=doc["channel_id"],
+            type=doc["type"],
+            data=doc["data"],
+            schedule=doc["schedule"],
+            last_run=doc["last_run"],
+        )
+
+    @staticmethod
     def delete(
         job_id: ObjectId,
         channel_id: Optional[int] = None,
@@ -87,6 +113,41 @@ class DailyJob:
 
         result = mongo_db["tasks"].delete_one(filter_query)
         return result.deleted_count > 0
+
+    @staticmethod
+    def update(
+        job_id: ObjectId,
+        data: Optional[Dict[str, Any]] = None,
+        schedule: Optional[Union[ScheduleConfig, Mapping[str, Any]]] = None,
+        new_channel_id: Optional[int] = None,
+        channel_id: Optional[int] = None,
+        guild_id: Optional[int] = None,
+    ) -> bool:
+        filter_query: Dict[str, Any] = {"_id": job_id}
+        if channel_id is not None:
+            filter_query["channel_id"] = channel_id
+        if guild_id is not None:
+            filter_query["guild_id"] = guild_id
+
+        set_fields: Dict[str, Any] = {}
+        if data is not None:
+            set_fields["data"] = data
+        if schedule is not None:
+            if isinstance(schedule, Mapping):
+                set_fields["schedule"] = dict(schedule)
+            else:
+                set_fields["schedule"] = asdict(schedule)
+        if new_channel_id is not None:
+            set_fields["channel_id"] = new_channel_id
+
+        if not set_fields:
+            return False
+
+        result = mongo_db["tasks"].update_one(
+            filter_query,
+            {"$set": set_fields},
+        )
+        return result.matched_count > 0
 
     def is_due(self, check_datetime: datetime.datetime) -> bool:
         if self.type == "pomodoro":
