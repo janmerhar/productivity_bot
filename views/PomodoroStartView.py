@@ -59,7 +59,10 @@ class PomodoroVoiceChannelSelectView(discord.ui.View):
         member = interaction.user
         if isinstance(member, discord.Member) and member.voice:
             member_channel = member.voice.channel
-            if isinstance(member_channel, discord.VoiceChannel) and default_channel_id is None:
+            if (
+                isinstance(member_channel, discord.VoiceChannel)
+                and default_channel_id is None
+            ):
                 default_channel_id = member_channel.id
 
         options: List[discord.SelectOption] = []
@@ -133,7 +136,9 @@ class PomodoroVoiceChannelSelectView(discord.ui.View):
             )
             return
 
-        channel = self._resolve_selected_voice_channel(interaction.guild, selected_value)
+        channel = self._resolve_selected_voice_channel(
+            interaction.guild, selected_value
+        )
         if channel is None:
             await interaction.response.send_message(
                 ephemeral=False,
@@ -201,9 +206,7 @@ class PomodoroVoiceChannelSelectModal(discord.ui.Modal):
             )
             return
 
-        selected_value = (
-            self.voice_select.values[0] if self.voice_select.values else ""
-        )
+        selected_value = self.voice_select.values[0] if self.voice_select.values else ""
         if selected_value == "__none__":
             from classes.PomodoroVoiceManager import PomodoroVoiceManager
 
@@ -253,6 +256,7 @@ class PomodoroStartView(discord.ui.View):
         join_url: Optional[str] = None,
         mode: str = "focus",
         end_time: Optional[datetime.datetime] = None,
+        is_paused: bool = False,
         voice_channel_select_enabled: bool = True,
         *,
         timeout: float = 21600,
@@ -261,12 +265,17 @@ class PomodoroStartView(discord.ui.View):
         self._user_id = user_id
         self._mode = mode
         self._end_time = end_time
+        self._is_paused = is_paused
         self._voice_channel_select_enabled = voice_channel_select_enabled
 
         if not self._voice_channel_select_enabled:
             self.select_voice_channel_button.disabled = True
-            self.select_voice_channel_button.label = "Select Voice Channel (Server only)"
+            self.select_voice_channel_button.label = (
+                "Select Voice Channel (Server only)"
+            )
             self.select_voice_channel_button.style = discord.ButtonStyle.secondary
+
+        self._sync_play_pause_button()
 
         if join_url:
             self.add_item(discord.ui.Button(label="Join Voice", url=join_url))
@@ -302,6 +311,67 @@ class PomodoroStartView(discord.ui.View):
                 )
         return updated
 
+    def _sync_play_pause_button(self) -> None:
+        if self._is_paused:
+            self.play_pause_button.label = "Resume"
+            self.play_pause_button.emoji = "▶️"
+            self.play_pause_button.style = discord.ButtonStyle.success
+            self.extend_timer_button.disabled = True
+            return
+
+        self.play_pause_button.label = "Pause"
+        self.play_pause_button.emoji = "⏸️"
+        self.play_pause_button.style = discord.ButtonStyle.secondary
+        self.extend_timer_button.disabled = False
+
+    def _with_paused_timer_fields(
+        self,
+        embed: Optional[discord.Embed],
+        mode: str,
+        remaining_minutes: int,
+    ) -> Optional[discord.Embed]:
+        if embed is None:
+            return None
+
+        updated = embed.copy()
+        updated.title = "Pomodoro Paused"
+        updated.description = f"{mode.capitalize()} timer is paused."
+        updated.color = discord.Colour.orange()
+
+        for idx, field in enumerate(updated.fields):
+            field_name = (field.name or "").strip().lower()
+            if field_name == "ends":
+                updated.set_field_at(
+                    idx,
+                    name=field.name,
+                    value="Paused",
+                    inline=field.inline,
+                )
+            elif field_name == "duration":
+                updated.set_field_at(
+                    idx,
+                    name=field.name,
+                    value=f"{remaining_minutes} minutes",
+                    inline=field.inline,
+                )
+        return updated
+
+    def _with_resumed_timer_fields(
+        self,
+        embed: Optional[discord.Embed],
+        mode: str,
+        end_time: datetime.datetime,
+        duration_minutes: int,
+    ) -> Optional[discord.Embed]:
+        updated = self._with_updated_timer_fields(embed, end_time, duration_minutes)
+        if updated is None:
+            return None
+
+        updated.title = "Pomodoro Resumed"
+        updated.description = f"{mode.capitalize()} timer resumed."
+        updated.color = discord.Colour.green()
+        return updated
+
     @discord.ui.button(label="Select Voice Channel", style=discord.ButtonStyle.primary)
     async def select_voice_channel_button(
         self, interaction: discord.Interaction, _: discord.ui.Button
@@ -322,8 +392,8 @@ class PomodoroStartView(discord.ui.View):
             )
             return
 
-        voice_channel_options = PomodoroVoiceChannelSelectView._build_voice_channel_options(
-            interaction
+        voice_channel_options = (
+            PomodoroVoiceChannelSelectView._build_voice_channel_options(interaction)
         )
         if not voice_channel_options:
             await interaction.response.send_message(
@@ -361,6 +431,98 @@ class PomodoroStartView(discord.ui.View):
             view=picker_view,
         )
 
+    @discord.ui.button(
+        label="Pause",
+        style=discord.ButtonStyle.secondary,
+        emoji="⏸️",
+    )
+    async def play_pause_button(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        if interaction.user.id != self._user_id:
+            await interaction.response.send_message(
+                ephemeral=False,
+                content="Only the user who started this pomodoro can do this.",
+            )
+            return
+
+        from classes.PomodoroFunctions import PomodoroFunctions
+
+        if self._is_paused:
+            result = await PomodoroFunctions.resume_user_pomodoro(interaction)
+            if (
+                not result.ok
+                or result.end_time is None
+                or result.duration_minutes is None
+            ):
+                await interaction.response.send_message(
+                    ephemeral=False,
+                    content=result.message,
+                )
+                return
+
+            self._is_paused = False
+            self._end_time = result.end_time
+            if result.mode:
+                self._mode = result.mode
+            self._sync_play_pause_button()
+
+            updated_embed = self._with_resumed_timer_fields(
+                (
+                    interaction.message.embeds[0]
+                    if interaction.message and interaction.message.embeds
+                    else None
+                ),
+                self._mode,
+                result.end_time,
+                result.duration_minutes,
+            )
+            if updated_embed is None:
+                await interaction.response.send_message(
+                    ephemeral=False,
+                    content=(
+                        "Pomodoro resumed, but I couldn't refresh the timer card. "
+                        f"New end: {self._relative_timestamp(result.end_time)}"
+                    ),
+                )
+                return
+
+            await interaction.response.edit_message(embed=updated_embed, view=self)
+            return
+
+        result = await PomodoroFunctions.pause_user_pomodoro(interaction)
+        if not result.ok:
+            await interaction.response.send_message(
+                ephemeral=False,
+                content=result.message,
+            )
+            return
+
+        remaining_minutes = result.remaining_minutes or 1
+        if result.mode:
+            self._mode = result.mode
+        self._end_time = None
+        self._is_paused = True
+        self._sync_play_pause_button()
+
+        updated_embed = self._with_paused_timer_fields(
+            (
+                interaction.message.embeds[0]
+                if interaction.message and interaction.message.embeds
+                else None
+            ),
+            self._mode,
+            remaining_minutes,
+        )
+        if updated_embed is None:
+            await interaction.response.send_message(
+                ephemeral=False,
+                content=f"Paused with {remaining_minutes} minute(s) remaining.",
+            )
+            return
+
+        await interaction.response.edit_message(embed=updated_embed, view=self)
+
     @discord.ui.button(label="Extend +5 min", style=discord.ButtonStyle.secondary)
     async def extend_timer_button(
         self, interaction: discord.Interaction, _: discord.ui.Button
@@ -369,6 +531,13 @@ class PomodoroStartView(discord.ui.View):
             await interaction.response.send_message(
                 ephemeral=False,
                 content="Only the user who started this pomodoro can do this.",
+            )
+            return
+
+        if self._is_paused:
+            await interaction.response.send_message(
+                ephemeral=False,
+                content="Resume the pomodoro before extending it.",
             )
             return
 
@@ -388,9 +557,11 @@ class PomodoroStartView(discord.ui.View):
 
         self._end_time = result.end_time
         updated_embed = self._with_updated_timer_fields(
-            interaction.message.embeds[0]
-            if interaction.message and interaction.message.embeds
-            else None,
+            (
+                interaction.message.embeds[0]
+                if interaction.message and interaction.message.embeds
+                else None
+            ),
             result.end_time,
             result.duration_minutes,
         )

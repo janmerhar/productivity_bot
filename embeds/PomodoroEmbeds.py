@@ -22,18 +22,28 @@ class PomodoroEmbeds:
         mode: str,
         duration_minutes: Union[int, str],
         end_time: Optional[datetime.datetime],
+        title: str = "Pomodoro Scheduled",
+        description: Optional[str] = None,
+        mode_label: str = "Mode",
+        duration_label: str = "Duration",
+        ends_label: str = "Ends",
     ) -> dict:
+        resolved_description = (
+            description
+            if description is not None
+            else f"{mode.capitalize()} timer started."
+        )
         embed = discord.Embed(
-            title="Pomodoro Scheduled",
-            description=f"{mode.capitalize()} timer started.",
+            title=title,
+            description=resolved_description,
             color=discord.Colour.green(),
         )
-        embed.add_field(name="Mode", value=mode.capitalize(), inline=True)
+        embed.add_field(name=mode_label, value=mode.capitalize(), inline=True)
         embed.add_field(
-            name="Duration", value=f"{duration_minutes} minutes", inline=True
+            name=duration_label, value=f"{duration_minutes} minutes", inline=True
         )
         embed.add_field(
-            name="Ends",
+            name=ends_label,
             value=PomodoroEmbeds._format_relative_end_time(end_time),
             inline=True,
         )
@@ -68,16 +78,24 @@ class PomodoroEmbeds:
         return payload
 
     @staticmethod
-    def timer_stopped_embed(status_message: str) -> dict:
+    def timer_stopped_embed(
+        status_message: str,
+        *,
+        title: str = "Pomodoro Stopped",
+        description: str = "Your pomodoro timer has been stopped.",
+        status_label: str = "Status",
+        next_label: str = "Next",
+        next_message: str = "Start a new focus or break timer using the buttons below.",
+    ) -> dict:
         embed = discord.Embed(
-            title="Pomodoro Stopped",
-            description="Your pomodoro timer has been stopped.",
+            title=title,
+            description=description,
             color=discord.Colour.orange(),
         )
-        embed.add_field(name="Status", value=status_message, inline=False)
+        embed.add_field(name=status_label, value=status_message, inline=False)
         embed.add_field(
-            name="Next",
-            value="Start a new focus or break timer using the buttons below.",
+            name=next_label,
+            value=next_message,
             inline=False,
         )
         return {"embed": embed}

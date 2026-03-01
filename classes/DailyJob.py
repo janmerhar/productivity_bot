@@ -89,6 +89,18 @@ class DailyJob:
         return result.deleted_count > 0
 
     def is_due(self, check_datetime: datetime.datetime) -> bool:
+        if self.type == "pomodoro":
+            paused_value = (self.data or {}).get("paused")
+            if isinstance(paused_value, str):
+                paused_value = paused_value.strip().lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                    "on",
+                )
+            if bool(paused_value):
+                return False
+
         schedule = self.schedule
 
         if isinstance(schedule, Mapping):
