@@ -5,13 +5,21 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
+from classes.DailyJob import CronSchedule
+from classes.DailyJobManager import DailyJobManager
 from classes.OpenAIFunctions import OpenAIFunctions
 from classes.PriceAlertFunctions import create_alert
 from classes.StocksFunctions import StocksFunctions
 from config.env import env
+from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from services.discord_helpers import (
     alert_destination_autocomplete,
     normalize_alert_destination,
+)
+from services.cron_schedule import (
+    CronConversionError,
+    is_valid_cron_expression,
+    resolve_cron_expression,
 )
 from embeds.PriceAlertEmbeds import PriceAlertEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
@@ -64,6 +72,116 @@ class StocksCog(commands.Cog):
             content=response.get("content"),
             embed=response.get("embed"),
             view=action_view,
+        )
+
+    @stock_group.command(name="schedule", description="Schedule recurring stock updates")
+    @app_commands.describe(
+        ticker="Ticker to include (for example: AAPL)",
+        schedule="Cron expression or natural language schedule",
+        header="Optional message shown above scheduled stock embeds",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def schedule_stock_updates(
+        self,
+        interaction: discord.Interaction,
+        ticker: str,
+        schedule: str,
+        header: Optional[str] = None,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        ephemeral = resolve_visibility(visibility, default="private")
+        symbol = ticker.strip().upper()
+        if not symbol:
+            raise ValidationError(
+                "Please provide a stock ticker.",
+                ephemeral=ephemeral,
+            )
+
+        normalized_header = (header or "").strip()
+        timezone = None
+        if not is_valid_cron_expression(schedule):
+            async def _continue_with_timezone(
+                followup_interaction: discord.Interaction,
+                resolved_timezone: str,
+            ) -> None:
+                await self._create_stock_schedule(
+                    interaction=followup_interaction,
+                    ticker=symbol,
+                    schedule=schedule,
+                    header=normalized_header,
+                    ephemeral=ephemeral,
+                    timezone=resolved_timezone,
+                )
+
+            timezone = await ensure_user_timezone(
+                interaction,
+                _continue_with_timezone,
+                continue_message="Timezone saved as `{timezone}`. Continuing `/stock schedule`.",
+            )
+            if timezone is None:
+                return
+
+        await interaction.response.defer(ephemeral=ephemeral)
+        await self._create_stock_schedule(
+            interaction=interaction,
+            ticker=symbol,
+            schedule=schedule,
+            header=normalized_header,
+            ephemeral=ephemeral,
+            timezone=timezone,
+        )
+
+    async def _create_stock_schedule(
+        self,
+        interaction: discord.Interaction,
+        ticker: str,
+        schedule: str,
+        header: str,
+        ephemeral: bool,
+        timezone: Optional[str],
+    ) -> None:
+        try:
+            cron_expression = await asyncio.to_thread(
+                resolve_cron_expression,
+                schedule,
+                timezone=timezone,
+            )
+        except CronConversionError as exc:
+            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
+
+        payload = {"ticker": ticker}
+        if header:
+            payload["header"] = header
+
+        manager = DailyJobManager()
+        schedule_config = CronSchedule(expression=cron_expression)
+
+        try:
+            await asyncio.to_thread(
+                manager.insert_job,
+                interaction.guild_id,
+                interaction.channel_id,
+                "stock",
+                payload,
+                schedule_config,
+            )
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while storing that stock job. Please try again.",
+                ephemeral=ephemeral,
+                cause=exc,
+            )
+
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            **DailyTaskEmbeds.job_embed(
+                (
+                    f"Scheduled stock updates for `{ticker}` on `{schedule}`. "
+                    f"(Cron: `{cron_expression}`)"
+                ),
+                ok=True,
+            ),
         )
 
     @stock_group.command(name="alert", description="Set a stock price alert")
