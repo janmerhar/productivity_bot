@@ -139,13 +139,12 @@ class DailyTaskCog(commands.Cog):
     @app_commands.describe(
         schedule="Cron expression or natural language schedule",
         type="Type of the job to create",
-        data="JSON payload for the job; plain text allowed for message jobs",
+        data="Payload for the job; plain text for message jobs and ticker/coin id for crypto jobs",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
         type=[
             app_commands.Choice(name="Crypto", value="crypto"),
-            app_commands.Choice(name="Stock", value="stock"),
             app_commands.Choice(name="Message", value="message"),
         ],
         visibility=VISIBILITY_CHOICES,
@@ -216,22 +215,28 @@ class DailyTaskCog(commands.Cog):
         confirmation = f"Got it! I'll post here at {confirmation_time}."
 
         if payload.lower().startswith("stock:"):
-            tickers = [
+            stock_value = payload[6:].strip()
+            stock_tokens = [
                 token.strip().upper()
-                for token in payload[6:].split(",")
+                for token in stock_value.replace(",", " ").split()
                 if token.strip()
             ]
-            if not tickers:
+            if not stock_tokens:
                 raise ValidationError(
-                    "Please provide at least one stock ticker after `stock:`.",
+                    "Please provide a stock ticker after `stock:`.",
+                    ephemeral=ephemeral,
+                )
+            if len(stock_tokens) != 1:
+                raise ValidationError(
+                    "Please provide exactly one stock ticker after `stock:`.",
                     ephemeral=ephemeral,
                 )
 
             job_type = "stock"
-            job_data = {"tickers": tickers}
-            quoted = ", ".join(f"`{ticker}`" for ticker in tickers)
+            symbol = stock_tokens[0]
+            job_data = {"ticker": symbol}
             confirmation = (
-                f"Got it! I'll post daily stock prices for {quoted} at "
+                f"Got it! I'll post daily stock price for `{symbol}` at "
                 f"{confirmation_time}."
             )
 
@@ -277,8 +282,6 @@ class DailyTaskCog(commands.Cog):
         if job_type == "message":
             payload: Dict[str, Any] = {"message": raw_data}
         elif job_type == "crypto":
-            payload = {"tickers": [raw_data]}
-        elif job_type == "stock":
             payload = {"tickers": [raw_data]}
         else:
             payload = {"message": raw_data}
@@ -429,13 +432,16 @@ class DailyTaskCog(commands.Cog):
         if job.type == "message":
             message = self._truncate(job.data.get("message", "").strip())
             data_label = f"message: {message}" if message else "message"
-        elif job.type in ("crypto", "stock"):
+        elif job.type == "crypto":
             tickers = job.data.get("tickers", [])
             if isinstance(tickers, list):
                 joined = ", ".join(tickers)
             else:
                 joined = str(tickers)
             data_label = f"{job.type}: {joined}" if joined else job.type
+        elif job.type == "stock":
+            ticker = (job.data.get("ticker") or "").strip()
+            data_label = f"stock: {ticker}" if ticker else "stock"
         else:
             data_label = job.type
 

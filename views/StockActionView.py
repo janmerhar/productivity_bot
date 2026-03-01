@@ -249,7 +249,7 @@ class StockDailyJobModal(discord.ui.Modal, title="Schedule Daily Stock Check"):
             )
             return
 
-        payload = {"tickers": [symbol]}
+        payload = {"ticker": symbol}
         header_text = (self.header.value or "").strip()
         if header_text:
             payload["header"] = header_text

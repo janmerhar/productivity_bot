@@ -164,8 +164,11 @@ class DailyJob:
             return payload
 
         if self.type == "stock":
-            ticker = self.data["tickers"]
-            embeds, error = StocksEmbeds.daily_embeds(ticker)
+            symbol = str(self.data.get("ticker") or "").strip()
+            if not symbol:
+                return {}
+
+            embeds, error = StocksEmbeds.daily_embeds(symbol)
 
             payload = {"embeds": embeds}
             header = self.data.get("header")

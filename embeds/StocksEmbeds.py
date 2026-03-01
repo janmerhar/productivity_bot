@@ -87,25 +87,18 @@ class StocksEmbeds:
         return embed
 
     @staticmethod
-    def daily_embeds(tickers: List[str]) -> Tuple[List[discord.Embed], Optional[str]]:
-        if not tickers:
-            return [], "No stock tickers configured for this job."
+    def daily_embeds(ticker: str) -> Tuple[List[discord.Embed], Optional[str]]:
+        symbol = (ticker or "").strip().upper()
+        if not symbol:
+            return [], "No stock ticker configured for this job."
 
         try:
-            rows = StocksFunctions.fetch_prices(tickers)
+            quote = StocksFunctions.fetch_price(symbol)
         except Exception as exc:
-            return [], f"Failed to fetch stock prices: {exc}"
+            return [], f"Failed to fetch `{symbol}` stock price: {exc}"
 
-        if not rows:
+        embed = StocksEmbeds.stock_to_embed(quote)
+        if embed is None:
             return [], "No stock price data returned today."
 
-        embeds: List[discord.Embed] = []
-        for quote in rows:
-            embed = StocksEmbeds.stock_to_embed(quote)
-            if embed is not None:
-                embeds.append(embed)
-
-        if not embeds:
-            return [], "No stock price data returned today."
-
-        return embeds[:10], None
+        return [embed], None
