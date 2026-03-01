@@ -143,3 +143,44 @@ class PomodoroVoiceManager:
             return
         if session.end_time is None or end_time > session.end_time:
             session.end_time = end_time
+
+    @classmethod
+    def set_end_time_for_guild(
+        cls,
+        guild_id: int,
+        end_time: datetime.datetime,
+    ) -> None:
+        session = cls.sessions.get(guild_id)
+        if session is None:
+            return
+        session.end_time = end_time
+
+    @classmethod
+    def pause_for_guild(cls, guild_id: int) -> bool:
+        session = cls.sessions.get(guild_id)
+        if session is None:
+            return False
+
+        voice_client = session.voice_client
+        try:
+            if voice_client.is_playing():
+                voice_client.pause()
+                return True
+        except (discord.Forbidden, discord.HTTPException, discord.ClientException):
+            logger.exception("Failed to pause voice client for guild %s", guild_id)
+        return False
+
+    @classmethod
+    def resume_for_guild(cls, guild_id: int) -> bool:
+        session = cls.sessions.get(guild_id)
+        if session is None:
+            return False
+
+        voice_client = session.voice_client
+        try:
+            if voice_client.is_paused():
+                voice_client.resume()
+                return True
+        except (discord.Forbidden, discord.HTTPException, discord.ClientException):
+            logger.exception("Failed to resume voice client for guild %s", guild_id)
+        return False

@@ -1,4 +1,5 @@
 import asyncio
+import math
 from typing import Optional
 
 import discord
@@ -202,9 +203,7 @@ class PomodoroCog(commands.Cog):
         if voice_error:
             await interaction.followup.send(ephemeral=ephemeral, content=voice_error)
 
-    @pomodoro_group.command(
-        name="stop", description="Stop your active pomodoro timer"
-    )
+    @pomodoro_group.command(name="stop", description="Stop your active pomodoro timer")
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def pomodoro_stop(
@@ -233,6 +232,72 @@ class PomodoroCog(commands.Cog):
 
         payload = PomodoroEmbeds.timer_stopped_embed(result.message)
         payload["view"] = PomodoroStoppedView(interaction.user.id)
+        await interaction.followup.send(ephemeral=ephemeral, **payload)
+
+    @pomodoro_group.command(
+        name="pause", description="Pause your active pomodoro timer"
+    )
+    @app_commands.describe(visibility=VISIBILITY_DESC)
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def pomodoro_pause(
+        self,
+        interaction: discord.Interaction,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        ephemeral = resolve_visibility(visibility, default="public")
+        await interaction.response.defer(ephemeral=ephemeral)
+
+        result = await PomodoroFunctions.pause_user_pomodoro(interaction)
+        if not result.ok:
+            await interaction.followup.send(ephemeral=ephemeral, content=result.message)
+            return
+
+        await interaction.followup.send(ephemeral=ephemeral, content=result.message)
+
+    @pomodoro_group.command(
+        name="resume", description="Resume your paused pomodoro timer"
+    )
+    @app_commands.describe(visibility=VISIBILITY_DESC)
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def pomodoro_resume(
+        self,
+        interaction: discord.Interaction,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        ephemeral = resolve_visibility(visibility, default="public")
+        await interaction.response.defer(ephemeral=ephemeral)
+
+        result = await PomodoroFunctions.resume_user_pomodoro(interaction)
+        if not result.ok or result.end_time is None or result.duration_minutes is None:
+            await interaction.followup.send(ephemeral=ephemeral, content=result.message)
+            return
+
+        mode = result.mode or "focus"
+        payload = PomodoroEmbeds.insert_timer_embed(
+            mode,
+            result.duration_minutes,
+            result.end_time,
+        )
+        embed = payload.get("embed")
+        if isinstance(embed, discord.Embed):
+            embed.title = "Pomodoro Resumed"
+            embed.description = f"{mode.capitalize()} timer resumed."
+
+        join_url: Optional[str] = None
+        if interaction.guild is not None:
+            session = PomodoroVoiceManager.sessions.get(interaction.guild.id)
+            if session is not None:
+                channel = interaction.guild.get_channel(session.voice_channel_id)
+                if isinstance(channel, discord.VoiceChannel):
+                    join_url = channel.jump_url
+
+        payload["view"] = PomodoroStartView(
+            interaction.user.id,
+            join_url=join_url,
+            mode=mode,
+            end_time=result.end_time,
+            voice_channel_select_enabled=interaction.guild is not None,
+        )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
     @pomodoro_group.command(name="active", description="Show active pomodoro timers")
@@ -299,6 +364,24 @@ class PomodoroCog(commands.Cog):
         if mode not in ("focus", "break"):
             mode = "focus"
         duration = str(data.get("duration", "?")).strip() or "?"
+        paused_value = data.get("paused")
+        if isinstance(paused_value, str):
+            is_paused = paused_value.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            is_paused = bool(paused_value)
+
+        if is_paused:
+            remaining_seconds_raw = str(
+                data.get("paused_remaining_seconds", "")
+            ).strip()
+            try:
+                remaining_seconds = int(remaining_seconds_raw)
+            except ValueError:
+                remaining_seconds = 0
+            if remaining_seconds > 0:
+                duration = str(max(1, math.ceil(remaining_seconds / 60)))
+            selected_end_time = None
+
         user_raw = str(data.get("user", "")).strip()
         owner_id = int(user_raw) if user_raw.isdigit() else interaction.user.id
 
@@ -315,13 +398,28 @@ class PomodoroCog(commands.Cog):
             duration,
             selected_end_time,
         )
-        payload["view"] = PomodoroStartView(
-            owner_id,
-            join_url=join_url,
-            mode=mode,
-            end_time=selected_end_time,
-            voice_channel_select_enabled=interaction.guild is not None,
-        )
+        embed = payload.get("embed")
+        if is_paused and isinstance(embed, discord.Embed):
+            embed.title = "Pomodoro Paused"
+            embed.description = f"{mode.capitalize()} timer is paused."
+            embed.color = discord.Colour.orange()
+            for idx, field in enumerate(embed.fields):
+                if (field.name or "").strip().lower() == "ends":
+                    embed.set_field_at(
+                        idx,
+                        name=field.name,
+                        value="Paused",
+                        inline=field.inline,
+                    )
+
+        if not is_paused:
+            payload["view"] = PomodoroStartView(
+                owner_id,
+                join_url=join_url,
+                mode=mode,
+                end_time=selected_end_time,
+                voice_channel_select_enabled=interaction.guild is not None,
+            )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
 
