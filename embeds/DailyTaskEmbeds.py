@@ -58,11 +58,19 @@ class DailyTaskEmbeds:
             value=f"`{schedule_text}`\nCron: `{cron_expression}`",
             inline=False,
         )
-        embed.add_field(
-            name="Payload",
-            value=DailyTaskEmbeds._serialized_payload(payload),
-            inline=False,
-        )
+        if job_type == "stock":
+            ticker_value = str((payload or {}).get("ticker") or "").strip().upper()
+            if ticker_value:
+                embed.add_field(name="Ticker", value=f"`{ticker_value}`", inline=True)
+            header_value = str((payload or {}).get("header") or "").strip()
+            if header_value:
+                embed.add_field(name="Header", value=header_value[:1024], inline=False)
+        else:
+            embed.add_field(
+                name="Payload",
+                value=DailyTaskEmbeds._serialized_payload(payload),
+                inline=False,
+            )
         embed.add_field(name="Last Run", value="never", inline=False)
         return {"embed": embed}
 
