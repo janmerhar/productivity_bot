@@ -491,7 +491,7 @@ class ScheduledJobActionView(discord.ui.View):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()
         manager = DailyJobManager()
         try:
             deleted = await asyncio.to_thread(
@@ -510,11 +510,17 @@ class ScheduledJobActionView(discord.ui.View):
                 child.disabled = True
 
             if interaction.message is not None:
-                await interaction.message.edit(view=self)
+                try:
+                    await interaction.message.edit(view=self)
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                    pass
 
             await interaction.followup.send(
-                f"Deleted job `{self.job_id}`.",
-                ephemeral=True,
+                ephemeral=False,
+                **DailyTaskEmbeds.jobs_cancel_embed(
+                    f"Deleted job `{self.job_id}`.",
+                    ok=True,
+                ),
             )
         except Exception as exc:
             await handle_interaction_error(interaction, exc, ephemeral=True)
