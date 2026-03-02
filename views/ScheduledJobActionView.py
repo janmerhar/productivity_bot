@@ -204,23 +204,52 @@ class ScheduledJobEditModal(discord.ui.Modal):
             description="Scheduled job updated.",
             ok=True,
         )
-        candidates = [self._source_message, interaction.message, getattr(self._view, "message", None)]
+
+        candidates = [
+            self._source_message,
+            interaction.message,
+            getattr(self._view, "message", None),
+        ]
         refreshed = False
         for candidate in candidates:
             if candidate is None:
                 continue
             try:
                 await candidate.edit(view=self._view, **refreshed_payload)
+                self._view.message = candidate
                 refreshed = True
                 break
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 continue
 
+        if not refreshed and self._source_message is not None:
+            source_message_id = getattr(self._source_message, "id", None)
+            if source_message_id is not None:
+                try:
+                    await interaction.followup.edit_message(
+                        source_message_id,
+                        view=self._view,
+                        **refreshed_payload,
+                    )
+                    refreshed = True
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                    pass
+
         if not refreshed:
-            await interaction.followup.send(
-                "Updated the job, but I couldn't refresh the job card message.",
-                ephemeral=True,
-            )
+            try:
+                posted_message = await interaction.followup.send(
+                    ephemeral=True,
+                    view=self._view,
+                    **refreshed_payload,
+                    wait=True,
+                )
+                self._view.message = posted_message
+            except TypeError:
+                await interaction.followup.send(
+                    ephemeral=True,
+                    view=self._view,
+                    **refreshed_payload,
+                )
 
 
 class ScheduledJobChangeChannelModal(discord.ui.Modal, title="Change Job Channel"):
