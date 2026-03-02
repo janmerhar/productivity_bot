@@ -1,6 +1,6 @@
 import asyncio
 import re
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import discord
 from discord.ext import commands
@@ -11,6 +11,8 @@ from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from services.cron_schedule import CronConversionError, resolve_cron_expression
 from services.discord_helpers import resolve_messageable_channel
 from services.error_reporting import ValidationError, handle_interaction_error
+
+_MODAL_SELECTS_SUPPORTED = True
 
 
 def _schedule_expression(schedule: Optional[Mapping[str, Any]]) -> str:
@@ -77,6 +79,33 @@ def _build_job_payload(job_type: str, value: str, header: str) -> Dict[str, Any]
     if header_value:
         payload["header"] = header_value
     return payload
+
+
+def _build_channel_select_options(
+    interaction: discord.Interaction,
+    current_channel_id: Optional[int],
+) -> List[discord.SelectOption]:
+    guild = interaction.guild
+    if guild is None:
+        return []
+
+    options: List[discord.SelectOption] = []
+    for channel in guild.text_channels:
+        permissions = channel.permissions_for(interaction.user)
+        if not permissions.view_channel or not permissions.send_messages:
+            continue
+
+        options.append(
+            discord.SelectOption(
+                label=f"#{channel.name}"[:100],
+                value=str(channel.id),
+                default=(current_channel_id is not None and channel.id == current_channel_id),
+            )
+        )
+        if len(options) >= 25:
+            break
+
+    return options
 
 
 class ScheduledJobEditModal(discord.ui.Modal):
@@ -195,24 +224,63 @@ class ScheduledJobEditModal(discord.ui.Modal):
 
 
 class ScheduledJobChangeChannelModal(discord.ui.Modal, title="Change Job Channel"):
-    channel = discord.ui.TextInput(
-        label="Destination channel",
-        placeholder="Use a channel mention (e.g. #general) or channel id",
-        required=True,
-        max_length=64,
-    )
-
-    def __init__(self, view: "ScheduledJobActionView") -> None:
+    def __init__(
+        self,
+        view: "ScheduledJobActionView",
+        channel_options: Optional[List[discord.SelectOption]] = None,
+    ) -> None:
         super().__init__()
         self._view = view
-        if view.channel_id:
-            self.channel.default = f"<#{view.channel_id}>"
+        self.channel_select: Optional[discord.ui.Select] = None
+        self.channel_select_label: Optional[discord.ui.Label] = None
+        self.channel_input: Optional[discord.ui.TextInput] = None
+
+        if channel_options:
+            try:
+                self.channel_select = discord.ui.Select(
+                    placeholder="Choose a channel",
+                    min_values=1,
+                    max_values=1,
+                    options=channel_options[:25],
+                )
+                self.channel_select_label = discord.ui.Label(
+                    text="Destination channel",
+                    component=self.channel_select,
+                )
+                self.add_item(self.channel_select_label)
+            except Exception:
+                self.channel_select = None
+                self.channel_select_label = None
+
+        if self.channel_select is None:
+            self.channel_input = discord.ui.TextInput(
+                label="Destination channel",
+                placeholder="Use a channel mention (e.g. #general) or channel id",
+                required=True,
+                max_length=64,
+            )
+            if view.channel_id:
+                self.channel_input.default = f"<#{view.channel_id}>"
+            self.add_item(self.channel_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
 
         try:
-            new_channel_id = _parse_channel_id(str(self.channel.value or ""))
+            if self.channel_select is not None:
+                raw_value = (
+                    self.channel_select.values[0]
+                    if self.channel_select.values
+                    else ""
+                )
+                new_channel_id = int(raw_value)
+            else:
+                raw_input = (
+                    str(self.channel_input.value or "")
+                    if self.channel_input is not None
+                    else ""
+                )
+                new_channel_id = _parse_channel_id(raw_input)
         except Exception as exc:
             await handle_interaction_error(interaction, exc, ephemeral=True)
             return
@@ -387,6 +455,7 @@ class ScheduledJobActionView(discord.ui.View):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
+        global _MODAL_SELECTS_SUPPORTED
         try:
             manager = DailyJobManager()
             job = await self._load_job(manager)
@@ -395,6 +464,23 @@ class ScheduledJobActionView(discord.ui.View):
                     "That job no longer exists in this channel.",
                     ephemeral=True,
                 )
+
+            channel_options = _build_channel_select_options(interaction, self.channel_id)
+            if _MODAL_SELECTS_SUPPORTED:
+                try:
+                    await interaction.response.send_modal(
+                        ScheduledJobChangeChannelModal(
+                            self,
+                            channel_options=channel_options,
+                        )
+                    )
+                    return
+                except discord.HTTPException as exc:
+                    if exc.code == 50035 and "must be one of (4,)" in str(exc):
+                        _MODAL_SELECTS_SUPPORTED = False
+                    else:
+                        raise
+
             await interaction.response.send_modal(ScheduledJobChangeChannelModal(self))
         except Exception as exc:
             await handle_interaction_error(interaction, exc, ephemeral=True)
