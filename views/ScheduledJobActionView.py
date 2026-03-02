@@ -8,9 +8,14 @@ from discord.ext import commands
 from classes.DailyJob import CronSchedule, DailyJob
 from classes.DailyJobManager import DailyJobManager
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
-from services.cron_schedule import CronConversionError, resolve_cron_expression
+from services.cron_schedule import (
+    CronConversionError,
+    is_valid_cron_expression,
+    resolve_cron_expression,
+)
 from services.discord_helpers import resolve_messageable_channel
 from services.error_reporting import ValidationError, handle_interaction_error
+from services.timezone_gate import ensure_user_timezone
 
 _MODAL_SELECTS_SUPPORTED = True
 
@@ -145,16 +150,19 @@ class ScheduledJobEditModal(discord.ui.Modal):
         self.add_item(self.payload_value)
         self.add_item(self.header)
 
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
-
-        raw_schedule = str(self.schedule.value or "").strip()
-        raw_payload = str(self.payload_value.value or "")
-        raw_header = str(self.header.value or "")
+    async def _apply_update(
+        self,
+        interaction: discord.Interaction,
+        raw_schedule: str,
+        raw_payload: str,
+        raw_header: str,
+        timezone: Optional[str],
+    ) -> None:
         try:
             cron_expression = await asyncio.to_thread(
                 resolve_cron_expression,
                 raw_schedule,
+                timezone=timezone,
             )
         except CronConversionError as exc:
             await handle_interaction_error(
@@ -250,6 +258,42 @@ class ScheduledJobEditModal(discord.ui.Modal):
                     view=self._view,
                     **refreshed_payload,
                 )
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        raw_schedule = str(self.schedule.value or "").strip()
+        raw_payload = str(self.payload_value.value or "")
+        raw_header = str(self.header.value or "")
+
+        timezone = None
+        if not is_valid_cron_expression(raw_schedule):
+            async def _continue_with_timezone(
+                followup_interaction: discord.Interaction,
+                resolved_timezone: str,
+            ) -> None:
+                await self._apply_update(
+                    followup_interaction,
+                    raw_schedule,
+                    raw_payload,
+                    raw_header,
+                    resolved_timezone,
+                )
+
+            timezone = await ensure_user_timezone(
+                interaction,
+                _continue_with_timezone,
+                continue_message="Timezone saved as `{timezone}`. Continuing scheduled job edit.",
+            )
+            if timezone is None:
+                return
+
+        await interaction.response.defer(ephemeral=True)
+        await self._apply_update(
+            interaction,
+            raw_schedule,
+            raw_payload,
+            raw_header,
+            timezone,
+        )
 
 
 class ScheduledJobChangeChannelModal(discord.ui.Modal, title="Change Job Channel"):
