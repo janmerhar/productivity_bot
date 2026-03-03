@@ -28,6 +28,7 @@ from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 from views.ScheduledJobActionView import ScheduledJobActionView
 from views.StockActionView import StockActionView
+from views.StockListItemsView import StockListItemsView
 
 
 class StocksCog(commands.Cog):
@@ -548,6 +549,43 @@ class StocksCog(commands.Cog):
                 expires_at=expires_at,
                 description=f"Stock alert is active.\n{tracking_note}",
             ),
+        )
+
+    @stock_group.command(name="list", description="List stock schedules and alerts")
+    @app_commands.describe(
+        kind="Choose what to list",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(
+        kind=[
+            app_commands.Choice(name="All", value="all"),
+            app_commands.Choice(name="Schedules", value="schedules"),
+            app_commands.Choice(name="Alerts", value="alerts"),
+        ],
+        visibility=VISIBILITY_CHOICES,
+    )
+    async def list_stock_tracking(
+        self,
+        interaction: discord.Interaction,
+        kind: Optional[app_commands.Choice[str]] = None,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        ephemeral = resolve_visibility(visibility, default="private")
+        await interaction.response.defer(ephemeral=ephemeral)
+
+        selected_kind = kind.value if kind else "all"
+        view = StockListItemsView(
+            user_id=interaction.user.id,
+            guild_id=interaction.guild_id,
+            channel_id=interaction.channel_id,
+            kind=selected_kind,
+        )
+        await view.initialize()
+
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            view=view,
+            **view.payload(),
         )
 
     @schedule_stock_updates.autocomplete("ticker")

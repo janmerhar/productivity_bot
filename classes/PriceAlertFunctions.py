@@ -1,6 +1,7 @@
 import datetime
 from typing import Any, Dict, List, Optional
 
+from bson.errors import InvalidId
 from bson.objectid import ObjectId
 
 from config.db import mongo_db
@@ -66,6 +67,70 @@ def fetch_active_alerts(
         .limit(limit)
     )
     return list(cursor)
+
+
+def fetch_user_active_alerts(
+    asset_type: str,
+    user_id: int,
+    guild_id: Optional[int] = None,
+    limit: int = 100,
+) -> List[Dict[str, Any]]:
+    now = datetime.datetime.now()
+    query: Dict[str, Any] = {
+        "asset_type": asset_type,
+        "user_id": user_id,
+        "active": True,
+        "$or": [
+            {"expires_at": {"$exists": False}},
+            {"expires_at": None},
+            {"expires_at": {"$gt": now}},
+        ],
+    }
+
+    if guild_id is not None:
+        query["guild_id"] = guild_id
+
+    cursor = (
+        mongo_db["price_alerts"]
+        .find(query)
+        .sort("_id", -1)
+        .limit(limit)
+    )
+    return list(cursor)
+
+
+def deactivate_alert(
+    alert_id: str,
+    user_id: int,
+    asset_type: Optional[str] = None,
+    guild_id: Optional[int] = None,
+) -> bool:
+    try:
+        object_id = ObjectId(alert_id)
+    except InvalidId as exc:
+        raise ValueError("Invalid alert id.") from exc
+
+    query: Dict[str, Any] = {
+        "_id": object_id,
+        "user_id": user_id,
+        "active": True,
+    }
+    if asset_type:
+        query["asset_type"] = asset_type
+    if guild_id is not None:
+        query["guild_id"] = guild_id
+
+    result = mongo_db["price_alerts"].update_one(
+        query,
+        {
+            "$set": {
+                "active": False,
+                "triggered_at": datetime.datetime.now(),
+                "triggered_price": None,
+            }
+        },
+    )
+    return result.modified_count > 0
 
 
 def should_trigger(alert: Dict[str, Any], current_price: float) -> bool:
