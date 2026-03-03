@@ -1,6 +1,6 @@
 import datetime
 import json
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from openai import APIError, OpenAI
@@ -317,3 +317,66 @@ class OpenAIFunctions:
             return None
 
         return str(cron_value).strip()
+
+    @staticmethod
+    def rank_stock_candidates(
+        query: str,
+        candidates: list[dict],
+        model: str = DEFAULT_OPENAI_MODEL,
+        api_key: Optional[str] = None,
+    ) -> list[str]:
+        text = (query or "").strip()
+        if not text or not candidates:
+            return []
+
+        normalized: list[dict[str, str]] = []
+        seen_symbols: set[str] = set()
+
+        for item in candidates:
+            symbol = str(item.get("symbol") or "").strip().upper()
+            if not symbol or symbol in seen_symbols:
+                continue
+            seen_symbols.add(symbol)
+            normalized.append(
+                {
+                    "symbol": symbol,
+                    "name": str(item.get("name") or "").strip(),
+                    "exchange": str(item.get("exchange") or "").strip(),
+                    "quote_type": str(item.get("quote_type") or "").strip().upper(),
+                }
+            )
+
+        if not normalized:
+            return []
+
+        system_prompt = (
+            "You rank stock ticker candidates for a user query. "
+            "You must choose only from the provided candidates. "
+            "Return JSON with key 'symbols' as an ordered array of symbols (best first). "
+            "Never invent symbols."
+        )
+        user_prompt = (
+            f"User query: {text}\n"
+            f"Candidates: {json.dumps(normalized, ensure_ascii=True)}"
+        )
+
+        payload = OpenAIFunctions._chat_json_safe(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model=model,
+            api_key=api_key,
+        )
+        if not payload:
+            return []
+
+        raw_symbols = payload.get("symbols")
+        if not isinstance(raw_symbols, list):
+            return []
+
+        ranked: list[str] = []
+        for value in raw_symbols:
+            symbol = str(value or "").strip().upper()
+            if symbol in seen_symbols and symbol not in ranked:
+                ranked.append(symbol)
+
+        return ranked
