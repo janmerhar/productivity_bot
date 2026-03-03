@@ -9,6 +9,7 @@ from classes.DailyJobManager import DailyJobManager
 from classes.PriceAlertFunctions import deactivate_alert, fetch_user_active_alerts
 from services.error_reporting import handle_interaction_error
 from views.ScheduledJobActionView import ScheduledJobActionView
+from views.StockAlertActionView import StockAlertActionView
 
 
 class StockListItemsView(discord.ui.View):
@@ -16,6 +17,7 @@ class StockListItemsView(discord.ui.View):
 
     def __init__(
         self,
+        *,
         user_id: int,
         guild_id: Optional[int],
         channel_id: Optional[int],
@@ -39,6 +41,15 @@ class StockListItemsView(discord.ui.View):
     async def initialize(self) -> None:
         await self._reload_entries()
         self._sync_button_state()
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id == self.user_id:
+            return True
+        await interaction.response.send_message(
+            ephemeral=True,
+            content="Only the user who opened this list can manage it.",
+        )
+        return False
 
     @staticmethod
     def _entry_key(entry: Dict[str, Any]) -> Tuple[str, str]:
@@ -137,6 +148,7 @@ class StockListItemsView(discord.ui.View):
                     "destination_type": str(item.get("destination_type") or "channel"),
                     "channel_id": item.get("channel_id"),
                     "expires_at": item.get("expires_at"),
+                    "paused": bool(item.get("paused")),
                 }
                 for item in alerts_raw
             ]
@@ -201,8 +213,7 @@ class StockListItemsView(discord.ui.View):
     ) -> str:
         ticker = self._truncate(str(entry.get("ticker") or "UNKNOWN"), 10)
         schedule_value = self._truncate(
-            self._schedule_core(entry.get("schedule") or {}),
-            28,
+            self._schedule_core(entry.get("schedule") or {}), 28
         )
         channel_id = entry.get("channel_id")
         channel_value = f"<#{channel_id}>" if channel_id else "unknown"
@@ -235,11 +246,11 @@ class StockListItemsView(discord.ui.View):
             else (f"<#{channel_id}>" if channel_id else "channel")
         )
         expires = self._truncate(self._parse_expires(entry.get("expires_at")), 15)
-        alert_id = self._id_short(str(entry.get("alert_id") or ""))
+        status = "paused" if bool(entry.get("paused")) else "active"
         marker = ">" if selected else " "
         return (
             f"{marker}{display_index}. ALR | {symbol} | {trigger} | "
-            f"{destination} | {expires} | {alert_id}"
+            f"{destination} | {expires} | {status}"
         )
 
     def _selected_details(self, entry: Dict[str, Any]) -> str:
@@ -252,6 +263,7 @@ class StockListItemsView(discord.ui.View):
                 f"Schedule: {self._schedule_core(entry.get('schedule') or {})}\n"
                 f"Header: {str(entry.get('header') or '-')}"
             )
+
         target_label = self._target_price_label(
             entry.get("target_price"),
             str(entry.get("currency") or "").strip().upper(),
@@ -265,10 +277,12 @@ class StockListItemsView(discord.ui.View):
             if destination_type == "dm"
             else (f"<#{channel_id}>" if channel_id else "channel")
         )
+        status = "paused" if bool(entry.get("paused")) else "active"
         return (
             f"Type: alert\n"
             f"ID: `{str(entry.get('alert_id') or 'unknown')}`\n"
             f"Symbol: `{str(entry.get('symbol') or 'UNKNOWN')}`\n"
+            f"Status: {status}\n"
             f"Trigger: `{str(entry.get('condition') or 'above')}` `{target_label}`\n"
             f"Destination: {destination}\n"
             f"Expires: {self._parse_expires(entry.get('expires_at'))}"
@@ -298,10 +312,9 @@ class StockListItemsView(discord.ui.View):
             display_index = local_idx + 1
             selected = absolute_index == self.selected_index
             if str(entry.get("entry_type") or "") == "schedule":
-                line = self._schedule_line(display_index, entry, selected)
+                lines.append(self._schedule_line(display_index, entry, selected))
             else:
-                line = self._alert_line(display_index, entry, selected)
-            lines.append(line)
+                lines.append(self._alert_line(display_index, entry, selected))
 
         embed.add_field(
             name=f"Items (page {self.page}/{self.total_pages})",
@@ -317,7 +330,7 @@ class StockListItemsView(discord.ui.View):
                 inline=False,
             )
 
-        embed.set_footer(text="Select 1-5, then use actions.")
+        embed.set_footer(text="Select 1-5, then use Manage.")
         return {"embed": embed}
 
     def _select_index(self, local_index: int) -> None:
@@ -360,12 +373,8 @@ class StockListItemsView(discord.ui.View):
 
         self.prev_page.disabled = (not has_entries) or self.page <= 1
         self.next_page.disabled = (not has_entries) or self.page >= self.total_pages
+        self.manage_item.disabled = not has_entries
         self.delete_item.disabled = not has_entries
-
-        selected = self._selected_entry()
-        self.item_actions.disabled = (
-            selected is None or str(selected.get("entry_type") or "") != "schedule"
-        )
 
     async def _refresh_message(self, interaction: discord.Interaction) -> None:
         self._sync_button_state()
@@ -376,54 +385,42 @@ class StockListItemsView(discord.ui.View):
 
     @discord.ui.button(label="1", style=discord.ButtonStyle.secondary, row=0)
     async def select_1(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
+        self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
         self._select_index(0)
         await self._refresh_message(interaction)
 
     @discord.ui.button(label="2", style=discord.ButtonStyle.secondary, row=0)
     async def select_2(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
+        self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
         self._select_index(1)
         await self._refresh_message(interaction)
 
     @discord.ui.button(label="3", style=discord.ButtonStyle.secondary, row=0)
     async def select_3(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
+        self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
         self._select_index(2)
         await self._refresh_message(interaction)
 
     @discord.ui.button(label="4", style=discord.ButtonStyle.secondary, row=0)
     async def select_4(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
+        self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
         self._select_index(3)
         await self._refresh_message(interaction)
 
     @discord.ui.button(label="5", style=discord.ButtonStyle.secondary, row=0)
     async def select_5(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
+        self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
         self._select_index(4)
         await self._refresh_message(interaction)
 
     @discord.ui.button(label="Prev", style=discord.ButtonStyle.secondary, row=1)
     async def prev_page(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
+        self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
         if self.page <= 1:
             await interaction.response.defer(ephemeral=True)
@@ -434,9 +431,7 @@ class StockListItemsView(discord.ui.View):
 
     @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary, row=1)
     async def next_page(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
+        self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
         if self.page >= self.total_pages:
             await interaction.response.defer(ephemeral=True)
@@ -447,9 +442,7 @@ class StockListItemsView(discord.ui.View):
 
     @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary, row=1)
     async def refresh_list(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
+        self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
         await interaction.response.defer()
         await self._reload_entries()
@@ -459,13 +452,9 @@ class StockListItemsView(discord.ui.View):
         else:
             await interaction.edit_original_response(view=self, **self.payload())
 
-    @discord.ui.button(
-        label="Schedule Actions", style=discord.ButtonStyle.primary, row=2
-    )
-    async def item_actions(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
+    @discord.ui.button(label="Manage", style=discord.ButtonStyle.primary, row=2)
+    async def manage_item(
+        self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
         current = self._selected_entry()
         if current is None:
@@ -475,28 +464,41 @@ class StockListItemsView(discord.ui.View):
             )
             return
 
-        if str(current.get("entry_type") or "") != "schedule":
+        entry_type = str(current.get("entry_type") or "")
+        if entry_type == "schedule":
             await interaction.response.send_message(
                 ephemeral=True,
-                content="Actions are only available for schedules.",
+                content=f"Actions for schedule `{current.get('job_id')}`.",
+                view=ScheduledJobActionView(
+                    job_id=str(current.get("job_id") or ""),
+                    channel_id=current.get("channel_id"),
+                    guild_id=current.get("guild_id"),
+                ),
+            )
+            return
+
+        if entry_type == "alert":
+            alert_view = StockAlertActionView(
+                alert_id=str(current.get("alert_id") or ""),
+                user_id=self.user_id,
+                guild_id=self.guild_id,
+            )
+            await alert_view.initialize()
+            await interaction.response.send_message(
+                ephemeral=True,
+                view=alert_view,
+                **alert_view.payload(),
             )
             return
 
         await interaction.response.send_message(
             ephemeral=True,
-            content=f"Actions for schedule `{current.get('job_id')}`.",
-            view=ScheduledJobActionView(
-                job_id=str(current.get("job_id") or ""),
-                channel_id=current.get("channel_id"),
-                guild_id=current.get("guild_id"),
-            ),
+            content="No actions available for this item.",
         )
 
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger, row=2)
     async def delete_item(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
+        self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
         current = self._selected_entry()
         if current is None:

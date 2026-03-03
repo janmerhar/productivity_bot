@@ -35,6 +35,7 @@ def create_alert(
         "destination_type": destination_type,
         "user_id": user_id,
         "active": True,
+        "paused": False,
         "created_at": datetime.datetime.now(),
         "expires_at": expires_at,
         "triggered_at": None,
@@ -56,6 +57,7 @@ def fetch_active_alerts(
             {
                 "asset_type": asset_type,
                 "active": True,
+                "paused": {"$ne": True},
                 "$or": [
                     {"expires_at": {"$exists": False}},
                     {"expires_at": None},
@@ -97,6 +99,113 @@ def fetch_user_active_alerts(
         .limit(limit)
     )
     return list(cursor)
+
+
+def fetch_user_alert_by_id(
+    alert_id: str,
+    user_id: int,
+    asset_type: Optional[str] = None,
+    guild_id: Optional[int] = None,
+    active_only: bool = True,
+) -> Optional[Dict[str, Any]]:
+    try:
+        object_id = ObjectId(alert_id)
+    except InvalidId as exc:
+        raise ValueError("Invalid alert id.") from exc
+
+    query: Dict[str, Any] = {
+        "_id": object_id,
+        "user_id": user_id,
+    }
+    if active_only:
+        query["active"] = True
+    if asset_type:
+        query["asset_type"] = asset_type
+    if guild_id is not None:
+        query["guild_id"] = guild_id
+
+    return mongo_db["price_alerts"].find_one(query)
+
+
+def update_alert(
+    alert_id: str,
+    user_id: int,
+    *,
+    asset_type: Optional[str] = None,
+    guild_id: Optional[int] = None,
+    target_price: Optional[float] = None,
+    condition: Optional[str] = None,
+    destination_type: Optional[str] = None,
+    channel_id: Optional[int] = None,
+    expires_at: Optional[datetime.datetime] = None,
+    clear_expires_at: bool = False,
+) -> bool:
+    try:
+        object_id = ObjectId(alert_id)
+    except InvalidId as exc:
+        raise ValueError("Invalid alert id.") from exc
+
+    query: Dict[str, Any] = {
+        "_id": object_id,
+        "user_id": user_id,
+        "active": True,
+    }
+    if asset_type:
+        query["asset_type"] = asset_type
+    if guild_id is not None:
+        query["guild_id"] = guild_id
+
+    set_fields: Dict[str, Any] = {}
+    if target_price is not None:
+        set_fields["target_price"] = float(target_price)
+    if condition is not None:
+        set_fields["condition"] = condition
+    if destination_type is not None:
+        set_fields["destination_type"] = destination_type
+        set_fields["channel_id"] = channel_id
+    if clear_expires_at:
+        set_fields["expires_at"] = None
+    elif expires_at is not None:
+        set_fields["expires_at"] = expires_at
+
+    if not set_fields:
+        return False
+
+    result = mongo_db["price_alerts"].update_one(
+        query,
+        {"$set": set_fields},
+    )
+    return result.modified_count > 0
+
+
+def set_alert_paused(
+    alert_id: str,
+    user_id: int,
+    paused: bool,
+    *,
+    asset_type: Optional[str] = None,
+    guild_id: Optional[int] = None,
+) -> bool:
+    try:
+        object_id = ObjectId(alert_id)
+    except InvalidId as exc:
+        raise ValueError("Invalid alert id.") from exc
+
+    query: Dict[str, Any] = {
+        "_id": object_id,
+        "user_id": user_id,
+        "active": True,
+    }
+    if asset_type:
+        query["asset_type"] = asset_type
+    if guild_id is not None:
+        query["guild_id"] = guild_id
+
+    result = mongo_db["price_alerts"].update_one(
+        query,
+        {"$set": {"paused": bool(paused)}},
+    )
+    return result.modified_count > 0
 
 
 def deactivate_alert(
