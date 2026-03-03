@@ -243,7 +243,9 @@ class StocksCog(commands.Cog):
 
         return resolved_symbol, tracking_note
 
-    @stock_group.command(name="schedule", description="Schedule recurring stock updates")
+    @stock_group.command(
+        name="schedule", description="Schedule recurring stock updates"
+    )
     @app_commands.describe(
         ticker="Ticker to include (for example: AAPL)",
         schedule="Cron expression or natural language schedule",
@@ -267,6 +269,7 @@ class StocksCog(commands.Cog):
         normalized_header = (header or "").strip()
         timezone = None
         if not is_valid_cron_expression(schedule):
+
             async def _continue_with_timezone(
                 followup_interaction: discord.Interaction,
                 resolved_timezone: str,
@@ -366,6 +369,7 @@ class StocksCog(commands.Cog):
                 job_id=str(created_job.id),
                 channel_id=interaction.channel_id,
                 guild_id=interaction.guild_id,
+                response_ephemeral=ephemeral,
             ),
         )
 
@@ -416,6 +420,7 @@ class StocksCog(commands.Cog):
 
         timezone = None
         if expires_text:
+
             async def _continue_with_timezone(
                 followup_interaction: discord.Interaction,
                 resolved_timezone: str,
