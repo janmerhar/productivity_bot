@@ -1073,19 +1073,20 @@ class TodoListItemsView(discord.ui.View):
         self.add_item(complete_button)
 
         prev_button = discord.ui.Button(
+            label="← Prev",
             style=discord.ButtonStyle.secondary,
-            emoji="◀️",
             disabled=self.page <= 1,
             row=3,
         )
-        refresh_button = discord.ui.Button(
+        page_button = discord.ui.Button(
+            label=f"Page {self.page}/{self.total_pages}",
             style=discord.ButtonStyle.secondary,
-            emoji="🔄",
+            disabled=True,
             row=3,
         )
         next_button = discord.ui.Button(
+            label="Next →",
             style=discord.ButtonStyle.secondary,
-            emoji="▶️",
             disabled=self.page >= self.total_pages,
             row=3,
         )
@@ -1121,12 +1122,6 @@ class TodoListItemsView(discord.ui.View):
             self._build()
             await self._safe_refresh_message(interaction)
 
-        async def _refresh_callback(interaction: discord.Interaction) -> None:
-            await interaction.response.defer()
-            await self._reload_items()
-            self._build()
-            await self._safe_refresh_message(interaction)
-
         async def _sort_toggle_callback(interaction: discord.Interaction) -> None:
             await interaction.response.defer()
             self.sort = "descending" if self.sort == "ascending" else "ascending"
@@ -1146,13 +1141,12 @@ class TodoListItemsView(discord.ui.View):
             await self._safe_refresh_message(interaction)
 
         prev_button.callback = _prev_callback
-        refresh_button.callback = _refresh_callback
         next_button.callback = _next_callback
         sort_button.callback = _sort_toggle_callback
         filter_button.callback = _mine_toggle_callback
 
         self.add_item(prev_button)
-        self.add_item(refresh_button)
+        self.add_item(page_button)
         self.add_item(next_button)
         self.add_item(sort_button)
         self.add_item(filter_button)
@@ -1861,6 +1855,12 @@ class TodoEmbeds:
         return f"Sort: {sort_label} | Status: {status_label} | Mine only: {mine_label}"
 
     @staticmethod
+    def _list_metadata_line(sort: str, status_filter: str) -> str:
+        sort_label = "Ascending" if sort == "ascending" else "Descending"
+        status_label = TodoEmbeds._status_filter_label(status_filter)
+        return f"Sort: {sort_label} • Status: {status_label}"
+
+    @staticmethod
     def _parse_due_dt(
         value: Optional[Union[datetime.datetime, str]],
     ) -> Optional[datetime.datetime]:
@@ -2061,10 +2061,11 @@ class TodoEmbeds:
             color=discord.Colour.blurple(),
         )
         status_label = TodoEmbeds._status_filter_label(status_filter)
+        metadata_line = TodoEmbeds._list_metadata_line(sort, status_filter)
 
         if not items:
-            embed.description = "No items in this list."
-            embed.set_footer(text=f"Items: 0 | Sort: {sort} | Status: {status_label}")
+            embed.description = f"{metadata_line}\n\nNo items in this list."
+            embed.set_footer(text="Items: 0")
             return {"embed": embed}
 
         for display_index, item in enumerate(
@@ -2095,7 +2096,7 @@ class TodoEmbeds:
                 value_lines.append("No details")
             embed.add_field(
                 name=item_title,
-                value="\n".join(value_lines),
+                value="\n".join(value_lines) + "\n\u200b",
                 inline=False,
             )
 
@@ -2104,13 +2105,11 @@ class TodoEmbeds:
             embed.set_footer(
                 text=(
                     f"Showing first {TodoEmbeds._MAX_LIST_ITEMS_PREVIEW} items "
-                    f"({remaining} more) | Sort: {sort} | Status: {status_label}"
+                    f"({remaining} more)"
                 )
             )
         else:
-            embed.set_footer(
-                text=f"Items: {len(items)} | Sort: {sort} | Status: {status_label}"
-            )
+            embed.set_footer(text=f"Items: {len(items)}")
 
         return {"embed": embed}
 
@@ -2130,18 +2129,20 @@ class TodoEmbeds:
             title=TodoEmbeds._list_title(todo_list),
             color=discord.Colour.blurple(),
         )
+        metadata_line = TodoEmbeds._list_metadata_line(sort, status_filter)
 
         if not items:
-            embed.description = "No items in this list."
+            embed.description = f"{metadata_line}\n\nNo items in this list."
             mine_filter = "Mine only: On" if mine_only else "Mine only: Off"
-            status_label = TodoEmbeds._status_filter_label(status_filter)
             embed.set_footer(
                 text=(
                     f"Page {page}/{total_pages} | Items: {total_items} | "
-                    f"Sort: {sort} | Status: {status_label} | {mine_filter}"
+                    f"{mine_filter}"
                 )
             )
             return {"embed": embed}
+
+        embed.description = f"{metadata_line}\n\n"
 
         for display_index, item in enumerate(items, start=1):
             number_emoji = TodoEmbeds._number_emoji(display_index)
@@ -2169,7 +2170,7 @@ class TodoEmbeds:
                 value_lines.append("No details")
             embed.add_field(
                 name=item_title,
-                value="\n".join(value_lines),
+                value="\n".join(value_lines) + "\n\u200b",
                 inline=False,
             )
 
@@ -2177,8 +2178,7 @@ class TodoEmbeds:
         status_label = TodoEmbeds._status_filter_label(status_filter)
         embed.set_footer(
             text=(
-                f"Page {page}/{total_pages} | Items: {total_items} | "
-                f"Sort: {sort} | Status: {status_label} | {mine_filter}"
+                f"Page {page}/{total_pages} | Items: {total_items} | " f"{mine_filter}"
             )
         )
         return {"embed": embed}
