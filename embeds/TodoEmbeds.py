@@ -1925,7 +1925,8 @@ class TodoEmbeds:
 
     @staticmethod
     def _list_title(todo_list: Dict[str, Any]) -> str:
-        return "To Do List"
+        list_name = str(todo_list.get("name") or "Unnamed")
+        return f"To Do List ({list_name})"
 
     @staticmethod
     def _number_emoji(value: int) -> str:
