@@ -4,6 +4,7 @@ token.json
 __pycache__/
 .env*
 .token-oauth
+.venv
 
 # GCSA authentication files
 credentials.json
