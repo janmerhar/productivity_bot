@@ -6,7 +6,11 @@ from typing import Optional, Union, List, Dict, Any
 import discord
 
 from classes.TodoFunctions import TodoFunctions
-from services.error_reporting import UserVisibleError, ValidationError, handle_interaction_error
+from services.error_reporting import (
+    UserVisibleError,
+    ValidationError,
+    handle_interaction_error,
+)
 
 _MODAL_SELECTS_SUPPORTED = True
 
@@ -170,9 +174,7 @@ class TodoItemEditModal(discord.ui.Modal):
         self.current_status = current_status
         self.current_list_id = str(item.get("list_id") or "")
         self.current_list_name = str(
-            item.get("list_name")
-            or parent_view.todo_list.get("name")
-            or ""
+            item.get("list_name") or parent_view.todo_list.get("name") or ""
         ).strip()
         assignees = item.get("assignees") or []
         current_assignee = f"<@{assignees[0]}>" if assignees else "none"
@@ -485,7 +487,9 @@ class TodoItemEditModal(discord.ui.Modal):
             )
             return
 
-        await interaction.followup.send(ephemeral=True, content=f"Updated item #{self.item_number}.")
+        await interaction.followup.send(
+            ephemeral=True, content=f"Updated item #{self.item_number}."
+        )
 
 
 class TodoListItemsView(discord.ui.View):
@@ -605,7 +609,9 @@ class TodoListItemsView(discord.ui.View):
 
     @staticmethod
     def _member_option_label(member: Any) -> str:
-        display_name = str(getattr(member, "display_name", "") or getattr(member, "name", ""))
+        display_name = str(
+            getattr(member, "display_name", "") or getattr(member, "name", "")
+        )
         username = str(getattr(member, "name", "")).strip()
         if display_name and username and display_name != username:
             return f"{display_name} (@{username})"[:100]
@@ -643,7 +649,10 @@ class TodoListItemsView(discord.ui.View):
         )
         seen_values.add(me_value)
 
-        if current_assignee_id is not None and current_assignee_id != interaction.user.id:
+        if (
+            current_assignee_id is not None
+            and current_assignee_id != interaction.user.id
+        ):
             current_value = f"user:{current_assignee_id}"
             options.append(
                 discord.SelectOption(
@@ -657,7 +666,9 @@ class TodoListItemsView(discord.ui.View):
         guild = interaction.guild
         members = []
         if guild is not None:
-            members = list(getattr(interaction.channel, "members", None) or guild.members)
+            members = list(
+                getattr(interaction.channel, "members", None) or guild.members
+            )
 
         for member in members:
             if getattr(member, "bot", False):
@@ -688,7 +699,9 @@ class TodoListItemsView(discord.ui.View):
         list_docs: List[Dict[str, Any]],
     ) -> List[discord.SelectOption]:
         current_list_id = str(item.get("list_id") or "")
-        current_list_name = str(item.get("list_name") or self.todo_list.get("name") or "Current list")
+        current_list_name = str(
+            item.get("list_name") or self.todo_list.get("name") or "Current list"
+        )
 
         options: List[discord.SelectOption] = []
         seen_ids: set[str] = set()
@@ -756,7 +769,9 @@ class TodoListItemsView(discord.ui.View):
         self,
         page_items: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[Dict[str, Any]]:
-        current_page_items = page_items if page_items is not None else self._page_slice()
+        current_page_items = (
+            page_items if page_items is not None else self._page_slice()
+        )
         self._sync_selected_item(current_page_items)
         selected_id = str(self.selected_item_id or "").strip()
         if not selected_id:
@@ -896,7 +911,9 @@ class TodoListItemsView(discord.ui.View):
         self.clear_items()
         page_items = self._page_slice()
         selected_item = self._selected_item_from_page(page_items)
-        selected_item_id = str(selected_item.get("_id") or "").strip() if selected_item else ""
+        selected_item_id = (
+            str(selected_item.get("_id") or "").strip() if selected_item else ""
+        )
         selected_item_number = selected_item.get("item_no") if selected_item else None
         selected_item_label = (
             str(selected_item_number if selected_item_number is not None else "?")
@@ -944,31 +961,31 @@ class TodoListItemsView(discord.ui.View):
             self.add_item(item_select)
 
         edit_button = discord.ui.Button(
-            label="Edit",
+            label="✏️ Edit",
             style=discord.ButtonStyle.primary,
             row=1,
             disabled=not selected_item_id,
         )
         delete_button = discord.ui.Button(
-            label="Delete",
+            label="🗑️ Delete",
             style=discord.ButtonStyle.danger,
             row=1,
             disabled=not selected_item_id,
         )
         todo_button = discord.ui.Button(
-            label="\u26AA To Do",
+            label="\u26aa To Do",
             style=discord.ButtonStyle.secondary,
             row=1,
             disabled=(not selected_item_id) or selected_status == "todo",
         )
         in_progress_button = discord.ui.Button(
-            label="\U0001F7E1 In Progress",
+            label="\U0001f7e1 In Progress",
             style=discord.ButtonStyle.secondary,
             row=1,
             disabled=(not selected_item_id) or selected_status == "in_progress",
         )
         complete_button = discord.ui.Button(
-            label="\U0001F7E2 Complete",
+            label="\U0001f7e2 Complete",
             style=discord.ButtonStyle.success,
             row=1,
             disabled=(not selected_item_id) or selected_status == "done",
@@ -1161,7 +1178,9 @@ class TodoDeleteConfirmView(discord.ui.View):
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
 
-    @discord.ui.button(emoji="✅", style=discord.ButtonStyle.danger)
+    @discord.ui.button(
+        label="\U0001f5d1\ufe0f Delete", style=discord.ButtonStyle.danger
+    )
     async def confirm_delete(
         self,
         interaction: discord.Interaction,
@@ -1205,7 +1224,7 @@ class TodoDeleteConfirmView(discord.ui.View):
             content=f"Deleted item #{self.item_label}.",
         )
 
-    @discord.ui.button(emoji="✖️", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="✖️ Cancel", style=discord.ButtonStyle.secondary)
     async def cancel_delete(
         self,
         interaction: discord.Interaction,
@@ -1565,7 +1584,9 @@ class TodoItemActionsView(discord.ui.View):
                 interaction.user.id,
                 25,
             )
-            list_options = parent_view._build_list_select_options(current_item, list_docs)
+            list_options = parent_view._build_list_select_options(
+                current_item, list_docs
+            )
         except Exception:
             list_options = []
 
@@ -1703,7 +1724,9 @@ class TodoItemActionsView(discord.ui.View):
 
         assignees = current_item.get("assignees") or []
         is_assigned_to_me = interaction.user.id in assignees
-        target_assignee_id: Optional[int] = None if is_assigned_to_me else interaction.user.id
+        target_assignee_id: Optional[int] = (
+            None if is_assigned_to_me else interaction.user.id
+        )
 
         updated_item = await asyncio.to_thread(
             TodoFunctions.set_item_assignee,
@@ -2185,5 +2208,3 @@ class TodoEmbeds:
         if include_actions:
             payload["view"] = TodoItemActionsView(todo_list, item)
         return payload
-
-
