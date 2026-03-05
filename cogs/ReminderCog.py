@@ -15,6 +15,14 @@ from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
+REPEAT_INTERVAL_CHOICES = [
+    app_commands.Choice(name="Daily", value="daily"),
+    app_commands.Choice(name="Weekly", value="weekly"),
+    app_commands.Choice(name="Monthly", value="monthly"),
+    app_commands.Choice(name="Yearly", value="yearly"),
+    app_commands.Choice(name="Custom", value="custom"),
+]
+
 
 def parse_time_string(
     raw: str,
@@ -131,49 +139,135 @@ class ReminderCog(commands.Cog):
         name="add",
         description="Create a one-time or recurring reminder.",
     )
-    async def reminder_add(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(
+        reason="Reminder reason",
+        time="Reminder time",
+        repeat_interval="Repeat interval",
+        custom_interval="Custom repeat interval",
+        ping="Ping target",
+        pingn_2="Second ping target",
+        ping_3="Third ping target",
+        ping_4="Fourth ping target",
+        title="Reminder title",
+        image_url="Image URL",
+        thumbnail_url="Thumbnail URL",
+        color="Embed color",
+        footer="Footer text",
+        timestamp="Timestamp",
+        skip_day="First skipped day",
+        skip_day2="Second skipped day",
+        skip_day3="Third skipped day",
+        message_content="Message content",
+        expires_after="Expiration time",
+        delete_previous="Delete previous reminder message",
+        destination_channel="Destination channel",
+    )
+    @app_commands.rename(destination_channel="destination_channel")
+    async def reminder_add(
+        self,
+        interaction: discord.Interaction,
+        reason: str,
+        time: str,
+        repeat_interval: Optional[str] = None,
+        custom_interval: Optional[str] = None,
+        ping: Optional[str] = None,
+        pingn_2: Optional[str] = None,
+        ping_3: Optional[str] = None,
+        ping_4: Optional[str] = None,
+        title: Optional[str] = None,
+        image_url: Optional[str] = None,
+        thumbnail_url: Optional[str] = None,
+        color: Optional[str] = None,
+        footer: Optional[str] = None,
+        timestamp: Optional[str] = None,
+        skip_day: Optional[str] = None,
+        skip_day2: Optional[str] = None,
+        skip_day3: Optional[str] = None,
+        message_content: Optional[str] = None,
+        expires_after: Optional[str] = None,
+        delete_previous: Optional[bool] = None,
+        destination_channel: Optional[str] = None,
+    ) -> None:
         await self._send_not_implemented(interaction, "/reminder add")
 
     @reminder_group.command(
         name="list",
         description="View active reminders for this server.",
     )
-    async def reminder_list(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(page="Page number")
+    async def reminder_list(
+        self,
+        interaction: discord.Interaction,
+        page: Optional[int] = None,
+    ) -> None:
         await self._send_not_implemented(interaction, "/reminder list")
 
     @reminder_group.command(
         name="remove",
         description="Remove a scheduled reminder by ID.",
     )
-    async def reminder_remove(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(reminder_id="Reminder ID")
+    async def reminder_remove(
+        self,
+        interaction: discord.Interaction,
+        reminder_id: str,
+    ) -> None:
         await self._send_not_implemented(interaction, "/reminder remove")
 
     @reminder_group.command(
         name="edit",
         description="Edit an existing reminder.",
     )
-    async def reminder_edit(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(reminder_id="Reminder ID")
+    async def reminder_edit(
+        self,
+        interaction: discord.Interaction,
+        reminder_id: str,
+    ) -> None:
         await self._send_not_implemented(interaction, "/reminder edit")
 
     @reminder_group.command(
         name="pause",
         description="Pause reminders by ID or all at once.",
     )
-    async def reminder_pause(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(reminder_id="Reminder ID")
+    async def reminder_pause(
+        self,
+        interaction: discord.Interaction,
+        reminder_id: str,
+    ) -> None:
         await self._send_not_implemented(interaction, "/reminder pause")
 
     @reminder_group.command(
         name="resume",
         description="Resume paused reminders by ID or all at once.",
     )
-    async def reminder_resume(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(
+        reminder_id="Reminder ID",
+        all="Resume all reminders",
+    )
+    async def reminder_resume(
+        self,
+        interaction: discord.Interaction,
+        reminder_id: Optional[str] = None,
+        all: Optional[bool] = None,
+    ) -> None:
         await self._send_not_implemented(interaction, "/reminder resume")
 
     @reminder_group.command(
         name="customize",
         description="Set a custom reminder bot username and avatar.",
     )
-    async def reminder_customize(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(
+        username="Custom reminder bot username",
+        avatar_url="Custom reminder bot avatar URL",
+    )
+    async def reminder_customize(
+        self,
+        interaction: discord.Interaction,
+        username: Optional[str] = None,
+        avatar_url: Optional[str] = None,
+    ) -> None:
         await self._send_not_implemented(interaction, "/reminder customize")
 
     @reminder_group.command(
