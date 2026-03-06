@@ -931,13 +931,17 @@ class TodoListItemsView(discord.ui.View):
             item_id = str(item.get("_id") or "").strip()
             if not item_id:
                 continue
-            item_no = item.get("item_no")
-            item_label = str(item_no if item_no is not None else "?")
             item_name = str(item.get("name") or "Untitled").strip() or "Untitled"
-            status_label = TodoFunctions.status_label(TodoFunctions.item_status(item))
+            item_status_value = TodoFunctions.item_status(item)
+            status_label = TodoFunctions.status_label(item_status_value)
+            status_emoji = {
+                "todo": "\u26AA",
+                "in_progress": "\U0001F7E1",
+                "done": "\U0001F7E2",
+            }.get(item_status_value, "\u26AA")
             select_options.append(
                 discord.SelectOption(
-                    label=f"#{item_label} {item_name}"[:100],
+                    label=f"{status_emoji} {item_name}"[:100],
                     value=item_id,
                     description=status_label[:100],
                     default=(item_id == selected_item_id),
@@ -2091,17 +2095,22 @@ class TodoEmbeds:
         for display_index, item in enumerate(
             items[: TodoEmbeds._MAX_LIST_ITEMS_PREVIEW], start=1
         ):
-            number_emoji = TodoEmbeds._number_emoji(display_index)
+            item_status_value = TodoFunctions.item_status(item)
+            status_emoji = {
+                "todo": "\u26AA",
+                "in_progress": "\U0001F7E1",
+                "done": "\U0001F7E2",
+            }.get(item_status_value, "\u26AA")
             item_name = str(item.get("name") or "Untitled")
-            status = TodoFunctions.status_label(TodoFunctions.item_status(item))
+            status = TodoFunctions.status_label(item_status_value)
             list_name = str(item.get("list_name") or "").strip()
             text = TodoFunctions.item_text(item) or ""
             due_line = TodoEmbeds._due_line(item.get("due"))
             assignees = item.get("assignees") or []
             item_title = (
-                f"{number_emoji} {item_name} [{status}] | {list_name}"
+                f"{status_emoji} {item_name} [{status}] | {list_name}"
                 if list_name
-                else f"{number_emoji} {item_name} [{status}]"
+                else f"{status_emoji} {item_name} [{status}]"
             )
             value_lines = []
             description_line = TodoFunctions.truncate_multiline(text)
@@ -2165,17 +2174,22 @@ class TodoEmbeds:
         embed.description = f"{metadata_line}\n\u200b"
 
         for display_index, item in enumerate(items, start=1):
-            number_emoji = TodoEmbeds._number_emoji(display_index)
+            item_status_value = TodoFunctions.item_status(item)
+            status_emoji = {
+                "todo": "\u26AA",
+                "in_progress": "\U0001F7E1",
+                "done": "\U0001F7E2",
+            }.get(item_status_value, "\u26AA")
             item_name = str(item.get("name") or "Untitled")
-            status = TodoFunctions.status_label(TodoFunctions.item_status(item))
+            status = TodoFunctions.status_label(item_status_value)
             list_name = str(item.get("list_name") or "").strip()
             text = TodoFunctions.item_text(item) or ""
             due_line = TodoEmbeds._due_line(item.get("due"))
             assignees = item.get("assignees") or []
             item_title = (
-                f"{number_emoji} {item_name} [{status}] | {list_name}"
+                f"{status_emoji} {item_name} [{status}] | {list_name}"
                 if list_name
-                else f"{number_emoji} {item_name} [{status}]"
+                else f"{status_emoji} {item_name} [{status}]"
             )
             value_lines = []
             description_line = TodoFunctions.truncate_multiline(text)
