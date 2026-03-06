@@ -1,5 +1,5 @@
 import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import dateparser
@@ -15,6 +15,44 @@ from services.error_reporting import UserVisibleError, ValidationError
 
 
 class ReminderFunctions:
+    @staticmethod
+    def _truncate(text: str, limit: int = 60) -> str:
+        cleaned = str(text or "").strip()
+        if len(cleaned) <= limit:
+            return cleaned
+        return f"{cleaned[: limit - 3]}..."
+
+    @staticmethod
+    def _job_schedule_mode(job: DailyJob) -> str:
+        schedule = job.schedule
+        if isinstance(schedule, dict):
+            return str(schedule.get("mode") or "").strip().lower()
+        return str(getattr(schedule, "mode", "") or "").strip().lower()
+
+    @staticmethod
+    def reminder_label(job: DailyJob) -> str:
+        data = job.data or {}
+
+        if job.type == "stock":
+            ticker = str(data.get("ticker") or "").strip().upper()
+            if ticker:
+                return f"stock: {ticker}"
+            return "stock reminder"
+
+        embed_data = data.get("embed")
+        if isinstance(embed_data, dict):
+            title = str(embed_data.get("title") or "").strip()
+            if title:
+                return title
+
+        message = str(data.get("message") or "").strip()
+        if message:
+            first_line = message.splitlines()[0].strip()
+            if first_line:
+                return ReminderFunctions._truncate(first_line)
+
+        return "Untitled reminder"
+
     @staticmethod
     def _parse_datetime_string(
         raw: str,
@@ -204,6 +242,7 @@ class ReminderFunctions:
 
         if expires_at is not None:
             payload["expires_at"] = expires_at.isoformat()
+        payload["source"] = "reminder"
 
         return payload
 
@@ -252,8 +291,55 @@ class ReminderFunctions:
             payload["header"] = "\n".join(header_lines)
         if expires_at is not None:
             payload["expires_at"] = expires_at.isoformat()
+        payload["source"] = "reminder"
 
         return symbol, payload
+
+    @staticmethod
+    def is_reminder_job(job: Optional[DailyJob]) -> bool:
+        if job is None:
+            return False
+
+        data = job.data or {}
+        if str(data.get("source") or "").strip().lower() == "reminder":
+            return True
+
+        # Backward compatibility for one-time reminders created before
+        # reminder-specific metadata was stored.
+        return (
+            ReminderFunctions._job_schedule_mode(job) == "one-time"
+            and job.type in {"message", "stock"}
+        )
+
+    @staticmethod
+    def delete_reminder(
+        reminder_id: str,
+        guild_id: Optional[int],
+    ) -> bool:
+        manager = DailyJobManager()
+        normalized_id = reminder_id.strip()
+        job = manager.get_job(
+            normalized_id,
+            guild_id=guild_id,
+        )
+        if job is None:
+            return False
+
+        if not ReminderFunctions.is_reminder_job(job):
+            raise ValidationError("That ID belongs to a scheduled job, not a reminder.")
+
+        return manager.delete_job(
+            normalized_id,
+            guild_id=guild_id,
+        )
+
+    @staticmethod
+    def list_reminders(guild_id: Optional[int]) -> List[DailyJob]:
+        manager = DailyJobManager()
+        jobs = manager.list_jobs(guild_id=guild_id)
+        reminders = [job for job in jobs if ReminderFunctions.is_reminder_job(job)]
+        reminders.sort(key=lambda job: str(job.id))
+        return reminders
 
     @staticmethod
     def create_reminder(

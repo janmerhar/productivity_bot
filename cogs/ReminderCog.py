@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional
+from typing import List, Optional
 
 import discord
 from discord import app_commands
@@ -7,6 +7,7 @@ from discord.ext import commands
 
 from classes.ReminderFunctions import ReminderFunctions
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
+from services.error_reporting import ValidationError
 from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
@@ -181,7 +182,35 @@ class ReminderCog(commands.Cog):
         interaction: discord.Interaction,
         reminder_id: str,
     ) -> None:
-        await self._send_not_implemented(interaction, "/reminder remove")
+        ephemeral = True
+        await interaction.response.defer(ephemeral=ephemeral)
+
+        try:
+            deleted = await asyncio.to_thread(
+                ReminderFunctions.delete_reminder,
+                reminder_id,
+                interaction.guild_id,
+            )
+        except ValueError as exc:
+            raise ValidationError(
+                "That reminder ID is invalid.",
+                ephemeral=ephemeral,
+                cause=exc,
+            )
+
+        if not deleted:
+            raise ValidationError(
+                "No reminder found with that ID in this server.",
+                ephemeral=ephemeral,
+            )
+
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            **DailyTaskEmbeds.reminder_embed(
+                f"Deleted reminder `{reminder_id.strip()}`.",
+                ok=True,
+            ),
+        )
 
     @reminder_group.command(
         name="edit",
@@ -320,6 +349,75 @@ class ReminderCog(commands.Cog):
                 ok=True,
             ),
         )
+
+    async def _reminder_id_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        query = (current or "").strip().lower()
+        if interaction.guild_id is None:
+            return []
+
+        try:
+            reminders = await asyncio.to_thread(
+                ReminderFunctions.list_reminders,
+                interaction.guild_id,
+            )
+        except Exception:
+            return []
+
+        options: List[app_commands.Choice[str]] = []
+        for job in reminders:
+            label = ReminderFunctions.reminder_label(job)
+            job_id = str(job.id)
+            search_text = f"{label} {job_id}".lower()
+            if query and query not in search_text:
+                continue
+
+            choice_name = f"{label} [{job_id[:8]}]"
+            options.append(
+                app_commands.Choice(
+                    name=choice_name[:100],
+                    value=job_id,
+                )
+            )
+            if len(options) >= 25:
+                break
+
+        return options[:25]
+
+    @reminder_remove.autocomplete("reminder_id")
+    async def reminder_remove_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        return await self._reminder_id_autocomplete(interaction, current)
+
+    @reminder_edit.autocomplete("reminder_id")
+    async def reminder_edit_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        return await self._reminder_id_autocomplete(interaction, current)
+
+    @reminder_pause.autocomplete("reminder_id")
+    async def reminder_pause_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        return await self._reminder_id_autocomplete(interaction, current)
+
+    @reminder_resume.autocomplete("reminder_id")
+    async def reminder_resume_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        return await self._reminder_id_autocomplete(interaction, current)
 
 
 async def setup(client: commands.Bot) -> None:
