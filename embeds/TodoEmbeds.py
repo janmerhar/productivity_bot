@@ -1876,6 +1876,10 @@ class TodoEmbeds:
         return f"{sort_label} \u2022 {status_label} \u2022 {todo_items} {todo_label}"
 
     @staticmethod
+    def _audience_footer_label(mine_only: bool) -> str:
+        return "\U0001F9D1 Mine" if mine_only else "\U0001F468\u200d\U0001F469\u200d\U0001F467\u200d\U0001F466 Everyone"
+
+    @staticmethod
     def _parse_due_dt(
         value: Optional[Union[datetime.datetime, str]],
     ) -> Optional[datetime.datetime]:
@@ -2088,7 +2092,7 @@ class TodoEmbeds:
 
         if not items:
             embed.description += "\nNo items in this list."
-            embed.set_footer(text=f"Mine: {'On' if mine_only else 'Off'}")
+            embed.set_footer(text=TodoEmbeds._audience_footer_label(mine_only))
             return {"embed": embed}
 
         for display_index, item in enumerate(
@@ -2136,7 +2140,7 @@ class TodoEmbeds:
                 )
             )
         else:
-            embed.set_footer(text=f"Mine: {'On' if mine_only else 'Off'}")
+            embed.set_footer(text=TodoEmbeds._audience_footer_label(mine_only))
 
         return {"embed": embed}
 
@@ -2165,7 +2169,7 @@ class TodoEmbeds:
 
         if not items:
             embed.description = f"{metadata_line}\n\u200b\nNo items in this list."
-            embed.set_footer(text=f"Mine: {'On' if mine_only else 'Off'}")
+            embed.set_footer(text=TodoEmbeds._audience_footer_label(mine_only))
             return {"embed": embed}
 
         embed.description = f"{metadata_line}\n\u200b"
@@ -2204,7 +2208,7 @@ class TodoEmbeds:
                 inline=False,
             )
 
-        embed.set_footer(text=f"Mine: {'On' if mine_only else 'Off'}")
+        embed.set_footer(text=TodoEmbeds._audience_footer_label(mine_only))
         return {"embed": embed}
 
     @staticmethod
