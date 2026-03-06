@@ -28,6 +28,18 @@ ScheduleConfig = Union[OneTimeSchedule2, CronSchedule]
 
 class DailyJob:
     @staticmethod
+    def _is_paused(data: Optional[Mapping[str, Any]]) -> bool:
+        paused_value = (data or {}).get("paused")
+        if isinstance(paused_value, str):
+            paused_value = paused_value.strip().lower() in (
+                "1",
+                "true",
+                "yes",
+                "on",
+            )
+        return bool(paused_value)
+
+    @staticmethod
     def _parse_expiration(data: Optional[Mapping[str, Any]]) -> Optional[datetime.datetime]:
         raw_value = str((data or {}).get("expires_at") or "").strip()
         if not raw_value:
@@ -170,17 +182,8 @@ class DailyJob:
             ):
                 return False
 
-        if self.type == "pomodoro":
-            paused_value = (self.data or {}).get("paused")
-            if isinstance(paused_value, str):
-                paused_value = paused_value.strip().lower() in (
-                    "1",
-                    "true",
-                    "yes",
-                    "on",
-                )
-            if bool(paused_value):
-                return False
+        if self._is_paused(self.data):
+            return False
 
         schedule = self.schedule
 

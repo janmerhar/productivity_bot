@@ -234,7 +234,45 @@ class ReminderCog(commands.Cog):
         interaction: discord.Interaction,
         reminder_id: str,
     ) -> None:
-        await self._send_not_implemented(interaction, "/reminder pause")
+        ephemeral = True
+        await interaction.response.defer(ephemeral=ephemeral)
+
+        try:
+            result = await asyncio.to_thread(
+                ReminderFunctions.pause_reminder,
+                reminder_id,
+                interaction.guild_id,
+            )
+        except ValueError as exc:
+            raise ValidationError(
+                "That reminder ID is invalid.",
+                ephemeral=ephemeral,
+                cause=exc,
+            )
+
+        if result == "missing":
+            raise ValidationError(
+                "No reminder found with that ID in this server.",
+                ephemeral=ephemeral,
+            )
+
+        if result == "already_paused":
+            await interaction.followup.send(
+                ephemeral=ephemeral,
+                **DailyTaskEmbeds.reminder_embed(
+                    f"Reminder `{reminder_id.strip()}` is already paused.",
+                    ok=True,
+                ),
+            )
+            return
+
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            **DailyTaskEmbeds.reminder_embed(
+                f"Paused reminder `{reminder_id.strip()}`.",
+                ok=True,
+            ),
+        )
 
     @reminder_group.command(
         name="resume",
@@ -250,7 +288,84 @@ class ReminderCog(commands.Cog):
         reminder_id: Optional[str] = None,
         all: Optional[bool] = None,
     ) -> None:
-        await self._send_not_implemented(interaction, "/reminder resume")
+        ephemeral = True
+        await interaction.response.defer(ephemeral=ephemeral)
+
+        reminder_id_value = (reminder_id or "").strip()
+        resume_all = bool(all)
+
+        if reminder_id_value and resume_all:
+            raise ValidationError(
+                "Choose either a reminder ID or `all=true`, not both.",
+                ephemeral=ephemeral,
+            )
+
+        if resume_all:
+            resumed_count = await asyncio.to_thread(
+                ReminderFunctions.resume_all_reminders,
+                interaction.guild_id,
+            )
+            if resumed_count == 0:
+                await interaction.followup.send(
+                    ephemeral=ephemeral,
+                    **DailyTaskEmbeds.reminder_embed(
+                        "There are no paused reminders to resume.",
+                        ok=True,
+                    ),
+                )
+                return
+
+            await interaction.followup.send(
+                ephemeral=ephemeral,
+                **DailyTaskEmbeds.reminder_embed(
+                    f"Resumed {resumed_count} reminder(s).",
+                    ok=True,
+                ),
+            )
+            return
+
+        if not reminder_id_value:
+            raise ValidationError(
+                "Provide a reminder ID or use `all=true`.",
+                ephemeral=ephemeral,
+            )
+
+        try:
+            result = await asyncio.to_thread(
+                ReminderFunctions.resume_reminder,
+                reminder_id_value,
+                interaction.guild_id,
+            )
+        except ValueError as exc:
+            raise ValidationError(
+                "That reminder ID is invalid.",
+                ephemeral=ephemeral,
+                cause=exc,
+            )
+
+        if result == "missing":
+            raise ValidationError(
+                "No reminder found with that ID in this server.",
+                ephemeral=ephemeral,
+            )
+
+        if result == "already_resumed":
+            await interaction.followup.send(
+                ephemeral=ephemeral,
+                **DailyTaskEmbeds.reminder_embed(
+                    f"Reminder `{reminder_id_value}` is already active.",
+                    ok=True,
+                ),
+            )
+            return
+
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            **DailyTaskEmbeds.reminder_embed(
+                f"Resumed reminder `{reminder_id_value}`.",
+                ok=True,
+            ),
+        )
 
     @reminder_group.command(
         name="customize",

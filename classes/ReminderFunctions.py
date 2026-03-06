@@ -23,6 +23,12 @@ class ReminderFunctions:
         return f"{cleaned[: limit - 3]}..."
 
     @staticmethod
+    def _as_bool(value: Any) -> bool:
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(value)
+
+    @staticmethod
     def _job_schedule_mode(job: DailyJob) -> str:
         schedule = job.schedule
         if isinstance(schedule, dict):
@@ -340,6 +346,91 @@ class ReminderFunctions:
         reminders = [job for job in jobs if ReminderFunctions.is_reminder_job(job)]
         reminders.sort(key=lambda job: str(job.id))
         return reminders
+
+    @staticmethod
+    def pause_reminder(
+        reminder_id: str,
+        guild_id: Optional[int],
+    ) -> str:
+        manager = DailyJobManager()
+        normalized_id = reminder_id.strip()
+        job = manager.get_job(
+            normalized_id,
+            guild_id=guild_id,
+        )
+        if job is None:
+            return "missing"
+
+        if not ReminderFunctions.is_reminder_job(job):
+            raise ValidationError("That ID belongs to a scheduled job, not a reminder.")
+
+        data = dict(job.data or {})
+        if ReminderFunctions._as_bool(data.get("paused")):
+            return "already_paused"
+
+        data["paused"] = True
+        data["source"] = "reminder"
+
+        updated = manager.update_job(
+            normalized_id,
+            data=data,
+            guild_id=guild_id,
+        )
+        return "paused" if updated else "missing"
+
+    @staticmethod
+    def resume_reminder(
+        reminder_id: str,
+        guild_id: Optional[int],
+    ) -> str:
+        manager = DailyJobManager()
+        normalized_id = reminder_id.strip()
+        job = manager.get_job(
+            normalized_id,
+            guild_id=guild_id,
+        )
+        if job is None:
+            return "missing"
+
+        if not ReminderFunctions.is_reminder_job(job):
+            raise ValidationError("That ID belongs to a scheduled job, not a reminder.")
+
+        data = dict(job.data or {})
+        if not ReminderFunctions._as_bool(data.get("paused")):
+            return "already_resumed"
+
+        data["paused"] = False
+        data["source"] = "reminder"
+
+        updated = manager.update_job(
+            normalized_id,
+            data=data,
+            guild_id=guild_id,
+        )
+        return "resumed" if updated else "missing"
+
+    @staticmethod
+    def resume_all_reminders(guild_id: Optional[int]) -> int:
+        manager = DailyJobManager()
+        reminders = ReminderFunctions.list_reminders(guild_id)
+        resumed_count = 0
+
+        for job in reminders:
+            data = dict(job.data or {})
+            if not ReminderFunctions._as_bool(data.get("paused")):
+                continue
+
+            data["paused"] = False
+            data["source"] = "reminder"
+            updated = manager.update_job(
+                str(job.id),
+                data=data,
+                guild_id=guild_id,
+            )
+            if updated:
+                resumed_count += 1
+
+        return resumed_count
 
     @staticmethod
     def create_reminder(
