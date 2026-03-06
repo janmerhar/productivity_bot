@@ -15,14 +15,6 @@ from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
-REPEAT_INTERVAL_CHOICES = [
-    app_commands.Choice(name="Daily", value="daily"),
-    app_commands.Choice(name="Weekly", value="weekly"),
-    app_commands.Choice(name="Monthly", value="monthly"),
-    app_commands.Choice(name="Yearly", value="yearly"),
-    app_commands.Choice(name="Custom", value="custom"),
-]
-
 
 def parse_time_string(
     raw: str,
@@ -140,53 +132,28 @@ class ReminderCog(commands.Cog):
         description="Create a one-time or recurring reminder.",
     )
     @app_commands.describe(
-        reason="Reminder reason",
-        time="Reminder time",
-        repeat_interval="Repeat interval",
-        custom_interval="Custom repeat interval",
-        ping="Ping target",
-        pingn_2="Second ping target",
-        ping_3="Third ping target",
-        ping_4="Fourth ping target",
-        title="Reminder title",
-        image_url="Image URL",
+        reminder="Reminder title or primary content",
+        time="Cron expression or natural language schedule",
+        repeat="Repeat interval or custom repeat expression",
+        ping="User or role to ping",
         thumbnail_url="Thumbnail URL",
-        color="Embed color",
-        footer="Footer text",
-        timestamp="Timestamp",
-        skip_day="First skipped day",
-        skip_day2="Second skipped day",
-        skip_day3="Third skipped day",
-        message_content="Message content",
+        skip_days="Comma-separated days to skip",
+        description="Reminder description",
         expires_after="Expiration time",
-        delete_previous="Delete previous reminder message",
         destination_channel="Destination channel",
     )
-    @app_commands.rename(destination_channel="destination_channel")
     async def reminder_add(
         self,
         interaction: discord.Interaction,
-        reason: str,
+        reminder: str,
         time: str,
-        repeat_interval: Optional[str] = None,
-        custom_interval: Optional[str] = None,
-        ping: Optional[str] = None,
-        pingn_2: Optional[str] = None,
-        ping_3: Optional[str] = None,
-        ping_4: Optional[str] = None,
-        title: Optional[str] = None,
-        image_url: Optional[str] = None,
+        repeat: Optional[str] = None,
+        ping: Optional[discord.Member | discord.Role] = None,
         thumbnail_url: Optional[str] = None,
-        color: Optional[str] = None,
-        footer: Optional[str] = None,
-        timestamp: Optional[str] = None,
-        skip_day: Optional[str] = None,
-        skip_day2: Optional[str] = None,
-        skip_day3: Optional[str] = None,
-        message_content: Optional[str] = None,
+        skip_days: Optional[str] = None,
+        description: Optional[str] = None,
         expires_after: Optional[str] = None,
-        delete_previous: Optional[bool] = None,
-        destination_channel: Optional[str] = None,
+        destination_channel: Optional[discord.TextChannel] = None,
     ) -> None:
         await self._send_not_implemented(interaction, "/reminder add")
 
