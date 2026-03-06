@@ -236,11 +236,36 @@ class ReminderCog(commands.Cog):
     ) -> None:
         ephemeral = True
         await interaction.response.defer(ephemeral=ephemeral)
+        reminder_id_value = reminder_id.strip()
+
+        if reminder_id_value == ReminderFunctions.ALL_REMINDERS_TOKEN:
+            paused_count = await asyncio.to_thread(
+                ReminderFunctions.pause_all_reminders,
+                interaction.guild_id,
+            )
+            if paused_count == 0:
+                await interaction.followup.send(
+                    ephemeral=ephemeral,
+                    **DailyTaskEmbeds.reminder_embed(
+                        "There are no active reminders to pause.",
+                        ok=True,
+                    ),
+                )
+                return
+
+            await interaction.followup.send(
+                ephemeral=ephemeral,
+                **DailyTaskEmbeds.reminder_embed(
+                    f"Paused {paused_count} reminder(s).",
+                    ok=True,
+                ),
+            )
+            return
 
         try:
             result = await asyncio.to_thread(
                 ReminderFunctions.pause_reminder,
-                reminder_id,
+                reminder_id_value,
                 interaction.guild_id,
             )
         except ValueError as exc:
@@ -260,7 +285,7 @@ class ReminderCog(commands.Cog):
             await interaction.followup.send(
                 ephemeral=ephemeral,
                 **DailyTaskEmbeds.reminder_embed(
-                    f"Reminder `{reminder_id.strip()}` is already paused.",
+                    f"Reminder `{reminder_id_value}` is already paused.",
                     ok=True,
                 ),
             )
@@ -269,7 +294,7 @@ class ReminderCog(commands.Cog):
         await interaction.followup.send(
             ephemeral=ephemeral,
             **DailyTaskEmbeds.reminder_embed(
-                f"Paused reminder `{reminder_id.strip()}`.",
+                f"Paused reminder `{reminder_id_value}`.",
                 ok=True,
             ),
         )
@@ -292,7 +317,12 @@ class ReminderCog(commands.Cog):
         await interaction.response.defer(ephemeral=ephemeral)
 
         reminder_id_value = (reminder_id or "").strip()
-        resume_all = bool(all)
+        resume_all = bool(all) or (
+            reminder_id_value == ReminderFunctions.ALL_REMINDERS_TOKEN
+        )
+
+        if reminder_id_value == ReminderFunctions.ALL_REMINDERS_TOKEN:
+            reminder_id_value = ""
 
         if reminder_id_value and resume_all:
             raise ValidationError(
@@ -469,6 +499,10 @@ class ReminderCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         current: str,
+        *,
+        paused: Optional[bool] = None,
+        include_all: bool = False,
+        all_label: str = "All",
     ) -> List[app_commands.Choice[str]]:
         query = (current or "").strip().lower()
         if interaction.guild_id is None:
@@ -478,11 +512,22 @@ class ReminderCog(commands.Cog):
             reminders = await asyncio.to_thread(
                 ReminderFunctions.list_reminders,
                 interaction.guild_id,
+                paused,
             )
         except Exception:
             return []
 
         options: List[app_commands.Choice[str]] = []
+        if include_all:
+            all_search_text = all_label.lower()
+            if not query or query in all_search_text or "all".startswith(query):
+                options.append(
+                    app_commands.Choice(
+                        name=all_label[:100],
+                        value=ReminderFunctions.ALL_REMINDERS_TOKEN,
+                    )
+                )
+
         for job in reminders:
             label = ReminderFunctions.reminder_label(job)
             job_id = str(job.id)
@@ -524,7 +569,13 @@ class ReminderCog(commands.Cog):
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
-        return await self._reminder_id_autocomplete(interaction, current)
+        return await self._reminder_id_autocomplete(
+            interaction,
+            current,
+            paused=False,
+            include_all=True,
+            all_label="All active reminders",
+        )
 
     @reminder_resume.autocomplete("reminder_id")
     async def reminder_resume_autocomplete(
@@ -532,7 +583,13 @@ class ReminderCog(commands.Cog):
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
-        return await self._reminder_id_autocomplete(interaction, current)
+        return await self._reminder_id_autocomplete(
+            interaction,
+            current,
+            paused=True,
+            include_all=True,
+            all_label="All paused reminders",
+        )
 
 
 async def setup(client: commands.Bot) -> None:
