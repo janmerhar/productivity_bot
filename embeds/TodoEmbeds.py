@@ -2102,15 +2102,14 @@ class TodoEmbeds:
                 "done": "\U0001F7E2",
             }.get(item_status_value, "\u26AA")
             item_name = str(item.get("name") or "Untitled")
-            status = TodoFunctions.status_label(item_status_value)
             list_name = str(item.get("list_name") or "").strip()
             text = TodoFunctions.item_text(item) or ""
             due_line = TodoEmbeds._due_line(item.get("due"))
             assignees = item.get("assignees") or []
             item_title = (
-                f"{status_emoji} {item_name} [{status}] | {list_name}"
+                f"{status_emoji} {item_name} | {list_name}"
                 if list_name
-                else f"{status_emoji} {item_name} [{status}]"
+                else f"{status_emoji} {item_name}"
             )
             value_lines = []
             description_line = TodoFunctions.truncate_multiline(text)
@@ -2181,15 +2180,14 @@ class TodoEmbeds:
                 "done": "\U0001F7E2",
             }.get(item_status_value, "\u26AA")
             item_name = str(item.get("name") or "Untitled")
-            status = TodoFunctions.status_label(item_status_value)
             list_name = str(item.get("list_name") or "").strip()
             text = TodoFunctions.item_text(item) or ""
             due_line = TodoEmbeds._due_line(item.get("due"))
             assignees = item.get("assignees") or []
             item_title = (
-                f"{status_emoji} {item_name} [{status}] | {list_name}"
+                f"{status_emoji} {item_name} | {list_name}"
                 if list_name
-                else f"{status_emoji} {item_name} [{status}]"
+                else f"{status_emoji} {item_name}"
             )
             value_lines = []
             description_line = TodoFunctions.truncate_multiline(text)
