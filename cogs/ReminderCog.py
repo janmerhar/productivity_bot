@@ -413,20 +413,6 @@ class ReminderCog(commands.Cog):
     ) -> None:
         await self._send_not_implemented(interaction, "/reminder customize")
 
-    @reminder_group.command(
-        name="dst-forward",
-        description="Shift all reminders forward by one hour.",
-    )
-    async def reminder_dst_forward(self, interaction: discord.Interaction) -> None:
-        await self._send_not_implemented(interaction, "/reminder dst-forward")
-
-    @reminder_group.command(
-        name="dst-backward",
-        description="Shift all reminders backward by one hour.",
-    )
-    async def reminder_dst_backward(self, interaction: discord.Interaction) -> None:
-        await self._send_not_implemented(interaction, "/reminder dst-backward")
-
     async def _create_reminder(
         self,
         interaction: discord.Interaction,
