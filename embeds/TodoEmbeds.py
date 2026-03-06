@@ -1877,7 +1877,22 @@ class TodoEmbeds:
 
     @staticmethod
     def _audience_footer_label(mine_only: bool) -> str:
-        return "\U0001F9D1 Mine" if mine_only else "\U0001F468\u200d\U0001F469\u200d\U0001F467\u200d\U0001F466 Everyone"
+        return (
+            "\U0001f9d1 Mine"
+            if mine_only
+            else "\U0001f468\ufe0f\u200d\U0001f469\ufe0f\u200d\U0001f467\ufe0f\u200d\U0001f466\ufe0f Everyone"
+        )
+
+    @staticmethod
+    def _list_footer_line(
+        sort: str,
+        status_filter: str,
+        todo_items: int,
+        mine_only: bool,
+    ) -> str:
+        metadata = TodoEmbeds._list_metadata_line(sort, status_filter, todo_items)
+        audience = TodoEmbeds._audience_footer_label(mine_only)
+        return f"{metadata} \u2022 {audience}"
 
     @staticmethod
     def _parse_due_dt(
@@ -2083,21 +2098,19 @@ class TodoEmbeds:
         todo_count = sum(
             1 for item in items if TodoFunctions.item_status(item) == "todo"
         )
-        metadata_line = TodoEmbeds._list_metadata_line(
+        metadata_line = TodoEmbeds._list_footer_line(
             sort,
             status_filter,
             todo_count,
+            mine_only,
         )
         embed.description = f"{metadata_line}\n\u200b"
-
         if not items:
             embed.description += "\nNo items in this list."
-            embed.set_footer(text=TodoEmbeds._audience_footer_label(mine_only))
             return {"embed": embed}
 
-        for display_index, item in enumerate(
-            items[: TodoEmbeds._MAX_LIST_ITEMS_PREVIEW], start=1
-        ):
+        visible_items = items[: TodoEmbeds._MAX_LIST_ITEMS_PREVIEW]
+        for display_index, item in enumerate(visible_items, start=1):
             item_status_value = TodoFunctions.item_status(item)
             status_emoji = {
                 "todo": "\u26aa",
@@ -2125,9 +2138,12 @@ class TodoEmbeds:
                 value_lines.append(f"\U0001f465 Assignees: {mentions}")
             if not value_lines:
                 value_lines.append("No details")
+            value_text = "\n".join(value_lines)
+            if display_index < len(visible_items):
+                value_text += "\n\u200b"
             embed.add_field(
                 name=item_title,
-                value="\n".join(value_lines) + "\n\u200b",
+                value=value_text,
                 inline=False,
             )
 
@@ -2139,8 +2155,6 @@ class TodoEmbeds:
                     f"({remaining} more)"
                 )
             )
-        else:
-            embed.set_footer(text=TodoEmbeds._audience_footer_label(mine_only))
 
         return {"embed": embed}
 
@@ -2161,18 +2175,16 @@ class TodoEmbeds:
             color=discord.Colour.blurple(),
         )
         todo_count = status_counts.get("todo", 0) if status_counts else 0
-        metadata_line = TodoEmbeds._list_metadata_line(
+        metadata_line = TodoEmbeds._list_footer_line(
             sort,
             status_filter,
             todo_count,
+            mine_only,
         )
-
-        if not items:
-            embed.description = f"{metadata_line}\n\u200b\nNo items in this list."
-            embed.set_footer(text=TodoEmbeds._audience_footer_label(mine_only))
-            return {"embed": embed}
-
         embed.description = f"{metadata_line}\n\u200b"
+        if not items:
+            embed.description += "\nNo items in this list."
+            return {"embed": embed}
 
         for display_index, item in enumerate(items, start=1):
             item_status_value = TodoFunctions.item_status(item)
@@ -2202,13 +2214,15 @@ class TodoEmbeds:
                 value_lines.append(f"\U0001f465 Assignees: {mentions}")
             if not value_lines:
                 value_lines.append("No details")
+            value_text = "\n".join(value_lines)
+            if display_index < len(items):
+                value_text += "\n\u200b"
             embed.add_field(
                 name=item_title,
-                value="\n".join(value_lines) + "\n\u200b",
+                value=value_text,
                 inline=False,
             )
 
-        embed.set_footer(text=TodoEmbeds._audience_footer_label(mine_only))
         return {"embed": embed}
 
     @staticmethod
