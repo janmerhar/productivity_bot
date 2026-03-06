@@ -14,27 +14,27 @@ from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC
 
 
 _SORT_CHOICES = [
-    app_commands.Choice(name="Ascending", value="ascending"),
-    app_commands.Choice(name="Descending", value="descending"),
+    app_commands.Choice(name="↑ Asc(ending)", value="ascending"),
+    app_commands.Choice(name="↓ Desc(ending)", value="descending"),
 ]
 _ADD_SCOPE_CHOICES = [
     app_commands.Choice(name="This Channel", value="channel"),
     app_commands.Choice(name="Personal", value="personal"),
 ]
 _ITEM_STATUS_CHOICES = [
-    app_commands.Choice(name="To Do", value="todo"),
-    app_commands.Choice(name="In Progress", value="in_progress"),
-    app_commands.Choice(name="Done", value="done"),
+    app_commands.Choice(name="⚪ To Do", value="todo"),
+    app_commands.Choice(name="🟡 In Progress", value="in_progress"),
+    app_commands.Choice(name="🟢 Completed", value="done"),
 ]
 _YES_NO_CHOICES = [
-    app_commands.Choice(name="Yes", value="yes"),
-    app_commands.Choice(name="No", value="no"),
+    app_commands.Choice(name="✅ Yes", value="yes"),
+    app_commands.Choice(name="❌  No", value="no"),
 ]
 _LIST_STATUS_FILTER_CHOICES = [
-    app_commands.Choice(name="All", value="all"),
-    app_commands.Choice(name="To Do", value="todo"),
-    app_commands.Choice(name="In Progress", value="in_progress"),
-    app_commands.Choice(name="Done", value="done"),
+    app_commands.Choice(name="🌈 All", value="all"),
+    app_commands.Choice(name="⚪ To Do", value="todo"),
+    app_commands.Choice(name="🟡 In Progress", value="in_progress"),
+    app_commands.Choice(name="🟢 Completed", value="done"),
 ]
 
 
@@ -421,6 +421,7 @@ class TodoCog(commands.Cog):
         channel_name = getattr(interaction.channel, "name", None)
         timezone = None
         if (due or "").strip():
+
             async def _continue_with_timezone(
                 followup_interaction: discord.Interaction,
                 resolved_timezone: str,

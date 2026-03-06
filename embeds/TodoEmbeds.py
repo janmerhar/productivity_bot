@@ -935,10 +935,10 @@ class TodoListItemsView(discord.ui.View):
             item_status_value = TodoFunctions.item_status(item)
             status_label = TodoFunctions.status_label(item_status_value)
             status_emoji = {
-                "todo": "\u26AA",
-                "in_progress": "\U0001F7E1",
-                "done": "\U0001F7E2",
-            }.get(item_status_value, "\u26AA")
+                "todo": "\u26aa",
+                "in_progress": "\U0001f7e1",
+                "done": "\U0001f7e2",
+            }.get(item_status_value, "\u26aa")
             select_options.append(
                 discord.SelectOption(
                     label=f"{status_emoji} {item_name}"[:100],
@@ -1853,7 +1853,7 @@ class TodoEmbeds:
 
     @staticmethod
     def _meta_line(sort: str, status_filter: str, mine_only: bool) -> str:
-        sort_label = "Ascending" if sort == "ascending" else "Descending"
+        sort_label = "↑ Ascending" if sort == "ascending" else "↓ Descending"
         status_label = TodoEmbeds._status_filter_label(status_filter)
         mine_label = "On" if mine_only else "Off"
         return f"Sort: {sort_label} | Status: {status_label} | Mine only: {mine_label}"
@@ -1864,17 +1864,16 @@ class TodoEmbeds:
         status_filter: str,
         todo_items: int,
     ) -> str:
-        sort_label = "Ascending" if sort == "ascending" else "Descending"
+        sort_label = "↑ Asc" if sort == "ascending" else "↓ Desc"
         status_labels = {
-            "todo": "\u26AA To Do",
-            "in_progress": "\U0001F7E1 In Progress",
-            "done": "\U0001F7E2 Completed",
-            "all": "\u26AA\U0001F7E1\U0001F7E2 All",
+            "todo": "\u26aa To Do",
+            "in_progress": "\U0001f7e1 In Progress",
+            "done": "\U0001f7e2 Completed",
+            "all": "\U0001f308 All",
         }
         status_label = status_labels.get(status_filter, status_labels["all"])
-        todo_label = "To Do" if todo_items == 1 else "To Dos"
+        todo_label = "Item" if todo_items == 1 else "Items"
         return f"{sort_label} \u2022 {status_label} \u2022 {todo_items} {todo_label}"
-
 
     @staticmethod
     def _parse_due_dt(
@@ -2097,10 +2096,10 @@ class TodoEmbeds:
         ):
             item_status_value = TodoFunctions.item_status(item)
             status_emoji = {
-                "todo": "\u26AA",
-                "in_progress": "\U0001F7E1",
-                "done": "\U0001F7E2",
-            }.get(item_status_value, "\u26AA")
+                "todo": "\u26aa",
+                "in_progress": "\U0001f7e1",
+                "done": "\U0001f7e2",
+            }.get(item_status_value, "\u26aa")
             item_name = str(item.get("name") or "Untitled")
             list_name = str(item.get("list_name") or "").strip()
             text = TodoFunctions.item_text(item) or ""
@@ -2119,7 +2118,7 @@ class TodoEmbeds:
                 value_lines.append(due_line)
             if assignees:
                 mentions = " ".join(f"<@{uid}>" for uid in assignees)
-                value_lines.append(f"\U0001F465 Assignees: {mentions}")
+                value_lines.append(f"\U0001f465 Assignees: {mentions}")
             if not value_lines:
                 value_lines.append("No details")
             embed.add_field(
@@ -2140,7 +2139,6 @@ class TodoEmbeds:
             embed.set_footer(text=f"Mine: {'On' if mine_only else 'Off'}")
 
         return {"embed": embed}
-
 
     @staticmethod
     def list_items_page_embed(
@@ -2175,10 +2173,10 @@ class TodoEmbeds:
         for display_index, item in enumerate(items, start=1):
             item_status_value = TodoFunctions.item_status(item)
             status_emoji = {
-                "todo": "\u26AA",
-                "in_progress": "\U0001F7E1",
-                "done": "\U0001F7E2",
-            }.get(item_status_value, "\u26AA")
+                "todo": "\u26aa",
+                "in_progress": "\U0001f7e1",
+                "done": "\U0001f7e2",
+            }.get(item_status_value, "\u26aa")
             item_name = str(item.get("name") or "Untitled")
             list_name = str(item.get("list_name") or "").strip()
             text = TodoFunctions.item_text(item) or ""
@@ -2197,7 +2195,7 @@ class TodoEmbeds:
                 value_lines.append(due_line)
             if assignees:
                 mentions = " ".join(f"<@{uid}>" for uid in assignees)
-                value_lines.append(f"\U0001F465 Assignees: {mentions}")
+                value_lines.append(f"\U0001f465 Assignees: {mentions}")
             if not value_lines:
                 value_lines.append("No details")
             embed.add_field(
@@ -2208,7 +2206,6 @@ class TodoEmbeds:
 
         embed.set_footer(text=f"Mine: {'On' if mine_only else 'Off'}")
         return {"embed": embed}
-
 
     @staticmethod
     def item_details_embed(
