@@ -1864,6 +1864,7 @@ class TodoEmbeds:
         sort: str,
         status_filter: str,
         todo_items: int,
+        list_reference: Optional[str] = None,
     ) -> str:
         sort_label = "↑ Asc" if sort == "ascending" else "↓ Desc"
         status_labels = {
@@ -1874,7 +1875,10 @@ class TodoEmbeds:
         }
         status_label = status_labels.get(status_filter, status_labels["all"])
         todo_label = "Item" if todo_items == 1 else "Items"
-        return f"{sort_label} \u2022 {status_label} \u2022 {todo_items} {todo_label}"
+        metadata = f"{sort_label} \u2022 {status_label} \u2022 {todo_items} {todo_label}"
+        if list_reference:
+            metadata = f"{metadata} \u2022 {list_reference}"
+        return metadata
 
     @staticmethod
     def _audience_footer_label(mine_only: bool) -> str:
@@ -1890,13 +1894,23 @@ class TodoEmbeds:
         status_filter: str,
         todo_items: int,
         mine_only: bool,
+        list_reference: Optional[str] = None,
     ) -> str:
-        metadata = TodoEmbeds._list_metadata_line(sort, status_filter, todo_items)
+        metadata = TodoEmbeds._list_metadata_line(
+            sort, status_filter, todo_items, list_reference
+        )
         audience = TodoEmbeds._audience_footer_label(mine_only)
         metadata_parts = metadata.split(" \u2022 ")
-        if len(metadata_parts) == 3:
-            sort_label, status_label, count_label = metadata_parts
-            return f"{status_label} \u2022 {audience} \u2022 {sort_label} \u2022 {count_label}"
+        if len(metadata_parts) >= 3:
+            sort_label, status_label, count_label, *rest = metadata_parts
+            reordered = [
+                status_label,
+                audience,
+                sort_label,
+                count_label,
+                *rest,
+            ]
+            return " \u2022 ".join(reordered)
         return f"{metadata} \u2022 {audience}"
 
     @staticmethod
@@ -1964,8 +1978,18 @@ class TodoEmbeds:
 
     @staticmethod
     def _list_title(todo_list: Dict[str, Any]) -> str:
-        list_name = str(todo_list.get("name") or "Unnamed")
-        return f"To Do List ({list_name})"
+        return "To Do List"
+
+    @staticmethod
+    def _list_reference_label(todo_list: Dict[str, Any]) -> Optional[str]:
+        channel_id = todo_list.get("channel_id")
+        if channel_id is not None:
+            return f"<#{channel_id}>"
+
+        list_name = str(todo_list.get("name") or "").strip()
+        if list_name:
+            return f"#{list_name}"
+        return None
 
     @staticmethod
     def _number_emoji(value: int) -> str:
@@ -2108,6 +2132,7 @@ class TodoEmbeds:
             status_filter,
             todo_count,
             mine_only,
+            TodoEmbeds._list_reference_label(todo_list),
         )
         embed.description = f"{metadata_line}\n\u200b"
         if not items:
@@ -2186,6 +2211,7 @@ class TodoEmbeds:
             status_filter,
             todo_count,
             mine_only,
+            TodoEmbeds._list_reference_label(todo_list),
         )
         embed.description = f"{metadata_line}\n\u200b"
         if not items:
