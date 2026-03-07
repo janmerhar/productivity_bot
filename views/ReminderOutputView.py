@@ -9,7 +9,10 @@ from discord.ext import commands
 from classes.DailyJobManager import DailyJobManager
 from classes.DailyJob import DailyJob
 from classes.ReminderFunctions import ReminderFunctions
-from services.discord_helpers import format_reminder_mentions, resolve_messageable_channel
+from services.discord_helpers import (
+    format_reminder_mentions,
+    resolve_messageable_channel,
+)
 from services.error_reporting import ValidationError, handle_interaction_error
 
 
@@ -217,15 +220,18 @@ class ReminderOutputView(discord.ui.View):
         self.delete_reminder.disabled = not has_job
 
         if not has_job:
-            self.toggle_state.label = "Unavailable"
+            self.toggle_state.label = None
+            self.toggle_state.emoji = "🚫"
             self.toggle_state.style = discord.ButtonStyle.secondary
             return
 
         if ReminderFunctions.is_paused(self.job):
-            self.toggle_state.label = "Resume"
+            self.toggle_state.label = None
+            self.toggle_state.emoji = "▶️"
             self.toggle_state.style = discord.ButtonStyle.success
         else:
-            self.toggle_state.label = "Pause"
+            self.toggle_state.label = None
+            self.toggle_state.emoji = "⏸️"
             self.toggle_state.style = discord.ButtonStyle.secondary
 
     @staticmethod
@@ -359,7 +365,7 @@ class ReminderOutputView(discord.ui.View):
         return payload
 
     @discord.ui.button(
-        label="Add Reminder",
+        emoji="➕",
         style=discord.ButtonStyle.success,
         row=0,
     )
@@ -390,8 +396,8 @@ class ReminderOutputView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="Edit",
-        style=discord.ButtonStyle.primary,
+        emoji="✏️",
+        style=discord.ButtonStyle.secondary,
         row=0,
     )
     async def edit_this_reminder(
@@ -427,7 +433,7 @@ class ReminderOutputView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="Change Channel",
+        emoji="📣",
         style=discord.ButtonStyle.primary,
         row=0,
     )
@@ -458,7 +464,7 @@ class ReminderOutputView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="Pause",
+        emoji="⏸️",
         style=discord.ButtonStyle.secondary,
         row=0,
     )
@@ -540,7 +546,7 @@ class ReminderOutputView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="Delete",
+        emoji="🗑️",
         style=discord.ButtonStyle.danger,
         row=0,
     )
