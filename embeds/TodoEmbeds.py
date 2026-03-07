@@ -2161,10 +2161,10 @@ class TodoEmbeds:
             )
             value_lines = []
             description_line = TodoFunctions.truncate_multiline(text)
-            if description_line and description_line.lower() != item_name.lower():
-                value_lines.append(description_line)
             if due_line:
                 value_lines.append(due_line)
+            if description_line and description_line.lower() != item_name.lower():
+                value_lines.append(description_line)
             if assignees:
                 mentions = " ".join(f"<@{uid}>" for uid in assignees)
                 value_lines.append(f"\U0001f465 Assignees: {mentions}")
@@ -2242,10 +2242,10 @@ class TodoEmbeds:
                 item_title = f"\U0001f449{item_title}"
             value_lines = []
             description_line = TodoFunctions.truncate_multiline(text)
-            if description_line and description_line.lower() != item_name.lower():
-                value_lines.append(description_line)
             if due_line:
                 value_lines.append(due_line)
+            if description_line and description_line.lower() != item_name.lower():
+                value_lines.append(description_line)
             if assignees:
                 mentions = " ".join(f"<@{uid}>" for uid in assignees)
                 value_lines.append(f"\U0001f465 Assignees: {mentions}")
