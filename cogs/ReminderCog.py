@@ -347,6 +347,45 @@ class ReminderCog(commands.Cog):
             )
 
     @reminder_group.command(
+        name="show",
+        description="Show a specific reminder.",
+    )
+    @app_commands.describe(reminder="Reminder from autocomplete")
+    async def reminder_show(
+        self,
+        interaction: discord.Interaction,
+        reminder: str,
+    ) -> None:
+        ephemeral = True
+        await interaction.response.defer(ephemeral=ephemeral)
+
+        try:
+            job = await asyncio.to_thread(
+                ReminderFunctions.get_reminder,
+                reminder,
+                interaction.guild_id,
+            )
+        except ValueError as exc:
+            raise ValidationError(
+                "That reminder ID is invalid.",
+                ephemeral=ephemeral,
+                cause=exc,
+            )
+
+        if job is None:
+            raise ValidationError(
+                "No reminder found with that ID in this server.",
+                ephemeral=ephemeral,
+            )
+
+        await self._send_reminder_output(
+            interaction,
+            job=job,
+            result_message=f"Showing reminder `{str(job.id)}`.",
+            ephemeral=ephemeral,
+        )
+
+    @reminder_group.command(
         name="pause",
         description="Pause reminders by ID or all at once.",
     )
@@ -830,6 +869,14 @@ class ReminderCog(commands.Cog):
 
     @reminder_edit.autocomplete("reminder")
     async def reminder_edit_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        return await self._reminder_id_autocomplete(interaction, current)
+
+    @reminder_show.autocomplete("reminder")
+    async def reminder_show_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
