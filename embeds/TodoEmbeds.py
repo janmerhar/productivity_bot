@@ -1097,16 +1097,16 @@ class TodoListItemsView(discord.ui.View):
         )
         sort_button = discord.ui.Button(
             style=discord.ButtonStyle.secondary,
-            emoji="↕️",
+            label=(
+                "Set ↓ Descending"
+                if self.sort == "ascending"
+                else "Set ↑ Ascending"
+            ),
             row=3,
         )
         filter_button = discord.ui.Button(
-            style=(
-                discord.ButtonStyle.success
-                if self.only_assigned_to_me
-                else discord.ButtonStyle.secondary
-            ),
-            emoji="👤",
+            style=discord.ButtonStyle.secondary,
+            label=f"Set {TodoEmbeds._audience_footer_label(not self.only_assigned_to_me)}",
             row=3,
             disabled=self.user_id is None,
         )
@@ -1875,7 +1875,9 @@ class TodoEmbeds:
         }
         status_label = status_labels.get(status_filter, status_labels["all"])
         todo_label = "Item" if todo_items == 1 else "Items"
-        metadata = f"{sort_label} \u2022 {status_label} \u2022 {todo_items} {todo_label}"
+        metadata = (
+            f"{sort_label} \u2022 {status_label} \u2022 {todo_items} {todo_label}"
+        )
         if list_reference:
             metadata = f"{metadata} \u2022 {list_reference}"
         return metadata
