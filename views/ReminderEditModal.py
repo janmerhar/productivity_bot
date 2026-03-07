@@ -212,7 +212,9 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
         raw_schedule = str(self.schedule.value or "").strip()
         raw_reminder = str(self.reminder.value or "").strip()
         raw_ping = " ".join(
-            member.mention for member in self.ping_select.values if hasattr(member, "mention")
+            member.mention
+            for member in self.ping_select.values
+            if hasattr(member, "mention")
         )
         raw_description = str(self.description.value or "").strip()
 
@@ -233,7 +235,10 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
             if not isinstance(bot, commands.Bot):
                 raise ValidationError("Bot is not ready to update this reminder.")
 
-            resolved_channel = await resolve_messageable_channel(bot, destination_channel_id)
+            resolved_channel = await resolve_messageable_channel(
+                bot,
+                destination_channel_id,
+            )
             if resolved_channel is None:
                 raise ValidationError("I can't access that destination channel.")
 
@@ -280,6 +285,235 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
             await self._apply_update(
                 interaction,
                 schedule=schedule_to_submit,
+                reminder=raw_reminder,
+                ping=raw_ping,
+                description=raw_description,
+                destination_channel_id=destination_channel_id,
+                timezone=timezone,
+            )
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                exc,
+                ephemeral=self._response_ephemeral,
+            )
+
+
+class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
+    def __init__(
+        self,
+        *,
+        parent_view: "discord.ui.View",
+        default_channel_id: Optional[int],
+        channel_options: Optional[List[discord.SelectOption]] = None,
+        source_message: Optional[discord.Message] = None,
+        response_ephemeral: bool = True,
+    ) -> None:
+        super().__init__()
+        self._parent_view = parent_view
+        self._default_channel_id = default_channel_id
+        self._source_message = source_message
+        self._response_ephemeral = bool(response_ephemeral)
+        self._guild_id = getattr(parent_view, "guild_id", None)
+
+        self.schedule = discord.ui.TextInput(
+            label="Schedule",
+            placeholder="Cron expression or natural language schedule",
+            required=True,
+            max_length=120,
+        )
+        self.reminder = discord.ui.TextInput(
+            label="Reminder",
+            placeholder="Reminder text or stock: AAPL",
+            required=True,
+            max_length=400,
+            style=discord.TextStyle.short,
+        )
+        self.ping_select = discord.ui.UserSelect(
+            placeholder="Choose members to ping",
+            min_values=0,
+            max_values=25,
+            required=False,
+        )
+        self.ping_select_label = discord.ui.Label(
+            text="Ping",
+            component=self.ping_select,
+        )
+        self.description = discord.ui.TextInput(
+            label="Description",
+            placeholder="Leave blank to clear",
+            required=False,
+            max_length=1000,
+            style=discord.TextStyle.paragraph,
+        )
+        self.destination_channel_select: Optional[discord.ui.Select] = None
+        self.destination_channel_label: Optional[discord.ui.Label] = None
+        self.destination_channel_input: Optional[discord.ui.TextInput] = None
+
+        if channel_options:
+            try:
+                self.destination_channel_select = discord.ui.Select(
+                    placeholder="Choose a destination channel",
+                    min_values=1,
+                    max_values=1,
+                    options=channel_options[:25],
+                )
+                self.destination_channel_label = discord.ui.Label(
+                    text="Destination channel",
+                    component=self.destination_channel_select,
+                )
+            except Exception:
+                self.destination_channel_select = None
+                self.destination_channel_label = None
+
+        if self.destination_channel_select is None:
+            default_destination = (
+                f"<#{self._default_channel_id}>"
+                if self._default_channel_id is not None
+                else ""
+            )
+            self.destination_channel_input = discord.ui.TextInput(
+                label="Destination channel",
+                placeholder="Use a channel mention like #general or a channel id",
+                required=True,
+                max_length=64,
+                default=_clamp_text(default_destination, 64),
+            )
+
+        self.add_item(self.schedule)
+        self.add_item(self.reminder)
+        self.add_item(self.ping_select_label)
+        self.add_item(self.description)
+        if self.destination_channel_label is not None:
+            self.add_item(self.destination_channel_label)
+        elif self.destination_channel_input is not None:
+            self.add_item(self.destination_channel_input)
+
+    async def _refresh_parent(self, interaction: discord.Interaction) -> None:
+        refresh_method = getattr(self._parent_view, "refresh_message", None)
+        if callable(refresh_method):
+            await refresh_method(
+                interaction,
+                source_message=self._source_message,
+                jump_to_last_page=True,
+            )
+
+    async def _apply_create(
+        self,
+        interaction: discord.Interaction,
+        *,
+        schedule: str,
+        reminder: str,
+        ping: str,
+        description: str,
+        destination_channel_id: int,
+        timezone: Optional[str],
+    ) -> None:
+        try:
+            created_job, confirmation = await asyncio.to_thread(
+                ReminderFunctions.create_reminder,
+                self._guild_id,
+                self._default_channel_id,
+                reminder,
+                schedule,
+                None,
+                ping,
+                None,
+                None,
+                description,
+                None,
+                destination_channel_id,
+                self._response_ephemeral,
+                timezone,
+            )
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                exc,
+                ephemeral=self._response_ephemeral,
+            )
+            return
+
+        await self._refresh_parent(interaction)
+        await interaction.followup.send(
+            ephemeral=self._response_ephemeral,
+            **DailyTaskEmbeds.reminder_embed(
+                f"{confirmation}\nReminder ID: `{created_job.id}`",
+                ok=True,
+            ),
+        )
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        raw_schedule = str(self.schedule.value or "").strip()
+        raw_reminder = str(self.reminder.value or "").strip()
+        raw_ping = " ".join(
+            member.mention
+            for member in self.ping_select.values
+            if hasattr(member, "mention")
+        )
+        raw_description = str(self.description.value or "").strip()
+
+        try:
+            if self.destination_channel_select is not None:
+                raw_value = (
+                    self.destination_channel_select.values[0]
+                    if self.destination_channel_select.values
+                    else ""
+                )
+                destination_channel_id = int(raw_value)
+            else:
+                raw_destination_channel = str(
+                    self.destination_channel_input.value or ""
+                ).strip()
+                destination_channel_id = _parse_channel_id(raw_destination_channel)
+
+            bot = interaction.client
+            if not isinstance(bot, commands.Bot):
+                raise ValidationError("Bot is not ready to create this reminder.")
+
+            resolved_channel = await resolve_messageable_channel(
+                bot,
+                destination_channel_id,
+            )
+            if resolved_channel is None:
+                raise ValidationError("I can't access that destination channel.")
+
+            if self._guild_id is not None:
+                channel_guild = getattr(resolved_channel, "guild", None)
+                if channel_guild is None or channel_guild.id != self._guild_id:
+                    raise ValidationError(
+                        "Please choose a channel from the same server as this reminder."
+                    )
+
+            timezone = None
+            if not is_valid_cron_expression(raw_schedule):
+
+                async def _continue_with_timezone(
+                    followup_interaction: discord.Interaction,
+                    resolved_timezone: str,
+                ) -> None:
+                    await self._apply_create(
+                        followup_interaction,
+                        schedule=raw_schedule,
+                        reminder=raw_reminder,
+                        ping=raw_ping,
+                        description=raw_description,
+                        destination_channel_id=destination_channel_id,
+                        timezone=resolved_timezone,
+                    )
+
+                timezone = await ensure_user_timezone(
+                    interaction,
+                    _continue_with_timezone,
+                    continue_message="Timezone saved as `{timezone}`. Continuing reminder creation.",
+                )
+                if timezone is None:
+                    return
+
+            await interaction.response.defer(ephemeral=self._response_ephemeral)
+            await self._apply_create(
+                interaction,
+                schedule=raw_schedule,
                 reminder=raw_reminder,
                 ping=raw_ping,
                 description=raw_description,

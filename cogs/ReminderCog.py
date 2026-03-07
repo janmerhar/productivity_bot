@@ -216,6 +216,9 @@ class ReminderCog(commands.Cog):
             reminders=reminders,
             scope_label=scope_label,
             status_label=status_label,
+            guild_id=interaction.guild_id,
+            channel_id=selected_channel_id,
+            paused_filter=paused_filter,
             user_id=interaction.user.id,
         )
         if not reminders:

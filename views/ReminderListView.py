@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import math
 from typing import List, Optional
@@ -6,6 +7,10 @@ import discord
 
 from classes.DailyJob import DailyJob
 from classes.ReminderFunctions import ReminderFunctions
+from views.ReminderEditModal import (
+    ReminderCreateModal,
+    _build_text_channel_select_options,
+)
 
 
 class ReminderListView(discord.ui.View):
@@ -17,6 +22,9 @@ class ReminderListView(discord.ui.View):
         reminders: List[DailyJob],
         scope_label: str,
         status_label: str,
+        guild_id: Optional[int],
+        channel_id: Optional[int],
+        paused_filter: Optional[bool],
         user_id: Optional[int],
         page: int = 1,
         timeout: float = 300,
@@ -25,6 +33,9 @@ class ReminderListView(discord.ui.View):
         self.reminders = reminders
         self.scope_label = scope_label
         self.status_label = status_label
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.paused_filter = paused_filter
         self.user_id = user_id
         self.page_size = self.PAGE_SIZE
         self.total_pages = max(1, math.ceil(len(self.reminders) / self.page_size))
@@ -141,6 +152,40 @@ class ReminderListView(discord.ui.View):
     def payload(self) -> dict:
         return {"embed": self._embed()}
 
+    async def _reload_reminders(self) -> None:
+        self.reminders = await asyncio.to_thread(
+            ReminderFunctions.list_reminders,
+            self.guild_id,
+            self.paused_filter,
+            self.channel_id,
+        )
+        self.total_pages = max(1, math.ceil(len(self.reminders) / self.page_size))
+        self.page = max(1, min(self.page, self.total_pages))
+
+    async def refresh_message(
+        self,
+        interaction: discord.Interaction,
+        *,
+        source_message: Optional[discord.Message] = None,
+        jump_to_last_page: bool = False,
+    ) -> None:
+        await self._reload_reminders()
+        if jump_to_last_page and self.reminders:
+            self.page = self.total_pages
+        self._sync_buttons()
+
+        target_message = source_message or interaction.message
+        if target_message is None:
+            return
+
+        try:
+            await target_message.edit(view=self, **self.payload())
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            await interaction.followup.send(
+                "Reminder created, but the original list message is no longer available.",
+                ephemeral=True,
+            )
+
     def _sync_buttons(self) -> None:
         self.previous_page.disabled = self.page <= 1
         self.next_page.disabled = self.page >= self.total_pages
@@ -172,3 +217,29 @@ class ReminderListView(discord.ui.View):
         self.page += 1
         self._sync_buttons()
         await interaction.response.edit_message(view=self, **self.payload())
+
+    @discord.ui.button(
+        label="New Reminder",
+        style=discord.ButtonStyle.primary,
+        row=1,
+    )
+    async def create_reminder(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        del button
+        default_channel_id = self.channel_id or interaction.channel_id
+        channel_options = _build_text_channel_select_options(
+            interaction.guild,
+            default_channel_id,
+        )
+        await interaction.response.send_modal(
+            ReminderCreateModal(
+                parent_view=self,
+                default_channel_id=default_channel_id,
+                channel_options=channel_options,
+                source_message=interaction.message,
+                response_ephemeral=True,
+            )
+        )
