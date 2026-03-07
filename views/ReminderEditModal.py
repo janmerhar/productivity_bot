@@ -60,9 +60,13 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
         job: DailyJob,
         channel_options: Optional[List[discord.SelectOption]] = None,
         *,
+        parent_view: Optional["discord.ui.View"] = None,
+        source_message: Optional[discord.Message] = None,
         response_ephemeral: bool = True,
     ) -> None:
         super().__init__()
+        self._parent_view = parent_view
+        self._source_message = source_message
         self._job_id = str(job.id)
         self._guild_id = job.guild_id
         self._response_ephemeral = bool(response_ephemeral)
@@ -160,6 +164,20 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
         elif self.destination_channel_input is not None:
             self.add_item(self.destination_channel_input)
 
+    async def _refresh_parent(
+        self,
+        interaction: discord.Interaction,
+        *,
+        result_message: Optional[str] = None,
+    ) -> None:
+        refresh_method = getattr(self._parent_view, "refresh_message", None)
+        if callable(refresh_method):
+            await refresh_method(
+                interaction,
+                source_message=self._source_message,
+                result_message=result_message,
+            )
+
     async def _apply_update(
         self,
         interaction: discord.Interaction,
@@ -193,11 +211,17 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
             )
             return
 
+        await self._refresh_parent(
+            interaction,
+            result_message="Reminder updated.",
+        )
         reminder_view = ReminderOutputView(
             job=updated_job,
             guild=interaction.guild,
             result_message="Reminder updated.",
             ok=True,
+            user_id=interaction.user.id,
+            response_ephemeral=self._response_ephemeral,
         )
         await interaction.followup.send(
             ephemeral=self._response_ephemeral,
@@ -436,6 +460,8 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
             guild=interaction.guild,
             result_message=confirmation,
             ok=True,
+            user_id=interaction.user.id,
+            response_ephemeral=self._response_ephemeral,
         )
         await interaction.followup.send(
             ephemeral=self._response_ephemeral,

@@ -61,6 +61,8 @@ class ReminderCog(commands.Cog):
             guild=interaction.guild,
             result_message=result_message,
             ok=True,
+            user_id=interaction.user.id,
+            response_ephemeral=ephemeral,
         )
         await interaction.followup.send(
             ephemeral=ephemeral,
