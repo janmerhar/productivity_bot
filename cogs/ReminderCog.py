@@ -7,9 +7,14 @@ from discord.ext import commands
 
 from classes.ReminderFunctions import ReminderFunctions
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
+from services.error_reporting import UserVisibleError
 from services.error_reporting import ValidationError
 from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from views.ReminderEditModal import (
+    ReminderEditModal,
+    _build_text_channel_select_options,
+)
 
 
 class ReminderCog(commands.Cog):
@@ -216,13 +221,51 @@ class ReminderCog(commands.Cog):
         name="edit",
         description="Edit an existing reminder.",
     )
-    @app_commands.describe(reminder_id="Reminder ID")
+    @app_commands.describe(reminder="Reminder from autocomplete")
     async def reminder_edit(
         self,
         interaction: discord.Interaction,
-        reminder_id: str,
+        reminder: str,
     ) -> None:
-        await self._send_not_implemented(interaction, "/reminder edit")
+        ephemeral = True
+
+        try:
+            job = await asyncio.to_thread(
+                ReminderFunctions.get_reminder,
+                reminder,
+                interaction.guild_id,
+            )
+        except ValueError as exc:
+            raise ValidationError(
+                "That reminder ID is invalid.",
+                ephemeral=ephemeral,
+                cause=exc,
+            )
+
+        if job is None:
+            raise ValidationError(
+                "No reminder found with that ID in this server.",
+                ephemeral=ephemeral,
+            )
+
+        try:
+            channel_options = _build_text_channel_select_options(
+                interaction.guild,
+                job.channel_id,
+            )
+            await interaction.response.send_modal(
+                ReminderEditModal(
+                    job,
+                    channel_options=channel_options,
+                    response_ephemeral=ephemeral,
+                )
+            )
+        except discord.HTTPException as exc:
+            raise UserVisibleError(
+                "Something went wrong while opening the edit dialog.",
+                ephemeral=ephemeral,
+                cause=exc,
+            )
 
     @reminder_group.command(
         name="pause",
@@ -541,7 +584,7 @@ class ReminderCog(commands.Cog):
     ) -> List[app_commands.Choice[str]]:
         return await self._reminder_id_autocomplete(interaction, current)
 
-    @reminder_edit.autocomplete("reminder_id")
+    @reminder_edit.autocomplete("reminder")
     async def reminder_edit_autocomplete(
         self,
         interaction: discord.Interaction,
