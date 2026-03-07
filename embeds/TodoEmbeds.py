@@ -525,6 +525,7 @@ class TodoListItemsView(discord.ui.View):
         self.view_scope = view_scope
         self.guild_id = guild_id
         self.only_assigned_to_me = False
+        self.show_more_options = False
         self.selected_item_id: Optional[str] = None
         self.page_size = max(1, min(page_size, 5))
         self.total_pages = 1
@@ -1081,19 +1082,19 @@ class TodoListItemsView(discord.ui.View):
             label="← Prev",
             style=discord.ButtonStyle.secondary,
             disabled=self.page <= 1,
-            row=3,
+            row=4,
         )
         page_button = discord.ui.Button(
             label=f"Page {self.page}/{self.total_pages}",
             style=discord.ButtonStyle.secondary,
             disabled=True,
-            row=3,
+            row=4,
         )
         next_button = discord.ui.Button(
             label="Next →",
             style=discord.ButtonStyle.secondary,
             disabled=self.page >= self.total_pages,
-            row=3,
+            row=4,
         )
         sort_button = discord.ui.Button(
             style=discord.ButtonStyle.secondary,
@@ -1112,6 +1113,15 @@ class TodoListItemsView(discord.ui.View):
             ),
             row=3,
             disabled=self.user_id is None,
+        )
+        more_options_button = discord.ui.Button(
+            style=(
+                discord.ButtonStyle.primary
+                if self.show_more_options
+                else discord.ButtonStyle.secondary
+            ),
+            label="…",
+            row=3,
         )
 
         async def _prev_callback(interaction: discord.Interaction) -> None:
@@ -1148,16 +1158,27 @@ class TodoListItemsView(discord.ui.View):
             self._build()
             await self._safe_refresh_message(interaction)
 
+        async def _more_options_toggle_callback(
+            interaction: discord.Interaction,
+        ) -> None:
+            await interaction.response.defer()
+            self.show_more_options = not self.show_more_options
+            self._build()
+            await self._safe_refresh_message(interaction)
+
         prev_button.callback = _prev_callback
         next_button.callback = _next_callback
         sort_button.callback = _sort_toggle_callback
         filter_button.callback = _mine_toggle_callback
+        more_options_button.callback = _more_options_toggle_callback
 
+        self.add_item(more_options_button)
+        if self.show_more_options:
+            self.add_item(sort_button)
+            self.add_item(filter_button)
         self.add_item(prev_button)
         self.add_item(page_button)
         self.add_item(next_button)
-        self.add_item(sort_button)
-        self.add_item(filter_button)
 
 
 class TodoDeleteConfirmView(discord.ui.View):
