@@ -1260,6 +1260,61 @@ class TodoDeleteConfirmView(discord.ui.View):
         )
 
 
+class TodoClearListConfirmView(discord.ui.View):
+    def __init__(
+        self,
+        list_id: Any,
+        list_name: str,
+    ) -> None:
+        super().__init__(timeout=90)
+        self.list_id = list_id
+        self.list_name = list_name
+
+    def _disable_buttons(self) -> None:
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+
+    @discord.ui.button(
+        label="\U0001f5d1\ufe0f Clear List", style=discord.ButtonStyle.danger
+    )
+    async def confirm_clear(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        deleted_count = await asyncio.to_thread(
+            TodoFunctions.clear_todo_list_items,
+            self.list_id,
+        )
+        self._disable_buttons()
+        try:
+            await interaction.edit_original_response(view=self)
+        except Exception:
+            pass
+
+        await interaction.followup.send(
+            ephemeral=True,
+            content=(
+                f"Cleared `{self.list_name}` ({deleted_count} items removed)."
+            ),
+        )
+
+    @discord.ui.button(label="\u2716\ufe0f Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel_clear(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        self._disable_buttons()
+        await interaction.response.edit_message(
+            content="Clear cancelled.",
+            view=self,
+        )
+
+
 class TodoAssignPickerView(discord.ui.View):
     def __init__(
         self,

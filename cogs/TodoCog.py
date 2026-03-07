@@ -6,7 +6,12 @@ from discord import app_commands
 from discord.ext import commands
 
 from classes.TodoFunctions import TodoFunctions
-from embeds.TodoEmbeds import TodoEmbeds, TodoListItemsView, TodoItemEditModal
+from embeds.TodoEmbeds import (
+    TodoEmbeds,
+    TodoListItemsView,
+    TodoItemEditModal,
+    TodoClearListConfirmView,
+)
 from services.discord_helpers import resolve_ephemeral_from_scope
 from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
@@ -345,8 +350,6 @@ class TodoCog(commands.Cog):
             scope_value,
             visibility,
         )
-        await interaction.response.defer(ephemeral=ephemeral)
-
         try:
             todo_list = await asyncio.to_thread(
                 TodoFunctions.get_or_create_implicit_list,
@@ -356,10 +359,6 @@ class TodoCog(commands.Cog):
                 getattr(interaction.channel, "name", None),
                 "channel" if interaction.guild_id is not None else "personal",
             )
-            deleted_count = await asyncio.to_thread(
-                TodoFunctions.clear_todo_list_items,
-                todo_list["_id"],
-            )
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while clearing that list.",
@@ -367,9 +366,14 @@ class TodoCog(commands.Cog):
                 cause=exc,
             )
 
-        await interaction.followup.send(
+        confirm_view = TodoClearListConfirmView(
+            list_id=todo_list["_id"],
+            list_name=str(todo_list.get("name") or "List"),
+        )
+        await interaction.response.send_message(
             ephemeral=ephemeral,
-            content=f"Cleared `{todo_list.get('name')}` ({deleted_count} items removed).",
+            content=f"Clear all items from `{todo_list.get('name')}`?",
+            view=confirm_view,
         )
 
     @todo_group.command(name="add", description="Add an item to a list")
