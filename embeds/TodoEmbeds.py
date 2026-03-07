@@ -1070,11 +1070,11 @@ class TodoListItemsView(discord.ui.View):
         in_progress_button.callback = _set_in_progress_callback
         complete_button.callback = _set_done_callback
 
-        self.add_item(edit_button)
-        self.add_item(delete_button)
-        self.add_item(todo_button)
-        self.add_item(in_progress_button)
         self.add_item(complete_button)
+        self.add_item(edit_button)
+        self.add_item(in_progress_button)
+        self.add_item(todo_button)
+        self.add_item(delete_button)
 
         prev_button = discord.ui.Button(
             label="← Prev",
