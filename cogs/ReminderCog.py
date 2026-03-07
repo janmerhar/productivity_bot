@@ -15,6 +15,13 @@ from views.ReminderEditModal import (
     ReminderEditModal,
     _build_text_channel_select_options,
 )
+from views.ReminderListView import ReminderListView
+
+_REMINDER_LIST_STATUS_CHOICES = [
+    app_commands.Choice(name="All", value="all"),
+    app_commands.Choice(name="Active", value="active"),
+    app_commands.Choice(name="Paused", value="paused"),
+]
 
 
 class ReminderCog(commands.Cog):
@@ -167,15 +174,62 @@ class ReminderCog(commands.Cog):
 
     @reminder_group.command(
         name="list",
-        description="View active reminders for this server.",
+        description="View reminders for this server.",
     )
-    @app_commands.describe(page="Page number")
+    @app_commands.describe(
+        destination_channel="Filter reminders by destination channel",
+        status="Filter reminders by status",
+    )
+    @app_commands.choices(
+        status=_REMINDER_LIST_STATUS_CHOICES,
+    )
     async def reminder_list(
         self,
         interaction: discord.Interaction,
-        page: Optional[int] = None,
+        destination_channel: Optional[str] = None,
+        status: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        await self._send_not_implemented(interaction, "/reminder list")
+        ephemeral = True
+        selected_channel_id, scope_label = self._resolve_reminder_list_destination(
+            interaction,
+            destination_channel,
+        )
+        paused_filter, status_label = self._resolve_reminder_list_status(status)
+
+        await interaction.response.defer(ephemeral=ephemeral)
+
+        try:
+            reminders = await asyncio.to_thread(
+                ReminderFunctions.list_reminders,
+                interaction.guild_id,
+                paused_filter,
+                selected_channel_id,
+            )
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while loading reminders.",
+                ephemeral=ephemeral,
+                cause=exc,
+            )
+
+        view = ReminderListView(
+            reminders=reminders,
+            scope_label=scope_label,
+            status_label=status_label,
+            user_id=interaction.user.id,
+        )
+        if not reminders:
+            await interaction.followup.send(
+                ephemeral=ephemeral,
+                **view.payload(),
+            )
+            return
+
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            view=view,
+            **view.payload(),
+        )
 
     @reminder_group.command(
         name="remove",
@@ -524,6 +578,144 @@ class ReminderCog(commands.Cog):
             ),
         )
 
+    def _resolve_reminder_list_destination(
+        self,
+        interaction: discord.Interaction,
+        destination_channel: Optional[str],
+    ) -> tuple[Optional[int], str]:
+        raw_value = (destination_channel or "").strip()
+        normalized = raw_value.lower()
+
+        if interaction.guild is None:
+            if not interaction.channel_id:
+                raise ValidationError(
+                    "This conversation does not have a destination channel.",
+                    ephemeral=True,
+                )
+            if normalized and normalized not in {
+                "all",
+                "server",
+                f"channel:{interaction.channel_id}",
+            }:
+                raise ValidationError(
+                    "Please select a valid destination from autocomplete.",
+                    ephemeral=True,
+                )
+            return interaction.channel_id, "This DM"
+
+        if not normalized or normalized in {"all", "server"}:
+            return None, "All server reminders"
+
+        if not normalized.startswith("channel:"):
+            raise ValidationError(
+                "Please select a valid destination from autocomplete.",
+                ephemeral=True,
+            )
+
+        try:
+            channel_id = int(normalized.split(":", 1)[1])
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(
+                "Please select a valid destination from autocomplete.",
+                ephemeral=True,
+                cause=exc,
+            )
+
+        channel = interaction.guild.get_channel(channel_id)
+        if channel is None:
+            raise ValidationError(
+                "That channel was not found.",
+                ephemeral=True,
+            )
+        if not isinstance(channel, discord.TextChannel):
+            raise ValidationError(
+                "Please select a text channel from autocomplete.",
+                ephemeral=True,
+            )
+
+        return channel_id, f"#{channel.name}"
+
+    def _build_reminder_destination_autocomplete_options(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        query = (current or "").strip().lower()
+        options: List[app_commands.Choice[str]] = []
+        current_channel = interaction.channel
+        current_text_channel_id = (
+            current_channel.id
+            if isinstance(current_channel, discord.TextChannel)
+            else None
+        )
+        current_channel_name = getattr(current_channel, "name", None)
+
+        if interaction.guild is None:
+            current_dm_channel_id = interaction.channel_id
+            if current_dm_channel_id and (
+                not query
+                or "dm" in query
+                or "this" in query
+                or "channel" in query
+            ):
+                options.append(
+                    app_commands.Choice(
+                        name="This DM",
+                        value=f"channel:{current_dm_channel_id}",
+                    )
+                )
+            return options[:25]
+
+        base_options = [
+            app_commands.Choice(name="All Server Reminders", value="all"),
+        ]
+        if current_text_channel_id:
+            current_label = (
+                f"This Channel (#{current_channel_name})"
+                if current_channel_name
+                else "This Channel"
+            )
+            base_options.append(
+                app_commands.Choice(
+                    name=current_label[:100],
+                    value=f"channel:{current_text_channel_id}",
+                )
+            )
+
+        for option in base_options:
+            if not query or query in option.name.lower():
+                options.append(option)
+
+        for channel in interaction.guild.text_channels:
+            if len(options) >= 25:
+                break
+            if current_text_channel_id and channel.id == current_text_channel_id:
+                continue
+            if query and query not in channel.name.lower() and query not in str(channel.id):
+                continue
+            permissions = channel.permissions_for(interaction.user)
+            if not permissions.view_channel or not permissions.send_messages:
+                continue
+            options.append(
+                app_commands.Choice(
+                    name=f"#{channel.name}"[:100],
+                    value=f"channel:{channel.id}",
+                )
+            )
+
+        return options[:25]
+
+    @staticmethod
+    def _resolve_reminder_list_status(
+        status: Optional[app_commands.Choice[str]],
+    ) -> tuple[Optional[bool], str]:
+        status_value = status.value if status else "all"
+        if status_value == "active":
+            return False, "Active"
+        if status_value == "paused":
+            return True, "Paused"
+        return None, "All"
+
     async def _reminder_id_autocomplete(
         self,
         interaction: discord.Interaction,
@@ -575,6 +767,17 @@ class ReminderCog(commands.Cog):
                 break
 
         return options[:25]
+
+    @reminder_list.autocomplete("destination_channel")
+    async def reminder_list_destination_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        return self._build_reminder_destination_autocomplete_options(
+            interaction,
+            current,
+        )
 
     @reminder_remove.autocomplete("reminder_id")
     async def reminder_remove_autocomplete(

@@ -571,9 +571,10 @@ class ReminderFunctions:
     def list_reminders(
         guild_id: Optional[int],
         paused: Optional[bool] = None,
+        channel_id: Optional[int] = None,
     ) -> List[DailyJob]:
         manager = DailyJobManager()
-        jobs = manager.list_jobs(guild_id=guild_id)
+        jobs = manager.list_jobs(guild_id=guild_id, channel_id=channel_id)
         reminders = []
         for job in jobs:
             if not ReminderFunctions.is_reminder_job(job):
