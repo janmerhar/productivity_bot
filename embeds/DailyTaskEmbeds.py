@@ -57,7 +57,7 @@ class DailyTaskEmbeds:
             inline=False,
         )
         embed.add_field(
-            name="Reminder",
+            name="Name",
             value=(reminder or "Untitled reminder")[:1024],
             inline=False,
         )

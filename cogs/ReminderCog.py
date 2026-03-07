@@ -9,6 +9,7 @@ from classes.ReminderFunctions import ReminderFunctions
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from services.error_reporting import UserVisibleError
 from services.error_reporting import ValidationError
+from services.discord_helpers import format_reminder_mentions
 from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 from views.ReminderEditModal import (
@@ -530,10 +531,22 @@ class ReminderCog(commands.Cog):
             ephemeral=ephemeral,
             timezone=timezone,
         )
+        edit_values = ReminderFunctions.reminder_edit_values(created_job)
         await interaction.followup.send(
             ephemeral=ephemeral,
-            **DailyTaskEmbeds.reminder_embed(
-                f"{confirmation}\nReminder ID: `{created_job.id}`",
+            **DailyTaskEmbeds.reminder_details_embed(
+                reminder_id=str(created_job.id),
+                channel_id=created_job.channel_id,
+                schedule_text=edit_values.get("schedule") or time,
+                reminder=edit_values.get("reminder") or message,
+                ping=format_reminder_mentions(
+                    interaction.guild,
+                    edit_values.get("ping_text"),
+                ),
+                description=edit_values.get("description") or "",
+                expires_after=edit_values.get("expires_after") or "",
+                paused=ReminderFunctions.is_paused(created_job),
+                result_message=confirmation,
                 ok=True,
             ),
         )
@@ -573,10 +586,22 @@ class ReminderCog(commands.Cog):
             ephemeral,
             timezone,
         )
+        edit_values = ReminderFunctions.reminder_edit_values(created_job)
         await interaction.followup.send(
             ephemeral=ephemeral,
-            **DailyTaskEmbeds.reminder_embed(
-                f"{confirmation}\nReminder ID: `{created_job.id}`",
+            **DailyTaskEmbeds.reminder_details_embed(
+                reminder_id=str(created_job.id),
+                channel_id=created_job.channel_id,
+                schedule_text=edit_values.get("schedule") or time,
+                reminder=edit_values.get("reminder") or reminder,
+                ping=format_reminder_mentions(
+                    interaction.guild,
+                    edit_values.get("ping_text"),
+                ),
+                description=edit_values.get("description") or "",
+                expires_after=edit_values.get("expires_after") or "",
+                paused=ReminderFunctions.is_paused(created_job),
+                result_message=confirmation,
                 ok=True,
             ),
         )

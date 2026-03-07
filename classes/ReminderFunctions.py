@@ -59,12 +59,20 @@ class ReminderFunctions:
             title = str(embed_data.get("title") or "").strip()
             if title:
                 return title
+            description = str(embed_data.get("description") or "").strip()
+            if description:
+                first_line = description.splitlines()[0].strip()
+                if first_line:
+                    return ReminderFunctions._truncate(first_line)
 
         message = str(data.get("message") or "").strip()
         if message:
-            first_line = message.splitlines()[0].strip()
+            ping_text, body_text = ReminderFunctions._split_message_content(message)
+            first_line = body_text.splitlines()[0].strip() if body_text else ""
             if first_line:
                 return ReminderFunctions._truncate(first_line)
+            if ping_text:
+                return "Ping reminder"
 
         return "Untitled reminder"
 
