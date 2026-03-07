@@ -1098,15 +1098,18 @@ class TodoListItemsView(discord.ui.View):
         sort_button = discord.ui.Button(
             style=discord.ButtonStyle.secondary,
             label=(
-                "Set ↓ Descending"
+                "Sort ↓ Descending"
                 if self.sort == "ascending"
-                else "Set ↑ Ascending"
+                else "Sort ↑ Ascending"
             ),
             row=3,
         )
         filter_button = discord.ui.Button(
             style=discord.ButtonStyle.secondary,
-            label=f"Set {TodoEmbeds._audience_footer_label(not self.only_assigned_to_me)}",
+            label=(
+                f"Assigned to "
+                f"{TodoEmbeds._audience_footer_label(not self.only_assigned_to_me)}"
+            ),
             row=3,
             disabled=self.user_id is None,
         )
@@ -1885,7 +1888,7 @@ class TodoEmbeds:
     @staticmethod
     def _audience_footer_label(mine_only: bool) -> str:
         return (
-            "\U0001f9d1 Mine"
+            "\U0001f9d1 Me"
             if mine_only
             else "\U0001f468\ufe0f\u200d\U0001f469\ufe0f\u200d\U0001f467\ufe0f\u200d\U0001f466\ufe0f Everyone"
         )

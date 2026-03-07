@@ -28,7 +28,7 @@ _ITEM_STATUS_CHOICES = [
 ]
 _YES_NO_CHOICES = [
     app_commands.Choice(name="✅ Yes", value="yes"),
-    app_commands.Choice(name="❌  No", value="no"),
+    app_commands.Choice(name="❌ No", value="no"),
 ]
 _LIST_STATUS_FILTER_CHOICES = [
     app_commands.Choice(name="🌈 All", value="all"),
