@@ -548,6 +548,7 @@ class TodoListItemsView(discord.ui.View):
             status_counts=TodoEmbeds._status_counts(self.items),
             mine_only=self.only_assigned_to_me,
             status_filter=self.status_filter,
+            selected_item_id=self.selected_item_id,
         )
 
     async def _reload_items(self) -> None:
@@ -2173,6 +2174,7 @@ class TodoEmbeds:
         status_counts: Optional[Dict[str, int]] = None,
         mine_only: bool = False,
         status_filter: str = "all",
+        selected_item_id: Optional[str] = None,
     ) -> dict:
         embed = discord.Embed(
             title=TodoEmbeds._list_title(todo_list),
@@ -2191,6 +2193,7 @@ class TodoEmbeds:
             return {"embed": embed}
 
         for display_index, item in enumerate(items, start=1):
+            item_id = str(item.get("_id") or "").strip()
             item_status_value = TodoFunctions.item_status(item)
             status_emoji = {
                 "todo": "\u26aa",
@@ -2207,6 +2210,8 @@ class TodoEmbeds:
                 if list_name
                 else f"{status_emoji} {item_name}"
             )
+            if item_id and item_id == str(selected_item_id or "").strip():
+                item_title = f"\U0001f449{item_title}"
             value_lines = []
             description_line = TodoFunctions.truncate_multiline(text)
             if description_line and description_line.lower() != item_name.lower():
