@@ -1892,6 +1892,10 @@ class TodoEmbeds:
     ) -> str:
         metadata = TodoEmbeds._list_metadata_line(sort, status_filter, todo_items)
         audience = TodoEmbeds._audience_footer_label(mine_only)
+        metadata_parts = metadata.split(" \u2022 ")
+        if len(metadata_parts) == 3:
+            sort_label, status_label, count_label = metadata_parts
+            return f"{status_label} \u2022 {audience} \u2022 {sort_label} \u2022 {count_label}"
         return f"{metadata} \u2022 {audience}"
 
     @staticmethod
