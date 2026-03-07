@@ -214,6 +214,7 @@ class ReminderOutputView(discord.ui.View):
         self.edit_this_reminder.disabled = not has_job
         self.change_channel.disabled = not has_job
         self.toggle_state.disabled = not has_job
+        self.delete_reminder.disabled = not has_job
 
         if not has_job:
             self.toggle_state.label = "Unavailable"
@@ -535,5 +536,80 @@ class ReminderOutputView(discord.ui.View):
         )
         await interaction.followup.send(
             result_message,
+            ephemeral=self.response_ephemeral,
+        )
+
+    @discord.ui.button(
+        label="Delete",
+        style=discord.ButtonStyle.danger,
+        row=0,
+    )
+    async def delete_reminder(
+        self,
+        interaction: discord.Interaction,
+        _: discord.ui.Button,
+    ) -> None:
+        self.message = interaction.message
+        if self.job is None:
+            await interaction.response.send_message(
+                "That reminder is no longer available.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
+
+        try:
+            deleted = await asyncio.to_thread(
+                ReminderFunctions.delete_reminder,
+                self.job_id,
+                self.guild_id,
+            )
+        except ValueError as exc:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(
+                    "That reminder ID is invalid.",
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
+                ephemeral=self.response_ephemeral,
+            )
+            return
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                exc,
+                ephemeral=self.response_ephemeral,
+            )
+            return
+
+        if not deleted:
+            self.job = None
+            self.ok = False
+            self.result_message = "This reminder is no longer available."
+            self._sync_button_state()
+            await self.refresh_message(
+                interaction,
+                source_message=interaction.message,
+                result_message=self.result_message,
+            )
+            await interaction.followup.send(
+                "That reminder is no longer available.",
+                ephemeral=self.response_ephemeral,
+            )
+            return
+
+        self.job = None
+        self.ok = True
+        self.result_message = f"Deleted reminder `{self.job_id}`."
+        self._sync_button_state()
+        await self.refresh_message(
+            interaction,
+            source_message=interaction.message,
+            result_message=self.result_message,
+        )
+        await interaction.followup.send(
+            self.result_message,
             ephemeral=self.response_ephemeral,
         )
