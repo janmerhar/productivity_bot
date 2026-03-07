@@ -9,7 +9,6 @@ from classes.ReminderFunctions import ReminderFunctions
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from services.error_reporting import UserVisibleError
 from services.error_reporting import ValidationError
-from services.discord_helpers import format_reminder_mentions
 from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 from views.ReminderEditModal import (
@@ -17,6 +16,7 @@ from views.ReminderEditModal import (
     _build_text_channel_select_options,
 )
 from views.ReminderListView import ReminderListView
+from views.ReminderOutputView import ReminderOutputView
 
 _REMINDER_LIST_STATUS_CHOICES = [
     app_commands.Choice(name="All", value="all"),
@@ -46,6 +46,25 @@ class ReminderCog(commands.Cog):
         await interaction.response.send_message(
             f"`{command_name}` is not implemented yet.",
             ephemeral=True,
+        )
+
+    async def _send_reminder_output(
+        self,
+        interaction: discord.Interaction,
+        *,
+        job,
+        result_message: str,
+        ephemeral: bool,
+    ) -> None:
+        reminder_view = ReminderOutputView(
+            job=job,
+            guild=interaction.guild,
+            result_message=result_message,
+            ok=True,
+        )
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            **reminder_view.response_payload(),
         )
 
     @reminder_group.command(
@@ -382,22 +401,31 @@ class ReminderCog(commands.Cog):
                 ephemeral=ephemeral,
             )
 
-        if result == "already_paused":
-            await interaction.followup.send(
+        paused_job = await asyncio.to_thread(
+            ReminderFunctions.get_reminder,
+            reminder_id_value,
+            interaction.guild_id,
+        )
+        if paused_job is None:
+            raise UserVisibleError(
+                "Reminder status changed, but it could not be reloaded.",
                 ephemeral=ephemeral,
-                **DailyTaskEmbeds.reminder_embed(
-                    f"Reminder `{reminder_id_value}` is already paused.",
-                    ok=True,
-                ),
+            )
+
+        if result == "already_paused":
+            await self._send_reminder_output(
+                interaction,
+                job=paused_job,
+                result_message=f"Reminder `{reminder_id_value}` is already paused.",
+                ephemeral=ephemeral,
             )
             return
 
-        await interaction.followup.send(
+        await self._send_reminder_output(
+            interaction,
+            job=paused_job,
+            result_message=f"Paused reminder `{reminder_id_value}`.",
             ephemeral=ephemeral,
-            **DailyTaskEmbeds.reminder_embed(
-                f"Paused reminder `{reminder_id_value}`.",
-                ok=True,
-            ),
         )
 
     @reminder_group.command(
@@ -480,22 +508,31 @@ class ReminderCog(commands.Cog):
                 ephemeral=ephemeral,
             )
 
-        if result == "already_resumed":
-            await interaction.followup.send(
+        resumed_job = await asyncio.to_thread(
+            ReminderFunctions.get_reminder,
+            reminder_id_value,
+            interaction.guild_id,
+        )
+        if resumed_job is None:
+            raise UserVisibleError(
+                "Reminder status changed, but it could not be reloaded.",
                 ephemeral=ephemeral,
-                **DailyTaskEmbeds.reminder_embed(
-                    f"Reminder `{reminder_id_value}` is already active.",
-                    ok=True,
-                ),
+            )
+
+        if result == "already_resumed":
+            await self._send_reminder_output(
+                interaction,
+                job=resumed_job,
+                result_message=f"Reminder `{reminder_id_value}` is already active.",
+                ephemeral=ephemeral,
             )
             return
 
-        await interaction.followup.send(
+        await self._send_reminder_output(
+            interaction,
+            job=resumed_job,
+            result_message=f"Resumed reminder `{reminder_id_value}`.",
             ephemeral=ephemeral,
-            **DailyTaskEmbeds.reminder_embed(
-                f"Resumed reminder `{reminder_id_value}`.",
-                ok=True,
-            ),
         )
 
     @reminder_group.command(
@@ -531,24 +568,11 @@ class ReminderCog(commands.Cog):
             ephemeral=ephemeral,
             timezone=timezone,
         )
-        edit_values = ReminderFunctions.reminder_edit_values(created_job)
-        await interaction.followup.send(
+        await self._send_reminder_output(
+            interaction,
+            job=created_job,
+            result_message=confirmation,
             ephemeral=ephemeral,
-            **DailyTaskEmbeds.reminder_details_embed(
-                reminder_id=str(created_job.id),
-                channel_id=created_job.channel_id,
-                schedule_text=edit_values.get("schedule") or time,
-                reminder=edit_values.get("reminder") or message,
-                ping=format_reminder_mentions(
-                    interaction.guild,
-                    edit_values.get("ping_text"),
-                ),
-                description=edit_values.get("description") or "",
-                expires_after=edit_values.get("expires_after") or "",
-                paused=ReminderFunctions.is_paused(created_job),
-                result_message=confirmation,
-                ok=True,
-            ),
         )
 
     async def _create_reminder_from_options(
@@ -586,24 +610,11 @@ class ReminderCog(commands.Cog):
             ephemeral,
             timezone,
         )
-        edit_values = ReminderFunctions.reminder_edit_values(created_job)
-        await interaction.followup.send(
+        await self._send_reminder_output(
+            interaction,
+            job=created_job,
+            result_message=confirmation,
             ephemeral=ephemeral,
-            **DailyTaskEmbeds.reminder_details_embed(
-                reminder_id=str(created_job.id),
-                channel_id=created_job.channel_id,
-                schedule_text=edit_values.get("schedule") or time,
-                reminder=edit_values.get("reminder") or reminder,
-                ping=format_reminder_mentions(
-                    interaction.guild,
-                    edit_values.get("ping_text"),
-                ),
-                description=edit_values.get("description") or "",
-                expires_after=edit_values.get("expires_after") or "",
-                paused=ReminderFunctions.is_paused(created_job),
-                result_message=confirmation,
-                ok=True,
-            ),
         )
 
     def _resolve_reminder_list_destination(

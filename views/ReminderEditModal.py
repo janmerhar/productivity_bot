@@ -7,14 +7,13 @@ from discord.ext import commands
 
 from classes.DailyJob import DailyJob
 from classes.ReminderFunctions import ReminderFunctions
-from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from services.cron_schedule import is_valid_cron_expression
 from services.discord_helpers import (
-    format_reminder_mentions,
     resolve_messageable_channel,
 )
 from services.error_reporting import ValidationError, handle_interaction_error
 from services.timezone_gate import ensure_user_timezone
+from views.ReminderOutputView import ReminderOutputView
 
 
 def _clamp_text(value: Optional[str], limit: int = 4000) -> str:
@@ -186,7 +185,6 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
                 self._response_ephemeral,
                 timezone,
             )
-            edit_values = ReminderFunctions.reminder_edit_values(updated_job)
         except Exception as exc:
             await handle_interaction_error(
                 interaction,
@@ -195,23 +193,15 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
             )
             return
 
+        reminder_view = ReminderOutputView(
+            job=updated_job,
+            guild=interaction.guild,
+            result_message="Reminder updated.",
+            ok=True,
+        )
         await interaction.followup.send(
             ephemeral=self._response_ephemeral,
-            **DailyTaskEmbeds.reminder_details_embed(
-                reminder_id=str(updated_job.id),
-                channel_id=updated_job.channel_id,
-                schedule_text=edit_values.get("schedule") or schedule,
-                reminder=edit_values.get("reminder") or reminder,
-                ping=format_reminder_mentions(
-                    interaction.guild,
-                    edit_values.get("ping_text"),
-                ),
-                description=edit_values.get("description") or "",
-                expires_after=edit_values.get("expires_after") or "",
-                paused=ReminderFunctions.is_paused(updated_job),
-                result_message="Reminder updated.",
-                ok=True,
-            ),
+            **reminder_view.response_payload(),
         )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
@@ -441,24 +431,15 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
             return
 
         await self._refresh_parent(interaction)
-        edit_values = ReminderFunctions.reminder_edit_values(created_job)
+        reminder_view = ReminderOutputView(
+            job=created_job,
+            guild=interaction.guild,
+            result_message=confirmation,
+            ok=True,
+        )
         await interaction.followup.send(
             ephemeral=self._response_ephemeral,
-            **DailyTaskEmbeds.reminder_details_embed(
-                reminder_id=str(created_job.id),
-                channel_id=created_job.channel_id,
-                schedule_text=edit_values.get("schedule") or schedule,
-                reminder=edit_values.get("reminder") or reminder,
-                ping=format_reminder_mentions(
-                    interaction.guild,
-                    edit_values.get("ping_text"),
-                ),
-                description=edit_values.get("description") or "",
-                expires_after=edit_values.get("expires_after") or "",
-                paused=ReminderFunctions.is_paused(created_job),
-                result_message=confirmation,
-                ok=True,
-            ),
+            **reminder_view.response_payload(),
         )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
