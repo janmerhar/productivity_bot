@@ -288,7 +288,10 @@ class StockDailyJobModal(discord.ui.Modal, title="Schedule Daily Stock Check"):
                 interaction.channel_id,
                 "stock",
                 payload,
-                CronSchedule(expression=cron_expression),
+                CronSchedule(
+                    expression=cron_expression,
+                    timezone=timezone,
+                ),
             )
         except Exception as exc:
             raise UserVisibleError(

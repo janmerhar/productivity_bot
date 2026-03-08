@@ -13,6 +13,7 @@ from services.cron_schedule import (
     resolve_cron_expression,
 )
 from services.error_reporting import UserVisibleError, ValidationError
+from services.schedule_time import schedule_timezone_name
 
 
 class ReminderFunctions:
@@ -468,7 +469,7 @@ class ReminderFunctions:
                 raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
 
             return (
-                CronSchedule(expression=cron_expression),
+                CronSchedule(expression=cron_expression, timezone=timezone),
                 f"`{schedule_input}` (Cron: `{cron_expression}`)",
             )
 
@@ -478,7 +479,10 @@ class ReminderFunctions:
                     "`skip_days` cannot be combined with a raw cron expression.",
                     ephemeral=ephemeral,
                 )
-            return CronSchedule(expression=raw_time), f"`{raw_time}` (Cron: `{raw_time}`)"
+            return (
+                CronSchedule(expression=raw_time, timezone=timezone),
+                f"`{raw_time}` (Cron: `{raw_time}`)",
+            )
 
         if ReminderFunctions._looks_like_recurring_schedule(raw_time):
             schedule_input = raw_time
@@ -493,7 +497,7 @@ class ReminderFunctions:
                 raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
 
             return (
-                CronSchedule(expression=cron_expression),
+                CronSchedule(expression=cron_expression, timezone=timezone),
                 f"`{schedule_input}` (Cron: `{cron_expression}`)",
             )
 
@@ -719,6 +723,7 @@ class ReminderFunctions:
 
         existing_data = dict(job.data or {})
         edit_values = ReminderFunctions.reminder_edit_values(job)
+        existing_schedule_timezone = schedule_timezone_name(job.schedule)
         raw_ping_text = ping_text.strip() if ping_text is not None else None
         raw_description = description.strip() if description is not None else None
         raw_expires_after = expires_after
@@ -744,7 +749,7 @@ class ReminderFunctions:
             skip_days=None,
             expires_at=expires_at,
             ephemeral=ephemeral,
-            timezone=timezone,
+            timezone=timezone or existing_schedule_timezone,
         )
 
         updated_data: Dict[str, Any]

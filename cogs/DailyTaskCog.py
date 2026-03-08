@@ -127,7 +127,10 @@ class DailyTaskCog(commands.Cog):
             payload = {"message": raw_data}
 
         manager = DailyJobManager()
-        schedule_config = CronSchedule(expression=cron_expression)
+        schedule_config = CronSchedule(
+            expression=cron_expression,
+            timezone=timezone,
+        )
 
         try:
             created_job = await asyncio.to_thread(
