@@ -7,6 +7,7 @@ from discord.ext import commands
 
 from classes.ReminderFunctions import ReminderFunctions
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
+from services.channel_visibility import can_view_channel, filter_visible_items
 from services.error_reporting import UserVisibleError
 from services.error_reporting import ValidationError
 from services.timezone_gate import ensure_user_timezone
@@ -69,6 +70,37 @@ class ReminderCog(commands.Cog):
             ephemeral=ephemeral,
             **reminder_view.response_payload(),
         )
+
+    async def _get_visible_reminder(
+        self,
+        interaction: discord.Interaction,
+        reminder_id: str,
+        *,
+        ephemeral: bool,
+    ):
+        try:
+            job = await asyncio.to_thread(
+                ReminderFunctions.get_reminder,
+                reminder_id,
+                interaction.guild_id,
+            )
+        except ValueError as exc:
+            raise ValidationError(
+                "That reminder ID is invalid.",
+                ephemeral=ephemeral,
+                cause=exc,
+            )
+
+        if job is None or not can_view_channel(
+            interaction,
+            job.channel_id,
+        ):
+            raise ValidationError(
+                "No reminder found with that ID in this server.",
+                ephemeral=ephemeral,
+            )
+
+        return job
 
     @reminder_group.command(
         name="add",
@@ -200,6 +232,11 @@ class ReminderCog(commands.Cog):
                 ephemeral=ephemeral,
                 cause=exc,
             )
+        reminders = filter_visible_items(
+            interaction,
+            reminders,
+            channel_id_getter=lambda reminder: reminder.channel_id,
+        )
 
         view = ReminderListView(
             reminders=reminders,
@@ -241,19 +278,19 @@ class ReminderCog(commands.Cog):
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="public")
         await interaction.response.defer(ephemeral=ephemeral)
+        reminder_id_value = reminder_id.strip()
 
-        try:
-            deleted = await asyncio.to_thread(
-                ReminderFunctions.delete_reminder,
-                reminder_id,
-                interaction.guild_id,
-            )
-        except ValueError as exc:
-            raise ValidationError(
-                "That reminder ID is invalid.",
-                ephemeral=ephemeral,
-                cause=exc,
-            )
+        await self._get_visible_reminder(
+            interaction,
+            reminder_id_value,
+            ephemeral=ephemeral,
+        )
+
+        deleted = await asyncio.to_thread(
+            ReminderFunctions.delete_reminder,
+            reminder_id_value,
+            interaction.guild_id,
+        )
 
         if not deleted:
             raise ValidationError(
@@ -285,25 +322,11 @@ class ReminderCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="public")
-
-        try:
-            job = await asyncio.to_thread(
-                ReminderFunctions.get_reminder,
-                reminder,
-                interaction.guild_id,
-            )
-        except ValueError as exc:
-            raise ValidationError(
-                "That reminder ID is invalid.",
-                ephemeral=ephemeral,
-                cause=exc,
-            )
-
-        if job is None:
-            raise ValidationError(
-                "No reminder found with that ID in this server.",
-                ephemeral=ephemeral,
-            )
+        job = await self._get_visible_reminder(
+            interaction,
+            reminder,
+            ephemeral=ephemeral,
+        )
 
         try:
             channel_options = _build_text_channel_select_options(
@@ -341,25 +364,11 @@ class ReminderCog(commands.Cog):
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="public")
         await interaction.response.defer(ephemeral=ephemeral)
-
-        try:
-            job = await asyncio.to_thread(
-                ReminderFunctions.get_reminder,
-                reminder,
-                interaction.guild_id,
-            )
-        except ValueError as exc:
-            raise ValidationError(
-                "That reminder ID is invalid.",
-                ephemeral=ephemeral,
-                cause=exc,
-            )
-
-        if job is None:
-            raise ValidationError(
-                "No reminder found with that ID in this server.",
-                ephemeral=ephemeral,
-            )
+        job = await self._get_visible_reminder(
+            interaction,
+            reminder,
+            ephemeral=ephemeral,
+        )
 
         await self._send_reminder_output(
             interaction,
@@ -388,10 +397,26 @@ class ReminderCog(commands.Cog):
         reminder_id_value = reminder_id.strip()
 
         if reminder_id_value == ReminderFunctions.ALL_REMINDERS_TOKEN:
-            paused_count = await asyncio.to_thread(
-                ReminderFunctions.pause_all_reminders,
+            reminders = await asyncio.to_thread(
+                ReminderFunctions.list_reminders,
                 interaction.guild_id,
+                False,
             )
+            visible_reminders = filter_visible_items(
+                interaction,
+                reminders,
+                channel_id_getter=lambda reminder: reminder.channel_id,
+            )
+            paused_count = 0
+            for reminder_job in visible_reminders:
+                result = await asyncio.to_thread(
+                    ReminderFunctions.pause_reminder,
+                    str(reminder_job.id),
+                    interaction.guild_id,
+                )
+                if result == "paused":
+                    paused_count += 1
+
             if paused_count == 0:
                 await interaction.followup.send(
                     ephemeral=ephemeral,
@@ -411,18 +436,16 @@ class ReminderCog(commands.Cog):
             )
             return
 
-        try:
-            result = await asyncio.to_thread(
-                ReminderFunctions.pause_reminder,
-                reminder_id_value,
-                interaction.guild_id,
-            )
-        except ValueError as exc:
-            raise ValidationError(
-                "That reminder ID is invalid.",
-                ephemeral=ephemeral,
-                cause=exc,
-            )
+        await self._get_visible_reminder(
+            interaction,
+            reminder_id_value,
+            ephemeral=ephemeral,
+        )
+        result = await asyncio.to_thread(
+            ReminderFunctions.pause_reminder,
+            reminder_id_value,
+            interaction.guild_id,
+        )
 
         if result == "missing":
             raise ValidationError(
@@ -430,16 +453,11 @@ class ReminderCog(commands.Cog):
                 ephemeral=ephemeral,
             )
 
-        paused_job = await asyncio.to_thread(
-            ReminderFunctions.get_reminder,
+        paused_job = await self._get_visible_reminder(
+            interaction,
             reminder_id_value,
-            interaction.guild_id,
+            ephemeral=ephemeral,
         )
-        if paused_job is None:
-            raise UserVisibleError(
-                "Reminder status changed, but it could not be reloaded.",
-                ephemeral=ephemeral,
-            )
 
         if result == "already_paused":
             await self._send_reminder_output(
@@ -492,10 +510,26 @@ class ReminderCog(commands.Cog):
             )
 
         if resume_all:
-            resumed_count = await asyncio.to_thread(
-                ReminderFunctions.resume_all_reminders,
+            reminders = await asyncio.to_thread(
+                ReminderFunctions.list_reminders,
                 interaction.guild_id,
+                True,
             )
+            visible_reminders = filter_visible_items(
+                interaction,
+                reminders,
+                channel_id_getter=lambda reminder: reminder.channel_id,
+            )
+            resumed_count = 0
+            for reminder_job in visible_reminders:
+                result = await asyncio.to_thread(
+                    ReminderFunctions.resume_reminder,
+                    str(reminder_job.id),
+                    interaction.guild_id,
+                )
+                if result == "resumed":
+                    resumed_count += 1
+
             if resumed_count == 0:
                 await interaction.followup.send(
                     ephemeral=ephemeral,
@@ -521,18 +555,16 @@ class ReminderCog(commands.Cog):
                 ephemeral=ephemeral,
             )
 
-        try:
-            result = await asyncio.to_thread(
-                ReminderFunctions.resume_reminder,
-                reminder_id_value,
-                interaction.guild_id,
-            )
-        except ValueError as exc:
-            raise ValidationError(
-                "That reminder ID is invalid.",
-                ephemeral=ephemeral,
-                cause=exc,
-            )
+        await self._get_visible_reminder(
+            interaction,
+            reminder_id_value,
+            ephemeral=ephemeral,
+        )
+        result = await asyncio.to_thread(
+            ReminderFunctions.resume_reminder,
+            reminder_id_value,
+            interaction.guild_id,
+        )
 
         if result == "missing":
             raise ValidationError(
@@ -540,16 +572,11 @@ class ReminderCog(commands.Cog):
                 ephemeral=ephemeral,
             )
 
-        resumed_job = await asyncio.to_thread(
-            ReminderFunctions.get_reminder,
+        resumed_job = await self._get_visible_reminder(
+            interaction,
             reminder_id_value,
-            interaction.guild_id,
+            ephemeral=ephemeral,
         )
-        if resumed_job is None:
-            raise UserVisibleError(
-                "Reminder status changed, but it could not be reloaded.",
-                ephemeral=ephemeral,
-            )
 
         if result == "already_resumed":
             await self._send_reminder_output(
@@ -679,14 +706,14 @@ class ReminderCog(commands.Cog):
             )
 
         channel = interaction.guild.get_channel(channel_id)
-        if channel is None:
+        if channel is None or not isinstance(channel, discord.TextChannel):
             raise ValidationError(
                 "That channel was not found.",
                 ephemeral=ephemeral,
             )
-        if not isinstance(channel, discord.TextChannel):
+        if not can_view_channel(interaction, channel_id):
             raise ValidationError(
-                "Please select a text channel from autocomplete.",
+                "That channel was not found.",
                 ephemeral=ephemeral,
             )
 
@@ -794,6 +821,11 @@ class ReminderCog(commands.Cog):
             )
         except Exception:
             return []
+        reminders = filter_visible_items(
+            interaction,
+            reminders,
+            channel_id_getter=lambda reminder: reminder.channel_id,
+        )
 
         options: List[app_commands.Choice[str]] = []
         if include_all:
