@@ -12,6 +12,10 @@ from services.discord_helpers import (
     resolve_messageable_channel,
 )
 from services.error_reporting import ValidationError, handle_interaction_error
+from services.reminder_destination import (
+    build_reminder_destination_select_options,
+    parse_reminder_destination_value,
+)
 from services.timezone_gate import ensure_user_timezone
 from views.ReminderOutputView import ReminderOutputView
 
@@ -20,38 +24,21 @@ def _clamp_text(value: Optional[str], limit: int = 4000) -> str:
     return str(value or "")[:limit]
 
 
-def _parse_channel_id(value: str) -> int:
-    cleaned = value.strip()
-    mention_match = re.fullmatch(r"<#(\d+)>", cleaned)
-    if mention_match is not None:
-        return int(mention_match.group(1))
-    if cleaned.isdigit():
-        return int(cleaned)
-    raise ValidationError("Please provide a valid channel mention or channel id.")
-
-
-def _build_text_channel_select_options(
+def _build_destination_select_options(
     guild: Optional[discord.Guild],
     current_channel_id: Optional[int],
+    *,
+    is_private_selected: bool = False,
 ) -> List[discord.SelectOption]:
-    if guild is None:
-        return []
+    return build_reminder_destination_select_options(
+        guild,
+        current_channel_id,
+        is_private_selected=is_private_selected,
+    )
 
-    options: List[discord.SelectOption] = []
-    for channel in guild.text_channels:
-        options.append(
-            discord.SelectOption(
-                label=f"#{channel.name}"[:100],
-                value=str(channel.id),
-                default=(
-                    current_channel_id is not None and channel.id == current_channel_id
-                ),
-            )
-        )
-        if len(options) >= 25:
-            break
 
-    return options
+def _parse_destination_value(value: str):
+    return parse_reminder_destination_value(value)
 
 
 class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
@@ -149,7 +136,7 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
         if self.destination_channel_select is None:
             self.destination_channel_input = discord.ui.TextInput(
                 label="Destination channel",
-                placeholder="Use a channel mention like #general or a channel id",
+                placeholder="Use `Private`, a channel mention, or a channel id",
                 required=True,
                 max_length=64,
                 default=_clamp_text(values.get("destination_channel"), 64),
@@ -186,7 +173,8 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
         reminder: str,
         ping: str,
         description: str,
-        destination_channel_id: int,
+        destination_type: str,
+        destination_channel_id: Optional[int],
         timezone: Optional[str],
     ) -> None:
         try:
@@ -200,6 +188,8 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
                 description,
                 None,
                 destination_channel_id,
+                destination_type,
+                interaction.user.id,
                 self._response_ephemeral,
                 timezone,
             )
@@ -245,29 +235,34 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
                     if self.destination_channel_select.values
                     else ""
                 )
-                destination_channel_id = int(raw_value)
+                destination_type, destination_channel_id = _parse_destination_value(
+                    raw_value
+                )
             else:
                 raw_destination_channel = str(
                     self.destination_channel_input.value or ""
                 ).strip()
-                destination_channel_id = _parse_channel_id(raw_destination_channel)
+                destination_type, destination_channel_id = _parse_destination_value(
+                    raw_destination_channel
+                )
             bot = interaction.client
             if not isinstance(bot, commands.Bot):
                 raise ValidationError("Bot is not ready to update this reminder.")
 
-            resolved_channel = await resolve_messageable_channel(
-                bot,
-                destination_channel_id,
-            )
-            if resolved_channel is None:
-                raise ValidationError("I can't access that destination channel.")
+            if destination_type == "channel":
+                resolved_channel = await resolve_messageable_channel(
+                    bot,
+                    destination_channel_id,
+                )
+                if resolved_channel is None:
+                    raise ValidationError("I can't access that destination channel.")
 
-            if self._guild_id is not None:
-                channel_guild = getattr(resolved_channel, "guild", None)
-                if channel_guild is None or channel_guild.id != self._guild_id:
-                    raise ValidationError(
-                        "Please choose a channel from the same server as this reminder."
-                    )
+                if self._guild_id is not None:
+                    channel_guild = getattr(resolved_channel, "guild", None)
+                    if channel_guild is None or channel_guild.id != self._guild_id:
+                        raise ValidationError(
+                            "Please choose a channel from the same server as this reminder."
+                        )
 
             schedule_to_submit = raw_schedule
             if (
@@ -289,6 +284,7 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
                         reminder=raw_reminder,
                         ping=raw_ping,
                         description=raw_description,
+                        destination_type=destination_type,
                         destination_channel_id=destination_channel_id,
                         timezone=resolved_timezone,
                     )
@@ -309,6 +305,7 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
                 reminder=raw_reminder,
                 ping=raw_ping,
                 description=raw_description,
+                destination_type=destination_type,
                 destination_channel_id=destination_channel_id,
                 timezone=timezone,
             )
@@ -326,6 +323,8 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         *,
         parent_view: Optional["discord.ui.View"] = None,
         default_channel_id: Optional[int],
+        default_destination_type: str = "channel",
+        guild: Optional[discord.Guild] = None,
         source_message: Optional[discord.Message] = None,
         response_ephemeral: bool = False,
         initial_reminder: Optional[str] = None,
@@ -338,6 +337,12 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         self._response_ephemeral = bool(response_ephemeral)
         self._guild_id = (
             guild_id if guild_id is not None else getattr(parent_view, "guild_id", None)
+        )
+        self._guild = guild if guild is not None else getattr(parent_view, "guild", None)
+        self._default_destination_type = (
+            default_destination_type.strip().lower()
+            if default_destination_type
+            else "channel"
         )
 
         self.schedule = discord.ui.TextInput(
@@ -371,24 +376,20 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
             max_length=1000,
             style=discord.TextStyle.paragraph,
         )
-        self.destination_channel_select: Optional[discord.ui.ChannelSelect] = None
+        self.destination_channel_select: Optional[discord.ui.Select] = None
         self.destination_channel_label: Optional[discord.ui.Label] = None
 
-        if self._guild_id is not None:
-            default_values = (
-                [discord.Object(id=self._default_channel_id)]
-                if self._default_channel_id is not None
-                else []
-            )
-            self.destination_channel_select = discord.ui.ChannelSelect(
+        channel_options = _build_destination_select_options(
+            self._guild,
+            self._default_channel_id,
+            is_private_selected=self._default_destination_type == "private",
+        )
+        if channel_options:
+            self.destination_channel_select = discord.ui.Select(
                 placeholder="Choose a destination channel",
                 min_values=1,
                 max_values=1,
-                channel_types=[
-                    discord.ChannelType.text,
-                    discord.ChannelType.news,
-                ],
-                default_values=default_values,
+                options=channel_options[:25],
             )
             self.destination_channel_label = discord.ui.Label(
                 text="Destination channel",
@@ -419,7 +420,8 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         reminder: str,
         ping: str,
         description: str,
-        destination_channel_id: int,
+        destination_type: str,
+        destination_channel_id: Optional[int],
         timezone: Optional[str],
     ) -> None:
         try:
@@ -436,6 +438,8 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
                 description,
                 None,
                 destination_channel_id,
+                destination_type,
+                interaction.user.id,
                 self._response_ephemeral,
                 timezone,
             )
@@ -473,37 +477,43 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
 
         try:
             if self.destination_channel_select is not None:
-                selected_channel = (
+                raw_destination = (
                     self.destination_channel_select.values[0]
                     if self.destination_channel_select.values
-                    else None
+                    else ""
                 )
-                destination_channel_id = (
-                    getattr(selected_channel, "id", None) if selected_channel else None
+                destination_type, destination_channel_id = _parse_destination_value(
+                    raw_destination
                 )
             else:
-                destination_channel_id = self._default_channel_id
+                destination_type = self._default_destination_type
+                destination_channel_id = (
+                    None
+                    if destination_type == "private"
+                    else self._default_channel_id
+                )
 
-            if destination_channel_id is None:
+            if destination_type == "channel" and destination_channel_id is None:
                 raise ValidationError("Please choose a destination channel.")
 
             bot = interaction.client
             if not isinstance(bot, commands.Bot):
                 raise ValidationError("Bot is not ready to create this reminder.")
 
-            resolved_channel = await resolve_messageable_channel(
-                bot,
-                destination_channel_id,
-            )
-            if resolved_channel is None:
-                raise ValidationError("I can't access that destination channel.")
+            if destination_type == "channel":
+                resolved_channel = await resolve_messageable_channel(
+                    bot,
+                    destination_channel_id,
+                )
+                if resolved_channel is None:
+                    raise ValidationError("I can't access that destination channel.")
 
-            if self._guild_id is not None:
-                channel_guild = getattr(resolved_channel, "guild", None)
-                if channel_guild is None or channel_guild.id != self._guild_id:
-                    raise ValidationError(
-                        "Please choose a channel from the same server as this reminder."
-                    )
+                if self._guild_id is not None:
+                    channel_guild = getattr(resolved_channel, "guild", None)
+                    if channel_guild is None or channel_guild.id != self._guild_id:
+                        raise ValidationError(
+                            "Please choose a channel from the same server as this reminder."
+                        )
 
             timezone = None
             if not is_valid_cron_expression(raw_schedule):
@@ -518,6 +528,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
                         reminder=raw_reminder,
                         ping=raw_ping,
                         description=raw_description,
+                        destination_type=destination_type,
                         destination_channel_id=destination_channel_id,
                         timezone=resolved_timezone,
                     )
@@ -538,6 +549,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
                 reminder=raw_reminder,
                 ping=raw_ping,
                 description=raw_description,
+                destination_type=destination_type,
                 destination_channel_id=destination_channel_id,
                 timezone=timezone,
             )

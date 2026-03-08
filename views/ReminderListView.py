@@ -21,6 +21,7 @@ class ReminderListView(discord.ui.View):
         status_label: str,
         guild_id: Optional[int],
         channel_id: Optional[int],
+        destination_type: Optional[str],
         paused_filter: Optional[bool],
         user_id: Optional[int],
         response_ephemeral: bool = False,
@@ -33,6 +34,7 @@ class ReminderListView(discord.ui.View):
         self.status_label = status_label
         self.guild_id = guild_id
         self.channel_id = channel_id
+        self.destination_type = destination_type
         self.paused_filter = paused_filter
         self.user_id = user_id
         self.response_ephemeral = bool(response_ephemeral)
@@ -64,9 +66,7 @@ class ReminderListView(discord.ui.View):
 
     @staticmethod
     def _destination_label(job: DailyJob) -> str:
-        if job.channel_id is None:
-            return "unknown"
-        return f"<#{job.channel_id}>"
+        return ReminderFunctions.destination_label(job)
 
     @staticmethod
     def _datetime_label(raw_value: str) -> Optional[str]:
@@ -129,7 +129,7 @@ class ReminderListView(discord.ui.View):
             status = "paused" if ReminderFunctions.is_paused(job) else "active"
             value_lines = [
                 f"Schedule: {self._schedule_label(job)}",
-                f"Channel: {self._destination_label(job)} | ID: `{str(job.id)[:8]}`",
+                f"Destination: {self._destination_label(job)} | ID: `{str(job.id)[:8]}`",
             ]
             expires_label = self._expires_label(job)
             if expires_label:
@@ -152,12 +152,15 @@ class ReminderListView(discord.ui.View):
         return {"embed": self._embed()}
 
     async def _reload_reminders(self) -> None:
-        self.reminders = await asyncio.to_thread(
+        reminders = await asyncio.to_thread(
             ReminderFunctions.list_reminders,
             self.guild_id,
             self.paused_filter,
             self.channel_id,
+            self.destination_type,
+            self.user_id if self.destination_type == "private" else None,
         )
+        self.reminders = reminders
         self.total_pages = max(1, math.ceil(len(self.reminders) / self.page_size))
         self.page = max(1, min(self.page, self.total_pages))
 
@@ -233,6 +236,8 @@ class ReminderListView(discord.ui.View):
             ReminderCreateModal(
                 parent_view=self,
                 default_channel_id=default_channel_id,
+                default_destination_type=self.destination_type or "channel",
+                guild=interaction.guild,
                 source_message=interaction.message,
                 response_ephemeral=self.response_ephemeral,
             )

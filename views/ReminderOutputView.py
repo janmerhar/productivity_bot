@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-import re
 from typing import Optional
 
 import discord
@@ -14,16 +13,10 @@ from services.discord_helpers import (
     resolve_messageable_channel,
 )
 from services.error_reporting import ValidationError, handle_interaction_error
-
-
-def _parse_channel_id(value: str) -> int:
-    cleaned = value.strip()
-    mention_match = re.fullmatch(r"<#(\d+)>", cleaned)
-    if mention_match is not None:
-        return int(mention_match.group(1))
-    if cleaned.isdigit():
-        return int(cleaned)
-    raise ValidationError("Please provide a valid channel mention or channel id.")
+from services.reminder_destination import (
+    build_reminder_destination_select_options,
+    parse_reminder_destination_value,
+)
 
 
 class ReminderChangeChannelModal(discord.ui.Modal, title="Change Reminder Channel"):
@@ -57,14 +50,10 @@ class ReminderChangeChannelModal(discord.ui.Modal, title="Change Reminder Channe
                 self.channel_select_label = None
 
         if self.channel_select is None:
-            default_channel = (
-                f"<#{self._view.channel_id}>"
-                if self._view.channel_id is not None
-                else ""
-            )
+            default_channel = ReminderFunctions.destination_label(self._view.job)
             self.channel_input = discord.ui.TextInput(
                 label="Destination channel",
-                placeholder="Use a channel mention like #general or a channel id",
+                placeholder="Use `Private`, a channel mention, or a channel id",
                 required=True,
                 max_length=64,
                 default=default_channel[:64],
@@ -79,14 +68,14 @@ class ReminderChangeChannelModal(discord.ui.Modal, title="Change Reminder Channe
                 raw_value = (
                     self.channel_select.values[0] if self.channel_select.values else ""
                 )
-                new_channel_id = int(raw_value)
+                destination_type, new_channel_id = parse_reminder_destination_value(raw_value)
             else:
                 raw_value = (
                     str(self.channel_input.value or "")
                     if self.channel_input is not None
                     else ""
                 )
-                new_channel_id = _parse_channel_id(raw_value)
+                destination_type, new_channel_id = parse_reminder_destination_value(raw_value)
 
             bot = interaction.client
             if not isinstance(bot, commands.Bot):
@@ -95,26 +84,36 @@ class ReminderChangeChannelModal(discord.ui.Modal, title="Change Reminder Channe
                     ephemeral=self._view.response_ephemeral,
                 )
 
-            resolved_channel = await resolve_messageable_channel(bot, new_channel_id)
-            if resolved_channel is None:
-                raise ValidationError(
-                    "I can't access that destination channel.",
-                    ephemeral=self._view.response_ephemeral,
-                )
-
-            if self._view.guild_id is not None:
-                channel_guild = getattr(resolved_channel, "guild", None)
-                if channel_guild is None or channel_guild.id != self._view.guild_id:
+            if destination_type == "channel":
+                resolved_channel = await resolve_messageable_channel(bot, new_channel_id)
+                if resolved_channel is None:
                     raise ValidationError(
-                        "Please choose a channel from the same server as this reminder.",
+                        "I can't access that destination channel.",
                         ephemeral=self._view.response_ephemeral,
                     )
 
+                if self._view.guild_id is not None:
+                    channel_guild = getattr(resolved_channel, "guild", None)
+                    if channel_guild is None or channel_guild.id != self._view.guild_id:
+                        raise ValidationError(
+                            "Please choose a channel from the same server as this reminder.",
+                            ephemeral=self._view.response_ephemeral,
+                        )
+
             manager = DailyJobManager()
+            updated_data = {
+                **(self._view.job.data or {}),
+                "destination_type": destination_type,
+            }
+            if destination_type == "private":
+                updated_data["user_id"] = interaction.user.id
+            else:
+                updated_data.pop("user_id", None)
             updated = await asyncio.to_thread(
                 manager.update_job,
                 self._view.job_id,
                 new_channel_id=new_channel_id,
+                data=updated_data,
                 guild_id=self._view.guild_id,
             )
             if not updated:
@@ -130,18 +129,13 @@ class ReminderChangeChannelModal(discord.ui.Modal, title="Change Reminder Channe
             )
             return
 
-        result_message = (
-            f"Updated reminder `{self._view.job_id}` to post in <#{new_channel_id}>."
-        )
+        destination_label = "Private" if destination_type == "private" else f"<#{new_channel_id}>"
+        result_message = f"Updated reminder `{self._view.job_id}` to post in {destination_label}."
         self._view.ok = True
         await self._view.refresh_message(
             interaction,
             source_message=self._view.message or interaction.message,
             result_message=result_message,
-        )
-        await interaction.followup.send(
-            result_message,
-            ephemeral=self._view.response_ephemeral,
         )
 
 
@@ -235,7 +229,9 @@ class ReminderOutputView(discord.ui.View):
             self.toggle_state.style = discord.ButtonStyle.secondary
 
     @staticmethod
-    def _format_channel(channel_id: Optional[int]) -> str:
+    def _format_channel(job: Optional[DailyJob], channel_id: Optional[int]) -> str:
+        if job is not None:
+            return ReminderFunctions.destination_label(job)
         if channel_id is None:
             return "unknown"
         return f"<#{channel_id}>"
@@ -288,8 +284,8 @@ class ReminderOutputView(discord.ui.View):
             embed.add_field(name="ID", value=f"`{self.job_id}`", inline=True)
             embed.add_field(name="Status", value="missing", inline=True)
             embed.add_field(
-                name="Channel",
-                value=self._format_channel(self.channel_id),
+                name="Destination",
+                value=self._format_channel(self.job, self.channel_id),
                 inline=True,
             )
             embed.add_field(
@@ -302,8 +298,8 @@ class ReminderOutputView(discord.ui.View):
         values = ReminderFunctions.reminder_edit_values(self.job)
         embed.add_field(name="ID", value=f"`{self.job_id}`", inline=True)
         embed.add_field(
-            name="Channel",
-            value=self._format_channel(self.channel_id),
+            name="Destination",
+            value=self._format_channel(self.job, self.channel_id),
             inline=True,
         )
         embed.add_field(
@@ -384,6 +380,13 @@ class ReminderOutputView(discord.ui.View):
             ReminderCreateModal(
                 parent_view=self,
                 default_channel_id=default_channel_id,
+                default_destination_type=(
+                    "private"
+                    if self.job is not None
+                    and ReminderFunctions.is_private_destination(self.job)
+                    else "channel"
+                ),
+                guild=interaction.guild or self.guild,
                 source_message=interaction.message,
                 response_ephemeral=self.response_ephemeral,
             )
@@ -401,7 +404,6 @@ class ReminderOutputView(discord.ui.View):
     ) -> None:
         from views.ReminderEditModal import (
             ReminderEditModal,
-            _build_text_channel_select_options,
         )
 
         self.message = interaction.message
@@ -412,9 +414,10 @@ class ReminderOutputView(discord.ui.View):
             )
             return
 
-        channel_options = _build_text_channel_select_options(
+        channel_options = build_reminder_destination_select_options(
             interaction.guild,
             self.job.channel_id,
+            is_private_selected=ReminderFunctions.is_private_destination(self.job),
         )
         await interaction.response.send_modal(
             ReminderEditModal(
@@ -436,8 +439,6 @@ class ReminderOutputView(discord.ui.View):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        from views.ReminderEditModal import _build_text_channel_select_options
-
         self.message = interaction.message
         if self.job is None:
             await interaction.response.send_message(
@@ -446,9 +447,10 @@ class ReminderOutputView(discord.ui.View):
             )
             return
 
-        channel_options = _build_text_channel_select_options(
+        channel_options = build_reminder_destination_select_options(
             interaction.guild,
             self.job.channel_id,
+            is_private_selected=ReminderFunctions.is_private_destination(self.job),
         )
         await interaction.response.send_modal(
             ReminderChangeChannelModal(
@@ -600,8 +602,4 @@ class ReminderOutputView(discord.ui.View):
             interaction,
             source_message=interaction.message,
             result_message=self.result_message,
-        )
-        await interaction.followup.send(
-            self.result_message,
-            ephemeral=self.response_ephemeral,
         )

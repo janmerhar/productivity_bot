@@ -33,6 +33,28 @@ class ReminderFunctions:
         return bool(value)
 
     @staticmethod
+    def destination_type(job: DailyJob) -> str:
+        raw_value = str((job.data or {}).get("destination_type") or "").strip().lower()
+        return raw_value if raw_value == "private" else "channel"
+
+    @staticmethod
+    def destination_user_id(job: DailyJob) -> Optional[int]:
+        raw_value = (job.data or {}).get("user_id")
+        return raw_value if isinstance(raw_value, int) else None
+
+    @staticmethod
+    def is_private_destination(job: DailyJob) -> bool:
+        return ReminderFunctions.destination_type(job) == "private"
+
+    @staticmethod
+    def destination_label(job: DailyJob) -> str:
+        if ReminderFunctions.is_private_destination(job):
+            return "Private"
+        if job.channel_id is None:
+            return "unknown"
+        return f"<#{job.channel_id}>"
+
+    @staticmethod
     def _job_schedule_mode(job: DailyJob) -> str:
         schedule = job.schedule
         if isinstance(schedule, dict):
@@ -166,9 +188,7 @@ class ReminderFunctions:
                 "thumbnail_url": "",
                 "expires_after": expires_after,
                 "ping_text": ping_text or "",
-                "destination_channel": (
-                    f"<#{job.channel_id}>" if job.channel_id is not None else ""
-                ),
+                "destination_channel": ReminderFunctions.destination_label(job),
             }
 
         message_text = str(data.get("message") or "").strip()
@@ -187,9 +207,7 @@ class ReminderFunctions:
             "thumbnail_url": thumbnail_url,
             "expires_after": expires_after,
             "ping_text": ping_text or "",
-            "destination_channel": (
-                f"<#{job.channel_id}>" if job.channel_id is not None else ""
-            ),
+            "destination_channel": ReminderFunctions.destination_label(job),
         }
 
     @staticmethod
@@ -264,17 +282,56 @@ class ReminderFunctions:
         )
 
     @staticmethod
-    def _resolve_destination_channel_id(
+    def _resolve_destination(
         default_channel_id: Optional[int],
         destination_channel_id: Optional[int],
-    ) -> int:
+        destination_type: str,
+        destination_user_id: Optional[int],
+        ephemeral: bool,
+    ) -> Tuple[int, str, Dict[str, Any]]:
+        normalized_destination_type = (
+            destination_type.strip().lower() if destination_type else "channel"
+        )
+
+        if normalized_destination_type == "private":
+            if destination_user_id is None:
+                raise ValidationError(
+                    "Private reminders need a user to deliver to.",
+                    ephemeral=ephemeral,
+                )
+            anchor_channel_id = (
+                destination_channel_id
+                if destination_channel_id is not None
+                else default_channel_id
+            )
+            if anchor_channel_id is None:
+                raise ValidationError(
+                    "This reminder needs a destination channel.",
+                    ephemeral=ephemeral,
+                )
+            return (
+                anchor_channel_id,
+                "Private",
+                {
+                    "destination_type": "private",
+                    "user_id": destination_user_id,
+                },
+            )
+
         if destination_channel_id is not None:
-            return destination_channel_id
+            return (
+                destination_channel_id,
+                f"<#{destination_channel_id}>",
+                {"destination_type": "channel"},
+            )
 
         if default_channel_id is None:
-            raise ValidationError("This reminder needs a destination channel.")
+            raise ValidationError(
+                "This reminder needs a destination channel.",
+                ephemeral=ephemeral,
+            )
 
-        return default_channel_id
+        return default_channel_id, f"<#{default_channel_id}>", {"destination_type": "channel"}
 
     @staticmethod
     def _build_repeat_schedule_input(
@@ -584,6 +641,8 @@ class ReminderFunctions:
         guild_id: Optional[int],
         paused: Optional[bool] = None,
         channel_id: Optional[int] = None,
+        destination_type: Optional[str] = None,
+        user_id: Optional[int] = None,
     ) -> List[DailyJob]:
         manager = DailyJobManager()
         jobs = manager.list_jobs(guild_id=guild_id, channel_id=channel_id)
@@ -592,6 +651,17 @@ class ReminderFunctions:
             if not ReminderFunctions.is_reminder_job(job):
                 continue
             if paused is not None and ReminderFunctions.is_paused(job) != paused:
+                continue
+            if (
+                destination_type is not None
+                and ReminderFunctions.destination_type(job) != destination_type
+            ):
+                continue
+            if (
+                destination_type == "private"
+                and user_id is not None
+                and ReminderFunctions.destination_user_id(job) != user_id
+            ):
                 continue
             reminders.append(job)
         reminders.sort(key=lambda job: str(job.id))
@@ -709,6 +779,8 @@ class ReminderFunctions:
         description: Optional[str] = None,
         expires_after: Optional[str] = None,
         destination_channel_id: Optional[int] = None,
+        destination_type: Optional[str] = None,
+        destination_user_id: Optional[int] = None,
         ephemeral: bool = True,
         timezone: Optional[str] = None,
     ) -> DailyJob:
@@ -723,6 +795,11 @@ class ReminderFunctions:
 
         existing_data = dict(job.data or {})
         edit_values = ReminderFunctions.reminder_edit_values(job)
+        effective_destination_type = (
+            destination_type
+            if destination_type is not None
+            else ReminderFunctions.destination_type(job)
+        )
         existing_schedule_timezone = schedule_timezone_name(job.schedule)
         raw_ping_text = ping_text.strip() if ping_text is not None else None
         raw_description = description.strip() if description is not None else None
@@ -808,6 +885,15 @@ class ReminderFunctions:
         if "paused" in existing_data:
             updated_data["paused"] = existing_data["paused"]
         updated_data["source"] = "reminder"
+        updated_data["destination_type"] = (
+            "private"
+            if str(effective_destination_type).strip().lower() == "private"
+            else "channel"
+        )
+        if destination_user_id is not None:
+            updated_data["user_id"] = destination_user_id
+        elif updated_data["destination_type"] != "private":
+            updated_data.pop("user_id", None)
 
         updated = manager.update_job(
             normalized_id,
@@ -847,6 +933,8 @@ class ReminderFunctions:
         description: Optional[str] = None,
         expires_after: Optional[str] = None,
         destination_channel_id: Optional[int] = None,
+        destination_type: str = "channel",
+        destination_user_id: Optional[int] = None,
         ephemeral: bool = True,
         timezone: Optional[str] = None,
     ) -> Tuple[DailyJob, str]:
@@ -855,11 +943,13 @@ class ReminderFunctions:
             timezone,
             ephemeral,
         )
-        channel_id = ReminderFunctions._resolve_destination_channel_id(
+        channel_id, destination_label, destination_data = ReminderFunctions._resolve_destination(
             default_channel_id,
             destination_channel_id,
+            destination_type,
+            destination_user_id,
+            ephemeral,
         )
-        destination_label = f"<#{channel_id}>"
 
         schedule_config, schedule_label = ReminderFunctions._resolve_schedule(
             time,
@@ -905,6 +995,8 @@ class ReminderFunctions:
                 confirmation = (
                     f"Got it! I'll post that reminder in {destination_label} at {schedule_label}."
                 )
+
+        job_data.update(destination_data)
 
         manager = DailyJobManager()
         try:

@@ -10,7 +10,7 @@ credentials.json
 token.pickle
 
 # Log files
-*.log
+*.log*
 assets/*
 
 .venv
