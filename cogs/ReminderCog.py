@@ -7,7 +7,11 @@ from discord.ext import commands
 
 from classes.ReminderFunctions import ReminderFunctions
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
-from services.channel_visibility import can_view_channel, filter_visible_items
+from services.channel_visibility import can_view_channel
+from services.discord_helpers import (
+    normalize_reminder_destination,
+    reminder_destination_autocomplete,
+)
 from services.error_reporting import UserVisibleError
 from services.error_reporting import ValidationError
 from services.timezone_gate import ensure_user_timezone
@@ -15,7 +19,7 @@ from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_vis
 from views.ReminderEditModal import (
     ReminderCreateModal,
     ReminderEditModal,
-    _build_text_channel_select_options,
+    _build_destination_select_options,
 )
 from views.ReminderListView import ReminderListView
 from views.ReminderOutputView import ReminderOutputView
@@ -48,6 +52,7 @@ async def create_reminder_from_message(
     await interaction.response.send_modal(
         ReminderCreateModal(
             default_channel_id=default_channel_id,
+            guild=interaction.guild,
             source_message=message,
             response_ephemeral=False,
             initial_reminder=reminder_text,
@@ -110,16 +115,33 @@ class ReminderCog(commands.Cog):
                 cause=exc,
             )
 
-        if job is None or not can_view_channel(
-            interaction,
-            job.channel_id,
-        ):
+        if job is None or not self._can_view_reminder(interaction, job):
             raise ValidationError(
                 "No reminder found with that ID in this server.",
                 ephemeral=ephemeral,
             )
 
         return job
+
+    @staticmethod
+    def _can_view_reminder(
+        interaction: discord.Interaction,
+        job,
+    ) -> bool:
+        if ReminderFunctions.is_private_destination(job):
+            return ReminderFunctions.destination_user_id(job) == interaction.user.id
+        return can_view_channel(interaction, job.channel_id)
+
+    def _filter_visible_reminders(
+        self,
+        interaction: discord.Interaction,
+        reminders,
+    ):
+        return [
+            reminder
+            for reminder in reminders
+            if self._can_view_reminder(interaction, reminder)
+        ]
 
     @reminder_group.command(
         name="add",
@@ -151,10 +173,17 @@ class ReminderCog(commands.Cog):
         skip_days: Optional[str] = None,
         description: Optional[str] = None,
         expires_after: Optional[str] = None,
-        destination_channel: Optional[discord.TextChannel] = None,
+        destination_channel: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="public")
+        try:
+            destination_type, destination_channel_id, _ = normalize_reminder_destination(
+                interaction,
+                destination_channel,
+            )
+        except ValueError as exc:
+            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
 
         needs_timezone = ReminderFunctions.needs_timezone(
             time,
@@ -176,7 +205,8 @@ class ReminderCog(commands.Cog):
                 skip_days=skip_days,
                 description=description,
                 expires_after=expires_after,
-                destination_channel=destination_channel,
+                destination_type=destination_type,
+                destination_channel_id=destination_channel_id,
                 ephemeral=ephemeral,
                 timezone=resolved_timezone,
             )
@@ -203,7 +233,8 @@ class ReminderCog(commands.Cog):
             skip_days=skip_days,
             description=description,
             expires_after=expires_after,
-            destination_channel=destination_channel,
+            destination_type=destination_type,
+            destination_channel_id=destination_channel_id,
             ephemeral=ephemeral,
             timezone=timezone,
         )
@@ -255,11 +286,7 @@ class ReminderCog(commands.Cog):
                 ephemeral=ephemeral,
                 cause=exc,
             )
-        reminders = filter_visible_items(
-            interaction,
-            reminders,
-            channel_id_getter=lambda reminder: reminder.channel_id,
-        )
+        reminders = self._filter_visible_reminders(interaction, reminders)
 
         view = ReminderListView(
             reminders=reminders,
@@ -352,9 +379,10 @@ class ReminderCog(commands.Cog):
         )
 
         try:
-            channel_options = _build_text_channel_select_options(
+            channel_options = _build_destination_select_options(
                 interaction.guild,
                 job.channel_id,
+                is_private_selected=ReminderFunctions.is_private_destination(job),
             )
             await interaction.response.send_modal(
                 ReminderEditModal(
@@ -528,14 +556,12 @@ class ReminderCog(commands.Cog):
         skip_days: Optional[str],
         description: Optional[str],
         expires_after: Optional[str],
-        destination_channel: Optional[discord.TextChannel],
+        destination_type: str,
+        destination_channel_id: Optional[int],
         ephemeral: bool,
         timezone: Optional[str],
     ) -> None:
         ping_text = ping.mention if ping is not None else None
-        destination_channel_id = (
-            destination_channel.id if destination_channel is not None else None
-        )
         created_job, confirmation = await asyncio.to_thread(
             ReminderFunctions.create_reminder,
             interaction.guild_id,
@@ -549,6 +575,8 @@ class ReminderCog(commands.Cog):
             description,
             expires_after,
             destination_channel_id,
+            destination_type,
+            interaction.user.id,
             ephemeral,
             timezone,
         )
@@ -654,11 +682,7 @@ class ReminderCog(commands.Cog):
             )
         except Exception:
             return []
-        reminders = filter_visible_items(
-            interaction,
-            reminders,
-            channel_id_getter=lambda reminder: reminder.channel_id,
-        )
+        reminders = self._filter_visible_reminders(interaction, reminders)
 
         options: List[app_commands.Choice[str]] = []
         for job in reminders:
@@ -674,11 +698,19 @@ class ReminderCog(commands.Cog):
                     name=choice_name[:100],
                     value=job_id,
                 )
-            )
+                )
             if len(options) >= 25:
                 break
 
         return options[:25]
+
+    @reminder_add.autocomplete("destination_channel")
+    async def reminder_add_destination_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        return reminder_destination_autocomplete(interaction, current)
 
     @reminder_remove.autocomplete("reminder_id")
     async def reminder_remove_autocomplete(

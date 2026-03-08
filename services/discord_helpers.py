@@ -1,5 +1,5 @@
 import re
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, List, Mapping, Optional, Tuple
 
 import discord
 from discord import app_commands
@@ -42,6 +42,28 @@ async def resolve_alert_destination(
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             return None
 
+    return await resolve_messageable_channel(bot, channel_id)
+
+
+async def resolve_reminder_destination(
+    bot: commands.Bot,
+    *,
+    channel_id: Optional[int],
+    data: Optional[Mapping[str, object]],
+) -> Optional[discord.abc.Messageable]:
+    destination_data = data or {}
+    destination_type = str(
+        destination_data.get("destination_type") or "channel"
+    ).strip().lower()
+    user_id_value = destination_data.get("user_id")
+    user_id = user_id_value if isinstance(user_id_value, int) else None
+    if destination_type == "private":
+        return await resolve_alert_destination(
+            bot,
+            "dm",
+            channel_id=None,
+            user_id=user_id,
+        )
     return await resolve_messageable_channel(bot, channel_id)
 
 
@@ -131,6 +153,96 @@ def alert_destination_autocomplete(
         or "private" in query
     ):
         choices.append(app_commands.Choice(name="Direct messages", value="dm"))
+
+    return choices[:25]
+
+
+def normalize_reminder_destination(
+    interaction: discord.Interaction,
+    destination: Optional[str],
+) -> Tuple[str, Optional[int], str]:
+    if not destination or not destination.strip():
+        channel_id = interaction.channel_id
+        if channel_id:
+            return "channel", channel_id, f"<#{channel_id}>"
+        return "private", None, "Private"
+
+    cleaned = destination.strip().lower()
+    if cleaned in {"private", "dm", "direct messages", "your dms", "your dm"}:
+        return "private", None, "Private"
+
+    if not cleaned.startswith("channel:"):
+        raise ValueError("Please choose a destination from the autocomplete list.")
+
+    channel_id_raw = cleaned.split(":", 1)[1].strip()
+    try:
+        channel_id = int(channel_id_raw)
+    except ValueError as exc:
+        raise ValueError("Destination channel is invalid.") from exc
+
+    guild = interaction.guild
+    if guild is None:
+        raise ValueError("Channel destinations can only be selected inside a server.")
+
+    channel = guild.get_channel(channel_id)
+    if channel is None or not isinstance(channel, discord.TextChannel):
+        raise ValueError("Please choose a text channel from this server.")
+
+    return "channel", channel_id, f"<#{channel_id}>"
+
+
+def reminder_destination_autocomplete(
+    interaction: discord.Interaction,
+    current: str = "",
+) -> List[app_commands.Choice[str]]:
+    query = (current or "").strip().lower()
+    choices: List[app_commands.Choice[str]] = []
+
+    current_channel_id = interaction.channel_id
+    current_channel_name = getattr(interaction.channel, "name", None)
+    if current_channel_id and (not query or "current" in query or "here" in query):
+        label = (
+            f"Current channel (#{current_channel_name})"
+            if current_channel_name
+            else "Current channel"
+        )
+        choices.append(
+            app_commands.Choice(
+                name=label[:100],
+                value=f"channel:{current_channel_id}",
+            )
+        )
+
+    guild = interaction.guild
+    if guild is not None:
+        for channel in guild.text_channels:
+            if len(choices) >= 24:
+                break
+            if current_channel_id and channel.id == current_channel_id:
+                continue
+            if (
+                query
+                and query not in channel.name.lower()
+                and query not in str(channel.id)
+            ):
+                continue
+            if not channel.permissions_for(interaction.user).view_channel:
+                continue
+            choices.append(
+                app_commands.Choice(
+                    name=f"#{channel.name}"[:100],
+                    value=f"channel:{channel.id}",
+                )
+            )
+
+    if len(choices) < 25 and (
+        not query
+        or "private" in query
+        or "dm" in query
+        or "direct" in query
+        or "message" in query
+    ):
+        choices.append(app_commands.Choice(name="Private", value="private"))
 
     return choices[:25]
 

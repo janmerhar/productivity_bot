@@ -64,9 +64,7 @@ class ReminderListView(discord.ui.View):
 
     @staticmethod
     def _destination_label(job: DailyJob) -> str:
-        if job.channel_id is None:
-            return "unknown"
-        return f"<#{job.channel_id}>"
+        return ReminderFunctions.destination_label(job)
 
     @staticmethod
     def _datetime_label(raw_value: str) -> Optional[str]:
@@ -129,7 +127,7 @@ class ReminderListView(discord.ui.View):
             status = "paused" if ReminderFunctions.is_paused(job) else "active"
             value_lines = [
                 f"Schedule: {self._schedule_label(job)}",
-                f"Channel: {self._destination_label(job)} | ID: `{str(job.id)[:8]}`",
+                f"Destination: {self._destination_label(job)} | ID: `{str(job.id)[:8]}`",
             ]
             expires_label = self._expires_label(job)
             if expires_label:
@@ -152,12 +150,22 @@ class ReminderListView(discord.ui.View):
         return {"embed": self._embed()}
 
     async def _reload_reminders(self) -> None:
-        self.reminders = await asyncio.to_thread(
+        reminders = await asyncio.to_thread(
             ReminderFunctions.list_reminders,
             self.guild_id,
             self.paused_filter,
             self.channel_id,
         )
+        if self.user_id is not None:
+            reminders = [
+                reminder
+                for reminder in reminders
+                if (
+                    not ReminderFunctions.is_private_destination(reminder)
+                    or ReminderFunctions.destination_user_id(reminder) == self.user_id
+                )
+            ]
+        self.reminders = reminders
         self.total_pages = max(1, math.ceil(len(self.reminders) / self.page_size))
         self.page = max(1, min(self.page, self.total_pages))
 
@@ -233,6 +241,7 @@ class ReminderListView(discord.ui.View):
             ReminderCreateModal(
                 parent_view=self,
                 default_channel_id=default_channel_id,
+                guild=interaction.guild,
                 source_message=interaction.message,
                 response_ephemeral=self.response_ephemeral,
             )

@@ -18,7 +18,10 @@ from embeds.TodoEmbeds import TodoEmbeds
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from views.PomodoroRestartView import PomodoroRestartView
 from classes.HabitFunctions import HabitFunctions
-from services.discord_helpers import resolve_messageable_channel
+from services.discord_helpers import (
+    resolve_messageable_channel,
+    resolve_reminder_destination,
+)
 from views.ScheduledJobActionView import ScheduledJobActionView
 from services.cron_schedule import (
     CronConversionError,
@@ -248,25 +251,34 @@ class DailyTaskCog(commands.Cog):
                 habit_payload = HabitEmbeds.habit_reminder_payload(habit)
                 await channel.send(**habit_payload)
                 continue
-            if job.type == "message" and ReminderFunctions.is_reminder_job(job):
-                channel = await resolve_messageable_channel(self.bot, job.channel_id)
+            if ReminderFunctions.is_reminder_job(job):
+                channel = await resolve_reminder_destination(
+                    self.bot,
+                    channel_id=job.channel_id,
+                    data=job.data,
+                )
                 if channel is None:
                     continue
 
-                reminder_view = ReminderOutputView(
-                    job=job,
-                    guild=getattr(channel, "guild", None),
-                    result_message="Reminder triggered.",
-                    ok=True,
-                    response_ephemeral=False,
-                )
-                reminder_payload = reminder_view.response_payload()
-                ping_text = ReminderFunctions.reminder_edit_values(job).get("ping_text")
-                if ping_text:
-                    reminder_payload["content"] = ping_text
+                if job.type == "message":
+                    reminder_view = ReminderOutputView(
+                        job=job,
+                        guild=getattr(channel, "guild", None),
+                        result_message="Reminder triggered.",
+                        ok=True,
+                        response_ephemeral=False,
+                    )
+                    reminder_payload = reminder_view.response_payload()
+                    ping_text = ReminderFunctions.reminder_edit_values(job).get("ping_text")
+                    if ping_text:
+                        reminder_payload["content"] = ping_text
 
-                posted_message = await channel.send(**reminder_payload)
-                reminder_view.message = posted_message
+                    posted_message = await channel.send(**reminder_payload)
+                    reminder_view.message = posted_message
+                    continue
+
+                if payload:
+                    await channel.send(**payload)
                 continue
             if not payload:
                 continue
