@@ -810,9 +810,6 @@ class ReminderCog(commands.Cog):
         all_label: str = "All",
     ) -> List[app_commands.Choice[str]]:
         query = (current or "").strip().lower()
-        if interaction.guild_id is None:
-            return []
-
         try:
             reminders = await asyncio.to_thread(
                 ReminderFunctions.list_reminders,
