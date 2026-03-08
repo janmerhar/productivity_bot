@@ -326,7 +326,6 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         *,
         parent_view: Optional["discord.ui.View"] = None,
         default_channel_id: Optional[int],
-        channel_options: Optional[List[discord.SelectOption]] = None,
         source_message: Optional[discord.Message] = None,
         response_ephemeral: bool = False,
         initial_reminder: Optional[str] = None,
@@ -372,38 +371,28 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
             max_length=1000,
             style=discord.TextStyle.paragraph,
         )
-        self.destination_channel_select: Optional[discord.ui.Select] = None
+        self.destination_channel_select: Optional[discord.ui.ChannelSelect] = None
         self.destination_channel_label: Optional[discord.ui.Label] = None
-        self.destination_channel_input: Optional[discord.ui.TextInput] = None
 
-        if channel_options:
-            try:
-                self.destination_channel_select = discord.ui.Select(
-                    placeholder="Choose a destination channel",
-                    min_values=1,
-                    max_values=1,
-                    options=channel_options[:25],
-                )
-                self.destination_channel_label = discord.ui.Label(
-                    text="Destination channel",
-                    component=self.destination_channel_select,
-                )
-            except Exception:
-                self.destination_channel_select = None
-                self.destination_channel_label = None
-
-        if self.destination_channel_select is None:
-            default_destination = (
-                f"<#{self._default_channel_id}>"
+        if self._guild_id is not None:
+            default_values = (
+                [discord.Object(id=self._default_channel_id)]
                 if self._default_channel_id is not None
-                else ""
+                else []
             )
-            self.destination_channel_input = discord.ui.TextInput(
-                label="Destination channel",
-                placeholder="Use a channel mention like #general or a channel id",
-                required=True,
-                max_length=64,
-                default=_clamp_text(default_destination, 64),
+            self.destination_channel_select = discord.ui.ChannelSelect(
+                placeholder="Choose a destination channel",
+                min_values=1,
+                max_values=1,
+                channel_types=[
+                    discord.ChannelType.text,
+                    discord.ChannelType.news,
+                ],
+                default_values=default_values,
+            )
+            self.destination_channel_label = discord.ui.Label(
+                text="Destination channel",
+                component=self.destination_channel_select,
             )
 
         self.add_item(self.schedule)
@@ -412,8 +401,6 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         self.add_item(self.description)
         if self.destination_channel_label is not None:
             self.add_item(self.destination_channel_label)
-        elif self.destination_channel_input is not None:
-            self.add_item(self.destination_channel_input)
 
     async def _refresh_parent(self, interaction: discord.Interaction) -> None:
         refresh_method = getattr(self._parent_view, "refresh_message", None)
@@ -486,17 +473,19 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
 
         try:
             if self.destination_channel_select is not None:
-                raw_value = (
+                selected_channel = (
                     self.destination_channel_select.values[0]
                     if self.destination_channel_select.values
-                    else ""
+                    else None
                 )
-                destination_channel_id = int(raw_value)
+                destination_channel_id = (
+                    getattr(selected_channel, "id", None) if selected_channel else None
+                )
             else:
-                raw_destination_channel = str(
-                    self.destination_channel_input.value or ""
-                ).strip()
-                destination_channel_id = _parse_channel_id(raw_destination_channel)
+                destination_channel_id = self._default_channel_id
+
+            if destination_channel_id is None:
+                raise ValidationError("Please choose a destination channel.")
 
             bot = interaction.client
             if not isinstance(bot, commands.Bot):

@@ -45,14 +45,9 @@ async def create_reminder_from_message(
         )
 
     default_channel_id = message.channel.id
-    channel_options = _build_text_channel_select_options(
-        interaction.guild,
-        default_channel_id,
-    )
     await interaction.response.send_modal(
         ReminderCreateModal(
             default_channel_id=default_channel_id,
-            channel_options=channel_options,
             source_message=message,
             response_ephemeral=False,
             initial_reminder=reminder_text,

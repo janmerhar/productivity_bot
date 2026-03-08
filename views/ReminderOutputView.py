@@ -376,20 +376,14 @@ class ReminderOutputView(discord.ui.View):
     ) -> None:
         from views.ReminderEditModal import (
             ReminderCreateModal,
-            _build_text_channel_select_options,
         )
 
         self.message = interaction.message
         default_channel_id = self.channel_id or interaction.channel_id
-        channel_options = _build_text_channel_select_options(
-            interaction.guild,
-            default_channel_id,
-        )
         await interaction.response.send_modal(
             ReminderCreateModal(
                 parent_view=self,
                 default_channel_id=default_channel_id,
-                channel_options=channel_options,
                 source_message=interaction.message,
                 response_ephemeral=self.response_ephemeral,
             )

@@ -7,10 +7,7 @@ import discord
 
 from classes.DailyJob import DailyJob
 from classes.ReminderFunctions import ReminderFunctions
-from views.ReminderEditModal import (
-    ReminderCreateModal,
-    _build_text_channel_select_options,
-)
+from views.ReminderEditModal import ReminderCreateModal
 
 
 class ReminderListView(discord.ui.View):
@@ -232,15 +229,10 @@ class ReminderListView(discord.ui.View):
     ) -> None:
         del button
         default_channel_id = self.channel_id or interaction.channel_id
-        channel_options = _build_text_channel_select_options(
-            interaction.guild,
-            default_channel_id,
-        )
         await interaction.response.send_modal(
             ReminderCreateModal(
                 parent_view=self,
                 default_channel_id=default_channel_id,
-                channel_options=channel_options,
                 source_message=interaction.message,
                 response_ephemeral=self.response_ephemeral,
             )
