@@ -309,7 +309,10 @@ class CryptoDailyJobModal(discord.ui.Modal, title="Schedule Daily Crypto Check")
                 interaction.channel_id,
                 "crypto",
                 payload,
-                CronSchedule(expression=cron_expression),
+                CronSchedule(
+                    expression=cron_expression,
+                    timezone=timezone,
+                ),
             )
         except Exception as exc:
             raise UserVisibleError(

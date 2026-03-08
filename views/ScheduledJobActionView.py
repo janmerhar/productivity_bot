@@ -15,6 +15,7 @@ from services.cron_schedule import (
 )
 from services.discord_helpers import resolve_messageable_channel
 from services.error_reporting import ValidationError, handle_interaction_error
+from services.schedule_time import schedule_timezone_name
 from services.timezone_gate import ensure_user_timezone
 
 _MODAL_SELECTS_SUPPORTED = True
@@ -191,12 +192,20 @@ class ScheduledJobEditModal(discord.ui.Modal):
             return
 
         manager = DailyJobManager()
+        effective_timezone = timezone or schedule_timezone_name(
+            getattr(self._view, "job", None).schedule
+            if getattr(self._view, "job", None) is not None
+            else None
+        )
         try:
             updated = await asyncio.to_thread(
                 manager.update_job,
                 self._view.job_id,
                 data=payload,
-                schedule=CronSchedule(expression=cron_expression),
+                schedule=CronSchedule(
+                    expression=cron_expression,
+                    timezone=effective_timezone,
+                ),
                 channel_id=self._view.channel_id,
                 guild_id=self._view.guild_id,
             )
@@ -465,14 +474,16 @@ class ScheduledJobActionView(discord.ui.View):
         self.channel_id = channel_id
         self.guild_id = guild_id
         self.response_ephemeral = bool(response_ephemeral)
+        self.job: Optional[DailyJob] = None
 
     async def _load_job(self, manager: DailyJobManager) -> Optional[DailyJob]:
-        return await asyncio.to_thread(
+        self.job = await asyncio.to_thread(
             manager.get_job,
             self.job_id,
             self.channel_id,
             self.guild_id,
         )
+        return self.job
 
     @discord.ui.button(label="Run now", style=discord.ButtonStyle.success)
     async def run_now(

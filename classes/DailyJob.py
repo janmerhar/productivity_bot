@@ -9,6 +9,7 @@ from embeds.StocksEmbeds import StocksEmbeds
 from croniter import CroniterBadCronError, croniter
 
 from config.db import mongo_db
+from services.schedule_time import cron_match_datetime, runtime_to_utc_naive, schedule_timezone_name
 
 
 @dataclass
@@ -20,6 +21,7 @@ class OneTimeSchedule2:
 @dataclass
 class CronSchedule:
     expression: str
+    timezone: Optional[str] = None
     mode: Literal["cron"] = "cron"
 
 
@@ -174,9 +176,14 @@ class DailyJob:
         return result.matched_count > 0
 
     def is_due(self, check_datetime: datetime.datetime) -> bool:
+        check_minute = check_datetime.replace(second=0, microsecond=0)
+        run_minute_utc = runtime_to_utc_naive(check_datetime).replace(
+            second=0,
+            microsecond=0,
+        )
         expires_at = self._parse_expiration(self.data)
         if expires_at is not None:
-            if check_datetime.replace(second=0, microsecond=0) > expires_at.replace(
+            if check_minute > expires_at.replace(
                 second=0,
                 microsecond=0,
             ):
@@ -200,15 +207,18 @@ class DailyJob:
 
             return scheduled_dt.replace(
                 second=0, microsecond=0
-            ) == check_datetime.replace(second=0, microsecond=0)
+            ) == check_minute
 
         if mode == "cron":
             expression = schedule["expression"]
+            schedule_match_dt = cron_match_datetime(
+                check_datetime,
+                schedule_timezone_name(schedule),
+            )
 
-            if not croniter.match(expression, check_datetime):
+            if not croniter.match(expression, schedule_match_dt):
                 return False
 
-            run_minute = check_datetime.replace(second=0, microsecond=0)
             last_run_value = self.last_run
 
             if last_run_value is None:
@@ -219,7 +229,7 @@ class DailyJob:
 
             last_run_minute = last_run_value.replace(second=0, microsecond=0)
 
-            if last_run_minute == run_minute:
+            if last_run_minute == run_minute_utc:
                 return False
 
             return True

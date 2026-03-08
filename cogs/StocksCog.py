@@ -335,7 +335,10 @@ class StocksCog(commands.Cog):
             payload["header"] = header
 
         manager = DailyJobManager()
-        schedule_config = CronSchedule(expression=cron_expression)
+        schedule_config = CronSchedule(
+            expression=cron_expression,
+            timezone=timezone,
+        )
 
         try:
             created_job = await asyncio.to_thread(
