@@ -21,6 +21,7 @@ class ReminderListView(discord.ui.View):
         status_label: str,
         guild_id: Optional[int],
         channel_id: Optional[int],
+        destination_type: Optional[str],
         paused_filter: Optional[bool],
         user_id: Optional[int],
         response_ephemeral: bool = False,
@@ -33,6 +34,7 @@ class ReminderListView(discord.ui.View):
         self.status_label = status_label
         self.guild_id = guild_id
         self.channel_id = channel_id
+        self.destination_type = destination_type
         self.paused_filter = paused_filter
         self.user_id = user_id
         self.response_ephemeral = bool(response_ephemeral)
@@ -155,16 +157,9 @@ class ReminderListView(discord.ui.View):
             self.guild_id,
             self.paused_filter,
             self.channel_id,
+            self.destination_type,
+            self.user_id if self.destination_type == "private" else None,
         )
-        if self.user_id is not None:
-            reminders = [
-                reminder
-                for reminder in reminders
-                if (
-                    not ReminderFunctions.is_private_destination(reminder)
-                    or ReminderFunctions.destination_user_id(reminder) == self.user_id
-                )
-            ]
         self.reminders = reminders
         self.total_pages = max(1, math.ceil(len(self.reminders) / self.page_size))
         self.page = max(1, min(self.page, self.total_pages))
@@ -241,6 +236,7 @@ class ReminderListView(discord.ui.View):
             ReminderCreateModal(
                 parent_view=self,
                 default_channel_id=default_channel_id,
+                default_destination_type=self.destination_type or "channel",
                 guild=interaction.guild,
                 source_message=interaction.message,
                 response_ephemeral=self.response_ephemeral,

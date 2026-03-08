@@ -9,6 +9,7 @@ from classes.ReminderFunctions import ReminderFunctions
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from services.channel_visibility import can_view_channel
 from services.discord_helpers import (
+    resolve_ephemeral_from_scope,
     normalize_reminder_destination,
     reminder_destination_autocomplete,
 )
@@ -29,13 +30,6 @@ _REMINDER_LIST_STATUS_CHOICES = [
     app_commands.Choice(name="Active", value="active"),
     app_commands.Choice(name="Paused", value="paused"),
 ]
-_REMINDER_LIST_SCOPE_CHOICES = [
-    app_commands.Choice(name="All Server Reminders", value="all"),
-    app_commands.Choice(name="This Channel", value="current"),
-    app_commands.Choice(name="Specific Channel", value="channel"),
-]
-
-
 @app_commands.context_menu(name="Create Reminder")
 async def create_reminder_from_message(
     interaction: discord.Interaction,
@@ -156,7 +150,7 @@ class ReminderCog(commands.Cog):
         skip_days="Comma-separated days to skip",
         description="Reminder description",
         expires_after="Expiration time",
-        destination_channel="Destination channel",
+        channel="Destination channel",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
@@ -173,14 +167,14 @@ class ReminderCog(commands.Cog):
         skip_days: Optional[str] = None,
         description: Optional[str] = None,
         expires_after: Optional[str] = None,
-        destination_channel: Optional[str] = None,
+        channel: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="public")
         try:
             destination_type, destination_channel_id, _ = normalize_reminder_destination(
                 interaction,
-                destination_channel,
+                channel,
             )
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
@@ -241,33 +235,40 @@ class ReminderCog(commands.Cog):
 
     @reminder_group.command(
         name="list",
-        description="View reminders for this server.",
+        description="View reminders.",
     )
     @app_commands.describe(
-        scope="Which reminders to show",
-        destination_channel="Channel to filter by when scope is Specific Channel",
+        channel="Which channel or private destination to show",
         status="Filter reminders by status",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
-        scope=_REMINDER_LIST_SCOPE_CHOICES,
         status=_REMINDER_LIST_STATUS_CHOICES,
         visibility=VISIBILITY_CHOICES,
     )
     async def reminder_list(
         self,
         interaction: discord.Interaction,
-        scope: Optional[app_commands.Choice[str]] = None,
-        destination_channel: Optional[discord.TextChannel] = None,
+        channel: Optional[str] = None,
         status: Optional[app_commands.Choice[str]] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
-        selected_channel_id, scope_label = self._resolve_reminder_list_scope(
+        (
+            target_value,
+            selected_channel_id,
+            destination_type,
+            scope_label,
+        ) = self._resolve_reminder_list_target(
             interaction,
-            scope,
-            destination_channel,
-            ephemeral=ephemeral,
+            channel,
+        )
+        ephemeral = resolve_ephemeral_from_scope(
+            interaction.guild_id,
+            target_value,
+            visibility,
+            private_scope_values=("private",),
+            guild_default_visibility="public",
+            dm_default_visibility="public",
         )
         paused_filter, status_label = self._resolve_reminder_list_status(status)
 
@@ -276,9 +277,11 @@ class ReminderCog(commands.Cog):
         try:
             reminders = await asyncio.to_thread(
                 ReminderFunctions.list_reminders,
-                interaction.guild_id,
+                interaction.guild_id if interaction.guild_id is not None else None,
                 paused_filter,
                 selected_channel_id,
+                destination_type,
+                interaction.user.id if target_value == "private" else None,
             )
         except Exception as exc:
             raise UserVisibleError(
@@ -292,8 +295,9 @@ class ReminderCog(commands.Cog):
             reminders=reminders,
             scope_label=scope_label,
             status_label=status_label,
-            guild_id=interaction.guild_id,
+            guild_id=interaction.guild_id if interaction.guild_id is not None else None,
             channel_id=selected_channel_id,
+            destination_type=destination_type,
             paused_filter=paused_filter,
             user_id=interaction.user.id,
             response_ephemeral=ephemeral,
@@ -587,73 +591,122 @@ class ReminderCog(commands.Cog):
             ephemeral=ephemeral,
         )
 
-    def _resolve_reminder_list_scope(
+    def _build_reminder_list_target_autocomplete_options(
         self,
         interaction: discord.Interaction,
-        scope: Optional[app_commands.Choice[str]],
-        destination_channel: Optional[discord.TextChannel],
-        *,
-        ephemeral: bool,
-    ) -> tuple[Optional[int], str]:
-        scope_value = scope.value if scope else (
-            "all" if interaction.guild is not None else "current"
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        query = (current or "").strip().lower()
+        options: List[app_commands.Choice[str]] = []
+
+        base_options = [
+            app_commands.Choice(name="This Channel", value="channel"),
+            app_commands.Choice(name="Private option", value="private"),
+        ]
+        if interaction.guild is not None:
+            base_options.insert(
+                1,
+                app_commands.Choice(
+                    name="All Server Reminders",
+                    value="all_server",
+                ),
+            )
+
+        options.extend(
+            option for option in base_options if not query or query in option.name.lower()
         )
 
+        guild = interaction.guild
+        if guild is None:
+            return [
+                option
+                for option in options
+                if option.value == "private"
+            ][:25]
+
+        for channel in guild.text_channels:
+            if len(options) >= 25:
+                break
+            channel_name = getattr(channel, "name", None)
+            channel_id = getattr(channel, "id", None)
+            if channel_name is None or channel_id is None:
+                continue
+            if query and query not in channel_name.lower() and query not in str(channel_id):
+                continue
+            permissions = channel.permissions_for(interaction.user)
+            if not permissions.view_channel:
+                continue
+            options.append(
+                app_commands.Choice(
+                    name=f"#{channel_name}"[:100],
+                    value=f"channel:{channel_id}",
+                )
+            )
+
+        return options[:25]
+
+    def _resolve_reminder_list_target(
+        self,
+        interaction: discord.Interaction,
+        channel: Optional[str],
+    ) -> tuple[str, Optional[int], str, str]:
+        target_value = (channel or "").strip()
+        if not target_value:
+            target_value = "channel" if interaction.guild is not None else "private"
+
         if interaction.guild is None:
-            if not interaction.channel_id:
+            if target_value != "private":
                 raise ValidationError(
-                    "This conversation does not have a destination channel.",
-                    ephemeral=ephemeral,
+                    "Only `Private option` is available in DMs.",
+                    ephemeral=True,
                 )
-            if scope_value == "all":
-                raise ValidationError(
-                    "All server reminders are only available in servers.",
-                    ephemeral=ephemeral,
-                )
-            return interaction.channel_id, "This DM"
+            return "private", None, "private", "Private option"
 
-        if scope_value == "all":
-            if destination_channel is not None:
+        if target_value.startswith("channel:"):
+            try:
+                channel_id = int(target_value.split(":", 1)[1])
+            except (ValueError, IndexError):
                 raise ValidationError(
-                    "`destination_channel` only applies when scope is `Specific Channel`.",
-                    ephemeral=ephemeral,
+                    "Please select a valid channel from autocomplete.",
+                    ephemeral=True,
                 )
-            return None, "All server reminders"
+            selected_channel = interaction.guild.get_channel(channel_id)
+            if selected_channel is None:
+                raise ValidationError(
+                    "That channel was not found.",
+                    ephemeral=True,
+                )
+            if not isinstance(selected_channel, discord.TextChannel):
+                raise ValidationError(
+                    "Please select a text channel from autocomplete.",
+                    ephemeral=True,
+                )
+            if not can_view_channel(interaction, channel_id):
+                raise ValidationError(
+                    "That channel was not found.",
+                    ephemeral=True,
+                )
+            return "channel", channel_id, "channel", f"#{selected_channel.name}"
 
-        if scope_value == "current":
-            if destination_channel is not None:
-                raise ValidationError(
-                    "`destination_channel` only applies when scope is `Specific Channel`.",
-                    ephemeral=ephemeral,
-                )
-            current_channel = interaction.channel
-            if not isinstance(current_channel, discord.TextChannel):
-                raise ValidationError(
-                    "This command must be used in a text channel for `This Channel` scope.",
-                    ephemeral=ephemeral,
-                )
-            return current_channel.id, f"#{current_channel.name}"
+        if target_value == "all_server":
+            return "all_server", None, "channel", "All Server Reminders"
 
-        if scope_value != "channel":
+        if target_value == "private":
+            return "private", None, "private", "Private option"
+
+        if target_value != "channel":
             raise ValidationError(
-                "Please select a valid scope.",
-                ephemeral=ephemeral,
+                "Please select a valid list from autocomplete.",
+                ephemeral=True,
             )
 
-        if destination_channel is None:
+        current_channel = interaction.channel
+        if not isinstance(current_channel, discord.TextChannel):
             raise ValidationError(
-                "Choose a channel when scope is `Specific Channel`.",
-                ephemeral=ephemeral,
+                "This command must be used in a text channel for `This Channel`.",
+                ephemeral=True,
             )
-
-        channel_id = destination_channel.id
-        if not can_view_channel(interaction, channel_id):
-            raise ValidationError(
-                "That channel was not found.",
-                ephemeral=ephemeral,
-            )
-
-        return channel_id, f"#{destination_channel.name}"
+        return "channel", current_channel.id, "channel", f"#{current_channel.name}"
 
     @staticmethod
     def _resolve_reminder_list_status(
@@ -704,13 +757,24 @@ class ReminderCog(commands.Cog):
 
         return options[:25]
 
-    @reminder_add.autocomplete("destination_channel")
+    @reminder_add.autocomplete("channel")
     async def reminder_add_destination_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
         return reminder_destination_autocomplete(interaction, current)
+
+    @reminder_list.autocomplete("channel")
+    async def reminder_list_target_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        return self._build_reminder_list_target_autocomplete_options(
+            interaction,
+            current,
+        )
 
     @reminder_remove.autocomplete("reminder_id")
     async def reminder_remove_autocomplete(

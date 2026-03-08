@@ -380,6 +380,12 @@ class ReminderOutputView(discord.ui.View):
             ReminderCreateModal(
                 parent_view=self,
                 default_channel_id=default_channel_id,
+                default_destination_type=(
+                    "private"
+                    if self.job is not None
+                    and ReminderFunctions.is_private_destination(self.job)
+                    else "channel"
+                ),
                 guild=interaction.guild or self.guild,
                 source_message=interaction.message,
                 response_ephemeral=self.response_ephemeral,

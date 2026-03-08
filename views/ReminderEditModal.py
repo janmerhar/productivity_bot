@@ -323,6 +323,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         *,
         parent_view: Optional["discord.ui.View"] = None,
         default_channel_id: Optional[int],
+        default_destination_type: str = "channel",
         guild: Optional[discord.Guild] = None,
         source_message: Optional[discord.Message] = None,
         response_ephemeral: bool = False,
@@ -338,6 +339,11 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
             guild_id if guild_id is not None else getattr(parent_view, "guild_id", None)
         )
         self._guild = guild if guild is not None else getattr(parent_view, "guild", None)
+        self._default_destination_type = (
+            default_destination_type.strip().lower()
+            if default_destination_type
+            else "channel"
+        )
 
         self.schedule = discord.ui.TextInput(
             label="Schedule",
@@ -376,7 +382,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         channel_options = _build_destination_select_options(
             self._guild,
             self._default_channel_id,
-            is_private_selected=False,
+            is_private_selected=self._default_destination_type == "private",
         )
         if channel_options:
             self.destination_channel_select = discord.ui.Select(
@@ -480,8 +486,12 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
                     raw_destination
                 )
             else:
-                destination_type = "channel"
-                destination_channel_id = self._default_channel_id
+                destination_type = self._default_destination_type
+                destination_channel_id = (
+                    None
+                    if destination_type == "private"
+                    else self._default_channel_id
+                )
 
             if destination_type == "channel" and destination_channel_id is None:
                 raise ValidationError("Please choose a destination channel.")

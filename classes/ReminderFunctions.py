@@ -641,6 +641,8 @@ class ReminderFunctions:
         guild_id: Optional[int],
         paused: Optional[bool] = None,
         channel_id: Optional[int] = None,
+        destination_type: Optional[str] = None,
+        user_id: Optional[int] = None,
     ) -> List[DailyJob]:
         manager = DailyJobManager()
         jobs = manager.list_jobs(guild_id=guild_id, channel_id=channel_id)
@@ -649,6 +651,17 @@ class ReminderFunctions:
             if not ReminderFunctions.is_reminder_job(job):
                 continue
             if paused is not None and ReminderFunctions.is_paused(job) != paused:
+                continue
+            if (
+                destination_type is not None
+                and ReminderFunctions.destination_type(job) != destination_type
+            ):
+                continue
+            if (
+                destination_type == "private"
+                and user_id is not None
+                and ReminderFunctions.destination_user_id(job) != user_id
+            ):
                 continue
             reminders.append(job)
         reminders.sort(key=lambda job: str(job.id))
