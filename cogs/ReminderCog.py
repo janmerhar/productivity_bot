@@ -24,6 +24,11 @@ _REMINDER_LIST_STATUS_CHOICES = [
     app_commands.Choice(name="Active", value="active"),
     app_commands.Choice(name="Paused", value="paused"),
 ]
+_REMINDER_LIST_SCOPE_CHOICES = [
+    app_commands.Choice(name="All Server Reminders", value="all"),
+    app_commands.Choice(name="This Channel", value="current"),
+    app_commands.Choice(name="Specific Channel", value="channel"),
+]
 
 
 class ReminderCog(commands.Cog):
@@ -194,24 +199,28 @@ class ReminderCog(commands.Cog):
         description="View reminders for this server.",
     )
     @app_commands.describe(
-        destination_channel="Filter reminders by destination channel",
+        scope="Which reminders to show",
+        destination_channel="Channel to filter by when scope is Specific Channel",
         status="Filter reminders by status",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
+        scope=_REMINDER_LIST_SCOPE_CHOICES,
         status=_REMINDER_LIST_STATUS_CHOICES,
         visibility=VISIBILITY_CHOICES,
     )
     async def reminder_list(
         self,
         interaction: discord.Interaction,
-        destination_channel: Optional[str] = None,
+        scope: Optional[app_commands.Choice[str]] = None,
+        destination_channel: Optional[discord.TextChannel] = None,
         status: Optional[app_commands.Choice[str]] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="public")
-        selected_channel_id, scope_label = self._resolve_reminder_list_destination(
+        selected_channel_id, scope_label = self._resolve_reminder_list_scope(
             interaction,
+            scope,
             destination_channel,
             ephemeral=ephemeral,
         )
@@ -660,15 +669,17 @@ class ReminderCog(commands.Cog):
             ephemeral=ephemeral,
         )
 
-    def _resolve_reminder_list_destination(
+    def _resolve_reminder_list_scope(
         self,
         interaction: discord.Interaction,
-        destination_channel: Optional[str],
+        scope: Optional[app_commands.Choice[str]],
+        destination_channel: Optional[discord.TextChannel],
         *,
         ephemeral: bool,
     ) -> tuple[Optional[int], str]:
-        raw_value = (destination_channel or "").strip()
-        normalized = raw_value.lower()
+        scope_value = scope.value if scope else (
+            "all" if interaction.guild is not None else "current"
+        )
 
         if interaction.guild is None:
             if not interaction.channel_id:
@@ -676,118 +687,55 @@ class ReminderCog(commands.Cog):
                     "This conversation does not have a destination channel.",
                     ephemeral=ephemeral,
                 )
-            if normalized and normalized not in {
-                "all",
-                "server",
-                f"channel:{interaction.channel_id}",
-            }:
+            if scope_value == "all":
                 raise ValidationError(
-                    "Please select a valid destination from autocomplete.",
+                    "All server reminders are only available in servers.",
                     ephemeral=ephemeral,
                 )
             return interaction.channel_id, "This DM"
 
-        if not normalized or normalized in {"all", "server"}:
+        if scope_value == "all":
+            if destination_channel is not None:
+                raise ValidationError(
+                    "`destination_channel` only applies when scope is `Specific Channel`.",
+                    ephemeral=ephemeral,
+                )
             return None, "All server reminders"
 
-        if not normalized.startswith("channel:"):
+        if scope_value == "current":
+            if destination_channel is not None:
+                raise ValidationError(
+                    "`destination_channel` only applies when scope is `Specific Channel`.",
+                    ephemeral=ephemeral,
+                )
+            current_channel = interaction.channel
+            if not isinstance(current_channel, discord.TextChannel):
+                raise ValidationError(
+                    "This command must be used in a text channel for `This Channel` scope.",
+                    ephemeral=ephemeral,
+                )
+            return current_channel.id, f"#{current_channel.name}"
+
+        if scope_value != "channel":
             raise ValidationError(
-                "Please select a valid destination from autocomplete.",
+                "Please select a valid scope.",
                 ephemeral=ephemeral,
             )
 
-        try:
-            channel_id = int(normalized.split(":", 1)[1])
-        except (TypeError, ValueError) as exc:
+        if destination_channel is None:
             raise ValidationError(
-                "Please select a valid destination from autocomplete.",
+                "Choose a channel when scope is `Specific Channel`.",
                 ephemeral=ephemeral,
-                cause=exc,
             )
 
-        channel = interaction.guild.get_channel(channel_id)
-        if channel is None or not isinstance(channel, discord.TextChannel):
-            raise ValidationError(
-                "That channel was not found.",
-                ephemeral=ephemeral,
-            )
+        channel_id = destination_channel.id
         if not can_view_channel(interaction, channel_id):
             raise ValidationError(
                 "That channel was not found.",
                 ephemeral=ephemeral,
             )
 
-        return channel_id, f"#{channel.name}"
-
-    def _build_reminder_destination_autocomplete_options(
-        self,
-        interaction: discord.Interaction,
-        current: str,
-    ) -> List[app_commands.Choice[str]]:
-        query = (current or "").strip().lower()
-        options: List[app_commands.Choice[str]] = []
-        current_channel = interaction.channel
-        current_text_channel_id = (
-            current_channel.id
-            if isinstance(current_channel, discord.TextChannel)
-            else None
-        )
-        current_channel_name = getattr(current_channel, "name", None)
-
-        if interaction.guild is None:
-            current_dm_channel_id = interaction.channel_id
-            if current_dm_channel_id and (
-                not query
-                or "dm" in query
-                or "this" in query
-                or "channel" in query
-            ):
-                options.append(
-                    app_commands.Choice(
-                        name="This DM",
-                        value=f"channel:{current_dm_channel_id}",
-                    )
-                )
-            return options[:25]
-
-        base_options = [
-            app_commands.Choice(name="All Server Reminders", value="all"),
-        ]
-        if current_text_channel_id:
-            current_label = (
-                f"This Channel (#{current_channel_name})"
-                if current_channel_name
-                else "This Channel"
-            )
-            base_options.append(
-                app_commands.Choice(
-                    name=current_label[:100],
-                    value=f"channel:{current_text_channel_id}",
-                )
-            )
-
-        for option in base_options:
-            if not query or query in option.name.lower():
-                options.append(option)
-
-        for channel in interaction.guild.text_channels:
-            if len(options) >= 25:
-                break
-            if current_text_channel_id and channel.id == current_text_channel_id:
-                continue
-            if query and query not in channel.name.lower() and query not in str(channel.id):
-                continue
-            permissions = channel.permissions_for(interaction.user)
-            if not permissions.view_channel or not permissions.send_messages:
-                continue
-            options.append(
-                app_commands.Choice(
-                    name=f"#{channel.name}"[:100],
-                    value=f"channel:{channel.id}",
-                )
-            )
-
-        return options[:25]
+        return channel_id, f"#{destination_channel.name}"
 
     @staticmethod
     def _resolve_reminder_list_status(
@@ -853,17 +801,6 @@ class ReminderCog(commands.Cog):
                 break
 
         return options[:25]
-
-    @reminder_list.autocomplete("destination_channel")
-    async def reminder_list_destination_autocomplete(
-        self,
-        interaction: discord.Interaction,
-        current: str,
-    ) -> List[app_commands.Choice[str]]:
-        return self._build_reminder_destination_autocomplete_options(
-            interaction,
-            current,
-        )
 
     @reminder_remove.autocomplete("reminder_id")
     async def reminder_remove_autocomplete(
