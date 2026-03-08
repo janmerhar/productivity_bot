@@ -2,6 +2,7 @@ import datetime
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Literal, Mapping, Optional, Union
 from bson.objectid import ObjectId
+import discord
 from embeds.CryptoEmbeds import CryptoEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
 
@@ -26,6 +27,29 @@ ScheduleConfig = Union[OneTimeSchedule2, CronSchedule]
 
 
 class DailyJob:
+    @staticmethod
+    def _is_paused(data: Optional[Mapping[str, Any]]) -> bool:
+        paused_value = (data or {}).get("paused")
+        if isinstance(paused_value, str):
+            paused_value = paused_value.strip().lower() in (
+                "1",
+                "true",
+                "yes",
+                "on",
+            )
+        return bool(paused_value)
+
+    @staticmethod
+    def _parse_expiration(data: Optional[Mapping[str, Any]]) -> Optional[datetime.datetime]:
+        raw_value = str((data or {}).get("expires_at") or "").strip()
+        if not raw_value:
+            return None
+
+        try:
+            return datetime.datetime.fromisoformat(raw_value)
+        except ValueError:
+            return None
+
     def __init__(
         self,
         id: ObjectId,
@@ -150,17 +174,16 @@ class DailyJob:
         return result.matched_count > 0
 
     def is_due(self, check_datetime: datetime.datetime) -> bool:
-        if self.type == "pomodoro":
-            paused_value = (self.data or {}).get("paused")
-            if isinstance(paused_value, str):
-                paused_value = paused_value.strip().lower() in (
-                    "1",
-                    "true",
-                    "yes",
-                    "on",
-                )
-            if bool(paused_value):
+        expires_at = self._parse_expiration(self.data)
+        if expires_at is not None:
+            if check_datetime.replace(second=0, microsecond=0) > expires_at.replace(
+                second=0,
+                microsecond=0,
+            ):
                 return False
+
+        if self._is_paused(self.data):
+            return False
 
         schedule = self.schedule
 
@@ -209,7 +232,23 @@ class DailyJob:
         mongo_db["tasks"].update_one(filter_query, {"$set": {"last_run": now}})
 
         if self.type == "message":
-            return {"content": self.data.get("message", "")}
+            payload: Dict[str, Any] = {}
+            content = str(self.data.get("message") or "").strip()
+            if content:
+                payload["content"] = content
+
+            embed_data = self.data.get("embed")
+            if isinstance(embed_data, Mapping):
+                embed = discord.Embed(
+                    title=str(embed_data.get("title") or "").strip() or None,
+                    description=str(embed_data.get("description") or "").strip() or None,
+                )
+                thumbnail_url = str(embed_data.get("thumbnail_url") or "").strip()
+                if thumbnail_url:
+                    embed.set_thumbnail(url=thumbnail_url)
+                payload["embed"] = embed
+
+            return payload
 
         if self.type == "crypto":
             tickers = self.data["tickers"]

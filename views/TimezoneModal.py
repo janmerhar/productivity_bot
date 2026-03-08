@@ -21,21 +21,23 @@ class TimezoneModal(discord.ui.Modal, title="Set Timezone"):
         on_timezone_resolved: Callable[[discord.Interaction, str], Awaitable[None]],
         *,
         continue_message: Optional[str] = None,
+        response_ephemeral: bool = True,
     ):
         super().__init__()
         self._user_id = int(user_id)
         self._on_timezone_resolved = on_timezone_resolved
         self._continue_message = continue_message
+        self._response_ephemeral = bool(response_ephemeral)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         if interaction.user.id != self._user_id:
             await interaction.response.send_message(
                 "This form is only for the user who started the command.",
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self._response_ephemeral)
 
         raw_timezone = str(self.timezone.value or "").strip()
         resolved_timezone = await asyncio.to_thread(
@@ -48,7 +50,7 @@ class TimezoneModal(discord.ui.Modal, title="Set Timezone"):
                     "I couldn't understand that timezone. "
                     "Try values like `America/New_York`, `berlin`, `pst`, or `utc+2`."
                 ),
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
             )
             return
 
@@ -63,10 +65,10 @@ class TimezoneModal(discord.ui.Modal, title="Set Timezone"):
                 interaction,
                 UserVisibleError(
                     "I couldn't save that timezone right now. Please try again.",
-                    ephemeral=True,
+                    ephemeral=self._response_ephemeral,
                     cause=exc,
                 ),
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
             )
             return
 
@@ -74,7 +76,7 @@ class TimezoneModal(discord.ui.Modal, title="Set Timezone"):
             if self._continue_message:
                 await interaction.followup.send(
                     content=self._continue_message.format(timezone=resolved_timezone),
-                    ephemeral=True,
+                    ephemeral=self._response_ephemeral,
                 )
             await self._on_timezone_resolved(interaction, resolved_timezone)
         except Exception as exc:
@@ -82,8 +84,8 @@ class TimezoneModal(discord.ui.Modal, title="Set Timezone"):
                 interaction,
                 UserVisibleError(
                     "Timezone was saved, but I couldn't continue that action.",
-                    ephemeral=True,
+                    ephemeral=self._response_ephemeral,
                     cause=exc,
                 ),
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
             )

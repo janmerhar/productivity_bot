@@ -1,3 +1,4 @@
+import re
 from typing import Iterable, List, Optional, Tuple
 
 import discord
@@ -132,6 +133,38 @@ def alert_destination_autocomplete(
         choices.append(app_commands.Choice(name="Direct messages", value="dm"))
 
     return choices[:25]
+
+
+def format_reminder_mentions(
+    guild: Optional[discord.Guild],
+    raw_value: Optional[str],
+) -> str:
+    text = str(raw_value or "").strip()
+    if not text:
+        return ""
+
+    def _replace(match: re.Match[str]) -> str:
+        token = match.group(0)
+        raw_id = match.group(1) or match.group(2)
+        if not raw_id.isdigit():
+            return token
+        entity_id = int(raw_id)
+
+        if token.startswith("<@&"):
+            if guild is None:
+                return token
+            role = guild.get_role(entity_id)
+            return f"@{role.name}" if role is not None else token
+
+        if guild is not None:
+            member = guild.get_member(entity_id)
+            if member is not None:
+                return f"@{member.display_name}"
+
+        return token
+
+    formatted = re.sub(r"<@!?(\d+)>|<@&(\d+)>", lambda m: _replace(m), text)
+    return formatted.replace("\n", ", ")
 
 
 def resolve_scope_value(

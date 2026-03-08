@@ -1,16 +1,13 @@
 import asyncio
 import logging
-import datetime
 import json
 from typing import Any, Dict, Optional
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import discord
-import dateparser
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from classes.DailyJob import CronSchedule, DailyJob, OneTimeSchedule2
+from classes.DailyJob import CronSchedule, DailyJob
 from classes.DailyJobManager import DailyJobManager
 from classes.PomodoroFunctions import PomodoroFunctions
 from classes.TodoFunctions import TodoFunctions
@@ -32,55 +29,8 @@ from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 
-def parse_time_string(
-    raw: str,
-    timezone: Optional[str] = None,
-) -> Optional[datetime.datetime]:
-    text = raw.strip()
-    if not text:
-        return None
-
-    timezone_value = (timezone or "").strip()
-    tzinfo = None
-    if timezone_value:
-        try:
-            tzinfo = ZoneInfo(timezone_value)
-        except ZoneInfoNotFoundError:
-            tzinfo = None
-
-    now = datetime.datetime.now(tzinfo) if tzinfo else datetime.datetime.now()
-    settings = {
-        "PREFER_DATES_FROM": "future",
-        "RETURN_AS_TIMEZONE_AWARE": bool(tzinfo),
-        "PREFER_DAY_OF_MONTH": "current",
-    }
-    if timezone_value:
-        settings["TIMEZONE"] = timezone_value
-        settings["RELATIVE_BASE"] = now
-
-    dt = dateparser.parse(
-        text,
-        settings=settings,
-    )
-
-    if dt is not None:
-        if tzinfo is not None and dt.tzinfo is None:
-            dt = dt.replace(tzinfo=tzinfo)
-        dt = dt.replace(second=0, microsecond=0)
-        if dt <= now:
-            dt += datetime.timedelta(days=1)
-        if dt.tzinfo is not None:
-            dt = dt.astimezone().replace(tzinfo=None)
-        return dt
-
-    return None
-
-
 class DailyTaskCog(commands.Cog):
     jobs = app_commands.Group(name="jobs", description="Manage scheduled jobs")
-    reminder_group = app_commands.Group(
-        name="reminder", description="Manage one-time reminders"
-    )
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -93,48 +43,6 @@ class DailyTaskCog(commands.Cog):
     def cog_unload(self) -> None:
         if self._runner.is_running():
             self._runner.cancel()
-
-    @reminder_group.command(
-        name="create", description="Create a one time reminder"
-    )
-    @app_commands.describe(visibility=VISIBILITY_DESC)
-    @app_commands.choices(visibility=VISIBILITY_CHOICES)
-    async def reminder(
-        self,
-        interaction: discord.Interaction,
-        time: str,
-        message: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
-        async def _continue_with_timezone(
-            followup_interaction: discord.Interaction,
-            resolved_timezone: str,
-        ) -> None:
-            await self._create_reminder(
-                interaction=followup_interaction,
-                time=time,
-                message=message,
-                ephemeral=ephemeral,
-                timezone=resolved_timezone,
-            )
-
-        timezone = await ensure_user_timezone(
-            interaction,
-            _continue_with_timezone,
-            continue_message="Timezone saved as `{timezone}`. Continuing `/reminder create`.",
-        )
-        if timezone is None:
-            return
-
-        await interaction.response.defer(ephemeral=ephemeral)
-        await self._create_reminder(
-            interaction=interaction,
-            time=time,
-            message=message,
-            ephemeral=ephemeral,
-            timezone=timezone,
-        )
 
     @jobs.command(name="create", description="Create a recurring job")
     @app_commands.describe(
@@ -190,75 +98,6 @@ class DailyTaskCog(commands.Cog):
             data=data,
             ephemeral=ephemeral,
             timezone=timezone,
-        )
-
-    async def _create_reminder(
-        self,
-        interaction: discord.Interaction,
-        time: str,
-        message: str,
-        ephemeral: bool,
-        timezone: Optional[str],
-    ) -> None:
-        scheduled_dt = parse_time_string(time, timezone=timezone)
-        if scheduled_dt is None:
-            raise ValidationError(
-                "I couldn't understand that time.",
-                hint="Try '08:30', '8pm', or similar.",
-                ephemeral=ephemeral,
-            )
-
-        job_schedule = OneTimeSchedule2(datetime=scheduled_dt.isoformat())
-        payload = message.strip()
-        job_type = "message"
-        job_data = {"message": message}
-        confirmation_time = scheduled_dt.strftime("%H:%M")
-        confirmation = f"Got it! I'll post here at {confirmation_time}."
-
-        if payload.lower().startswith("stock:"):
-            stock_value = payload[6:].strip()
-            stock_tokens = [
-                token.strip().upper()
-                for token in stock_value.replace(",", " ").split()
-                if token.strip()
-            ]
-            if not stock_tokens:
-                raise ValidationError(
-                    "Please provide a stock ticker after `stock:`.",
-                    ephemeral=ephemeral,
-                )
-            if len(stock_tokens) != 1:
-                raise ValidationError(
-                    "Please provide exactly one stock ticker after `stock:`.",
-                    ephemeral=ephemeral,
-                )
-
-            job_type = "stock"
-            symbol = stock_tokens[0]
-            job_data = {"ticker": symbol}
-            confirmation = (
-                f"Got it! I'll post daily stock price for `{symbol}` at "
-                f"{confirmation_time}."
-            )
-
-        manager = DailyJobManager()
-        try:
-            await asyncio.to_thread(
-                manager.insert_job,
-                interaction.guild_id,
-                interaction.channel_id,
-                job_type,
-                job_data,
-                job_schedule,
-            )
-        except Exception as exc:
-            raise UserVisibleError(
-                "Something went wrong while scheduling that task. Please try again.",
-                ephemeral=ephemeral,
-                cause=exc,
-            )
-        await interaction.followup.send(
-            ephemeral=ephemeral, **DailyTaskEmbeds.reminder_embed(confirmation, ok=True)
         )
 
     async def _create_job(

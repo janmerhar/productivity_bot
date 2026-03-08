@@ -87,6 +87,7 @@ async def load():
         "cogs.FeatureRequestCog",
         "cogs.HabitCog",
         "cogs.PomodoroCog",
+        "cogs.ReminderCog",
         "cogs.RouterCog",
         "cogs.TodoCog",
         "cogs.TogglCog",
