@@ -69,17 +69,6 @@ class ReminderCog(commands.Cog):
     async def on_ready(self) -> None:
         print("ReminderCog cog loaded")
 
-    async def _send_not_implemented(
-        self,
-        interaction: discord.Interaction,
-        command_name: str,
-        ephemeral: bool,
-    ) -> None:
-        await interaction.response.send_message(
-            f"`{command_name}` is not implemented yet.",
-            ephemeral=ephemeral,
-        )
-
     async def _send_reminder_output(
         self,
         interaction: discord.Interaction,
@@ -525,30 +514,6 @@ class ReminderCog(commands.Cog):
             interaction,
             job=resumed_job,
             result_message=f"Resumed reminder `{reminder_id_value}`.",
-            ephemeral=ephemeral,
-        )
-
-    @reminder_group.command(
-        name="customize",
-        description="Set a custom reminder bot username and avatar.",
-    )
-    @app_commands.describe(
-        username="Custom reminder bot username",
-        avatar_url="Custom reminder bot avatar URL",
-        visibility=VISIBILITY_DESC,
-    )
-    @app_commands.choices(visibility=VISIBILITY_CHOICES)
-    async def reminder_customize(
-        self,
-        interaction: discord.Interaction,
-        username: Optional[str] = None,
-        avatar_url: Optional[str] = None,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
-        await self._send_not_implemented(
-            interaction,
-            "/reminder customize",
             ephemeral=ephemeral,
         )
 
