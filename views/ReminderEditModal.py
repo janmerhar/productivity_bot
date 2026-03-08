@@ -324,18 +324,22 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
     def __init__(
         self,
         *,
-        parent_view: "discord.ui.View",
+        parent_view: Optional["discord.ui.View"] = None,
         default_channel_id: Optional[int],
         channel_options: Optional[List[discord.SelectOption]] = None,
         source_message: Optional[discord.Message] = None,
         response_ephemeral: bool = False,
+        initial_reminder: Optional[str] = None,
+        guild_id: Optional[int] = None,
     ) -> None:
         super().__init__()
         self._parent_view = parent_view
         self._default_channel_id = default_channel_id
         self._source_message = source_message
         self._response_ephemeral = bool(response_ephemeral)
-        self._guild_id = getattr(parent_view, "guild_id", None)
+        self._guild_id = (
+            guild_id if guild_id is not None else getattr(parent_view, "guild_id", None)
+        )
 
         self.schedule = discord.ui.TextInput(
             label="Schedule",
@@ -349,6 +353,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
             required=True,
             max_length=400,
             style=discord.TextStyle.short,
+            default=_clamp_text(initial_reminder, 400),
         )
         self.ping_select = discord.ui.UserSelect(
             placeholder="Choose members to ping",

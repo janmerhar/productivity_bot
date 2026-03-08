@@ -13,6 +13,7 @@ from services.error_reporting import ValidationError
 from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 from views.ReminderEditModal import (
+    ReminderCreateModal,
     ReminderEditModal,
     _build_text_channel_select_options,
 )
@@ -29,6 +30,35 @@ _REMINDER_LIST_SCOPE_CHOICES = [
     app_commands.Choice(name="This Channel", value="current"),
     app_commands.Choice(name="Specific Channel", value="channel"),
 ]
+
+
+@app_commands.context_menu(name="Create Reminder")
+async def create_reminder_from_message(
+    interaction: discord.Interaction,
+    message: discord.Message,
+) -> None:
+    reminder_text = str(message.content or message.clean_content or "").strip()
+    if not reminder_text:
+        raise ValidationError(
+            "That message has no text to prefill the reminder.",
+            ephemeral=True,
+        )
+
+    default_channel_id = message.channel.id
+    channel_options = _build_text_channel_select_options(
+        interaction.guild,
+        default_channel_id,
+    )
+    await interaction.response.send_modal(
+        ReminderCreateModal(
+            default_channel_id=default_channel_id,
+            channel_options=channel_options,
+            source_message=message,
+            response_ephemeral=False,
+            initial_reminder=reminder_text,
+            guild_id=interaction.guild_id,
+        )
+    )
 
 
 class ReminderCog(commands.Cog):
@@ -741,3 +771,4 @@ class ReminderCog(commands.Cog):
 
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(ReminderCog(client))
+    client.tree.add_command(create_reminder_from_message)
