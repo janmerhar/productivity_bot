@@ -10,6 +10,7 @@ from discord.ext import commands, tasks
 from classes.DailyJob import CronSchedule, DailyJob
 from classes.DailyJobManager import DailyJobManager
 from classes.PomodoroFunctions import PomodoroFunctions
+from classes.ReminderFunctions import ReminderFunctions
 from classes.TodoFunctions import TodoFunctions
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from embeds.HabitEmbeds import HabitEmbeds
@@ -27,6 +28,7 @@ from services.cron_schedule import (
 from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from views.ReminderOutputView import ReminderOutputView
 
 
 class DailyTaskCog(commands.Cog):
@@ -245,6 +247,26 @@ class DailyTaskCog(commands.Cog):
 
                 habit_payload = HabitEmbeds.habit_reminder_payload(habit)
                 await channel.send(**habit_payload)
+                continue
+            if job.type == "message" and ReminderFunctions.is_reminder_job(job):
+                channel = await resolve_messageable_channel(self.bot, job.channel_id)
+                if channel is None:
+                    continue
+
+                reminder_view = ReminderOutputView(
+                    job=job,
+                    guild=getattr(channel, "guild", None),
+                    result_message="Reminder triggered.",
+                    ok=True,
+                    response_ephemeral=False,
+                )
+                reminder_payload = reminder_view.response_payload()
+                ping_text = ReminderFunctions.reminder_edit_values(job).get("ping_text")
+                if ping_text:
+                    reminder_payload["content"] = ping_text
+
+                posted_message = await channel.send(**reminder_payload)
+                reminder_view.message = posted_message
                 continue
             if not payload:
                 continue
