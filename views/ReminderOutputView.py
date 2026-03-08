@@ -139,10 +139,6 @@ class ReminderChangeChannelModal(discord.ui.Modal, title="Change Reminder Channe
             source_message=self._view.message or interaction.message,
             result_message=result_message,
         )
-        await interaction.followup.send(
-            result_message,
-            ephemeral=self._view.response_ephemeral,
-        )
 
 
 class ReminderOutputView(discord.ui.View):
@@ -600,8 +596,4 @@ class ReminderOutputView(discord.ui.View):
             interaction,
             source_message=interaction.message,
             result_message=self.result_message,
-        )
-        await interaction.followup.send(
-            self.result_message,
-            ephemeral=self.response_ephemeral,
         )
