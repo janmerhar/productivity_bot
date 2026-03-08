@@ -10,7 +10,6 @@ from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from services.error_reporting import UserVisibleError
 from services.error_reporting import ValidationError
 from services.timezone_gate import ensure_user_timezone
-from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 from views.ReminderEditModal import (
     ReminderEditModal,
     _build_text_channel_select_options,
@@ -67,50 +66,6 @@ class ReminderCog(commands.Cog):
         await interaction.followup.send(
             ephemeral=ephemeral,
             **reminder_view.response_payload(),
-        )
-
-    @reminder_group.command(
-        name="create",
-        description="Create a one time reminder",
-    )
-    @app_commands.describe(visibility=VISIBILITY_DESC)
-    @app_commands.choices(visibility=VISIBILITY_CHOICES)
-    async def reminder_create(
-        self,
-        interaction: discord.Interaction,
-        time: str,
-        message: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
-
-        async def _continue_with_timezone(
-            followup_interaction: discord.Interaction,
-            resolved_timezone: str,
-        ) -> None:
-            await self._create_reminder(
-                interaction=followup_interaction,
-                time=time,
-                message=message,
-                ephemeral=ephemeral,
-                timezone=resolved_timezone,
-            )
-
-        timezone = await ensure_user_timezone(
-            interaction,
-            _continue_with_timezone,
-            continue_message="Timezone saved as `{timezone}`. Continuing `/reminder create`.",
-        )
-        if timezone is None:
-            return
-
-        await interaction.response.defer(ephemeral=ephemeral)
-        await self._create_reminder(
-            interaction=interaction,
-            time=time,
-            message=message,
-            ephemeral=ephemeral,
-            timezone=timezone,
         )
 
     @reminder_group.command(
@@ -591,30 +546,6 @@ class ReminderCog(commands.Cog):
         avatar_url: Optional[str] = None,
     ) -> None:
         await self._send_not_implemented(interaction, "/reminder customize")
-
-    async def _create_reminder(
-        self,
-        interaction: discord.Interaction,
-        time: str,
-        message: str,
-        ephemeral: bool,
-        timezone: Optional[str],
-    ) -> None:
-        created_job, confirmation = await asyncio.to_thread(
-            ReminderFunctions.create_reminder,
-            interaction.guild_id,
-            interaction.channel_id,
-            message,
-            time,
-            ephemeral=ephemeral,
-            timezone=timezone,
-        )
-        await self._send_reminder_output(
-            interaction,
-            job=created_job,
-            result_message=confirmation,
-            ephemeral=ephemeral,
-        )
 
     async def _create_reminder_from_options(
         self,
