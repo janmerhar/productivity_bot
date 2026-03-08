@@ -26,6 +26,7 @@ class ReminderListView(discord.ui.View):
         channel_id: Optional[int],
         paused_filter: Optional[bool],
         user_id: Optional[int],
+        response_ephemeral: bool = False,
         page: int = 1,
         timeout: float = 300,
     ) -> None:
@@ -37,6 +38,7 @@ class ReminderListView(discord.ui.View):
         self.channel_id = channel_id
         self.paused_filter = paused_filter
         self.user_id = user_id
+        self.response_ephemeral = bool(response_ephemeral)
         self.page_size = self.PAGE_SIZE
         self.total_pages = max(1, math.ceil(len(self.reminders) / self.page_size))
         self.page = max(1, min(page, self.total_pages))
@@ -47,7 +49,7 @@ class ReminderListView(discord.ui.View):
             return True
         await interaction.response.send_message(
             "Only the user who opened this reminder list can change pages.",
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
         )
         return False
 
@@ -183,7 +185,7 @@ class ReminderListView(discord.ui.View):
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             await interaction.followup.send(
                 "Reminder created, but the original list message is no longer available.",
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
             )
 
     def _sync_buttons(self) -> None:
@@ -240,6 +242,6 @@ class ReminderListView(discord.ui.View):
                 default_channel_id=default_channel_id,
                 channel_options=channel_options,
                 source_message=interaction.message,
-                response_ephemeral=True,
+                response_ephemeral=self.response_ephemeral,
             )
         )

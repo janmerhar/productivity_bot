@@ -62,7 +62,7 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
         *,
         parent_view: Optional["discord.ui.View"] = None,
         source_message: Optional[discord.Message] = None,
-        response_ephemeral: bool = True,
+        response_ephemeral: bool = False,
     ) -> None:
         super().__init__()
         self._parent_view = parent_view
@@ -297,6 +297,7 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
                     interaction,
                     _continue_with_timezone,
                     continue_message="Timezone saved as `{timezone}`. Continuing `/reminder edit`.",
+                    response_ephemeral=self._response_ephemeral,
                 )
                 if timezone is None:
                     return
@@ -327,7 +328,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         default_channel_id: Optional[int],
         channel_options: Optional[List[discord.SelectOption]] = None,
         source_message: Optional[discord.Message] = None,
-        response_ephemeral: bool = True,
+        response_ephemeral: bool = False,
     ) -> None:
         super().__init__()
         self._parent_view = parent_view
@@ -531,6 +532,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
                     interaction,
                     _continue_with_timezone,
                     continue_message="Timezone saved as `{timezone}`. Continuing reminder creation.",
+                    response_ephemeral=self._response_ephemeral,
                 )
                 if timezone is None:
                     return

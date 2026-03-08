@@ -10,6 +10,7 @@ from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from services.error_reporting import UserVisibleError
 from services.error_reporting import ValidationError
 from services.timezone_gate import ensure_user_timezone
+from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 from views.ReminderEditModal import (
     ReminderEditModal,
     _build_text_channel_select_options,
@@ -41,10 +42,11 @@ class ReminderCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         command_name: str,
+        ephemeral: bool,
     ) -> None:
         await interaction.response.send_message(
             f"`{command_name}` is not implemented yet.",
-            ephemeral=True,
+            ephemeral=ephemeral,
         )
 
     async def _send_reminder_output(
@@ -82,6 +84,10 @@ class ReminderCog(commands.Cog):
         description="Reminder description",
         expires_after="Expiration time",
         destination_channel="Destination channel",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(
+        visibility=VISIBILITY_CHOICES,
     )
     async def reminder_add(
         self,
@@ -95,8 +101,9 @@ class ReminderCog(commands.Cog):
         description: Optional[str] = None,
         expires_after: Optional[str] = None,
         destination_channel: Optional[discord.TextChannel] = None,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = True
+        ephemeral = resolve_visibility(visibility, default="public")
 
         needs_timezone = ReminderFunctions.needs_timezone(
             time,
@@ -129,6 +136,7 @@ class ReminderCog(commands.Cog):
                 interaction,
                 _continue_with_timezone,
                 continue_message="Timezone saved as `{timezone}`. Continuing `/reminder add`.",
+                response_ephemeral=ephemeral,
             )
             if timezone is None:
                 return
@@ -156,20 +164,24 @@ class ReminderCog(commands.Cog):
     @app_commands.describe(
         destination_channel="Filter reminders by destination channel",
         status="Filter reminders by status",
+        visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
         status=_REMINDER_LIST_STATUS_CHOICES,
+        visibility=VISIBILITY_CHOICES,
     )
     async def reminder_list(
         self,
         interaction: discord.Interaction,
         destination_channel: Optional[str] = None,
         status: Optional[app_commands.Choice[str]] = None,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = True
+        ephemeral = resolve_visibility(visibility, default="public")
         selected_channel_id, scope_label = self._resolve_reminder_list_destination(
             interaction,
             destination_channel,
+            ephemeral=ephemeral,
         )
         paused_filter, status_label = self._resolve_reminder_list_status(status)
 
@@ -197,6 +209,7 @@ class ReminderCog(commands.Cog):
             channel_id=selected_channel_id,
             paused_filter=paused_filter,
             user_id=interaction.user.id,
+            response_ephemeral=ephemeral,
         )
         if not reminders:
             await interaction.followup.send(
@@ -215,13 +228,18 @@ class ReminderCog(commands.Cog):
         name="remove",
         description="Remove a scheduled reminder by ID.",
     )
-    @app_commands.describe(reminder_id="Reminder ID")
+    @app_commands.describe(
+        reminder_id="Reminder ID",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def reminder_remove(
         self,
         interaction: discord.Interaction,
         reminder_id: str,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = True
+        ephemeral = resolve_visibility(visibility, default="public")
         await interaction.response.defer(ephemeral=ephemeral)
 
         try:
@@ -255,13 +273,18 @@ class ReminderCog(commands.Cog):
         name="edit",
         description="Edit an existing reminder.",
     )
-    @app_commands.describe(reminder="Reminder from autocomplete")
+    @app_commands.describe(
+        reminder="Reminder from autocomplete",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def reminder_edit(
         self,
         interaction: discord.Interaction,
         reminder: str,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = True
+        ephemeral = resolve_visibility(visibility, default="public")
 
         try:
             job = await asyncio.to_thread(
@@ -305,13 +328,18 @@ class ReminderCog(commands.Cog):
         name="show",
         description="Show a specific reminder.",
     )
-    @app_commands.describe(reminder="Reminder from autocomplete")
+    @app_commands.describe(
+        reminder="Reminder from autocomplete",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def reminder_show(
         self,
         interaction: discord.Interaction,
         reminder: str,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = True
+        ephemeral = resolve_visibility(visibility, default="public")
         await interaction.response.defer(ephemeral=ephemeral)
 
         try:
@@ -344,13 +372,18 @@ class ReminderCog(commands.Cog):
         name="pause",
         description="Pause reminders by ID or all at once.",
     )
-    @app_commands.describe(reminder_id="Reminder ID")
+    @app_commands.describe(
+        reminder_id="Reminder ID",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def reminder_pause(
         self,
         interaction: discord.Interaction,
         reminder_id: str,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = True
+        ephemeral = resolve_visibility(visibility, default="public")
         await interaction.response.defer(ephemeral=ephemeral)
         reminder_id_value = reminder_id.strip()
 
@@ -431,14 +464,17 @@ class ReminderCog(commands.Cog):
     @app_commands.describe(
         reminder_id="Reminder ID",
         all="Resume all reminders",
+        visibility=VISIBILITY_DESC,
     )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def reminder_resume(
         self,
         interaction: discord.Interaction,
         reminder_id: Optional[str] = None,
         all: Optional[bool] = None,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = True
+        ephemeral = resolve_visibility(visibility, default="public")
         await interaction.response.defer(ephemeral=ephemeral)
 
         reminder_id_value = (reminder_id or "").strip()
@@ -538,14 +574,22 @@ class ReminderCog(commands.Cog):
     @app_commands.describe(
         username="Custom reminder bot username",
         avatar_url="Custom reminder bot avatar URL",
+        visibility=VISIBILITY_DESC,
     )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def reminder_customize(
         self,
         interaction: discord.Interaction,
         username: Optional[str] = None,
         avatar_url: Optional[str] = None,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        await self._send_not_implemented(interaction, "/reminder customize")
+        ephemeral = resolve_visibility(visibility, default="public")
+        await self._send_not_implemented(
+            interaction,
+            "/reminder customize",
+            ephemeral=ephemeral,
+        )
 
     async def _create_reminder_from_options(
         self,
@@ -593,6 +637,8 @@ class ReminderCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         destination_channel: Optional[str],
+        *,
+        ephemeral: bool,
     ) -> tuple[Optional[int], str]:
         raw_value = (destination_channel or "").strip()
         normalized = raw_value.lower()
@@ -601,7 +647,7 @@ class ReminderCog(commands.Cog):
             if not interaction.channel_id:
                 raise ValidationError(
                     "This conversation does not have a destination channel.",
-                    ephemeral=True,
+                    ephemeral=ephemeral,
                 )
             if normalized and normalized not in {
                 "all",
@@ -610,7 +656,7 @@ class ReminderCog(commands.Cog):
             }:
                 raise ValidationError(
                     "Please select a valid destination from autocomplete.",
-                    ephemeral=True,
+                    ephemeral=ephemeral,
                 )
             return interaction.channel_id, "This DM"
 
@@ -620,7 +666,7 @@ class ReminderCog(commands.Cog):
         if not normalized.startswith("channel:"):
             raise ValidationError(
                 "Please select a valid destination from autocomplete.",
-                ephemeral=True,
+                ephemeral=ephemeral,
             )
 
         try:
@@ -628,7 +674,7 @@ class ReminderCog(commands.Cog):
         except (TypeError, ValueError) as exc:
             raise ValidationError(
                 "Please select a valid destination from autocomplete.",
-                ephemeral=True,
+                ephemeral=ephemeral,
                 cause=exc,
             )
 
@@ -636,12 +682,12 @@ class ReminderCog(commands.Cog):
         if channel is None:
             raise ValidationError(
                 "That channel was not found.",
-                ephemeral=True,
+                ephemeral=ephemeral,
             )
         if not isinstance(channel, discord.TextChannel):
             raise ValidationError(
                 "Please select a text channel from autocomplete.",
-                ephemeral=True,
+                ephemeral=ephemeral,
             )
 
         return channel_id, f"#{channel.name}"

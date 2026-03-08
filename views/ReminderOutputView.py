@@ -154,7 +154,7 @@ class ReminderOutputView(discord.ui.View):
         result_message: str,
         ok: bool = True,
         user_id: Optional[int] = None,
-        response_ephemeral: bool = True,
+        response_ephemeral: bool = False,
         timeout: float = 3600,
     ) -> None:
         super().__init__(timeout=timeout)
@@ -175,7 +175,7 @@ class ReminderOutputView(discord.ui.View):
             return True
         await interaction.response.send_message(
             "Only the user who opened this reminder can manage it.",
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
         )
         return False
 
@@ -414,7 +414,7 @@ class ReminderOutputView(discord.ui.View):
         if self.job is None:
             await interaction.response.send_message(
                 "That reminder is no longer available.",
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
             )
             return
 
@@ -448,7 +448,7 @@ class ReminderOutputView(discord.ui.View):
         if self.job is None:
             await interaction.response.send_message(
                 "That reminder is no longer available.",
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
             )
             return
 
@@ -477,7 +477,7 @@ class ReminderOutputView(discord.ui.View):
         if self.job is None:
             await interaction.response.send_message(
                 "That reminder is no longer available.",
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
             )
             return
 
@@ -559,7 +559,7 @@ class ReminderOutputView(discord.ui.View):
         if self.job is None:
             await interaction.response.send_message(
                 "That reminder is no longer available.",
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
             )
             return
 

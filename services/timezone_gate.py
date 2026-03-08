@@ -14,6 +14,7 @@ async def ensure_user_timezone(
     interaction: discord.Interaction,
     on_timezone_resolved: TimezoneResolvedHandler,
     continue_message: Optional[str] = None,
+    response_ephemeral: bool = True,
 ) -> Optional[str]:
     timezone = await asyncio.to_thread(
         UserSettingsFunctions.get_timezone,
@@ -27,6 +28,7 @@ async def ensure_user_timezone(
             user_id=interaction.user.id,
             on_timezone_resolved=on_timezone_resolved,
             continue_message=continue_message,
+            response_ephemeral=response_ephemeral,
         )
     )
     return None
