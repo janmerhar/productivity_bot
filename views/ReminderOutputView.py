@@ -521,10 +521,6 @@ class ReminderOutputView(discord.ui.View):
                 source_message=interaction.message,
                 result_message=self.result_message,
             )
-            await interaction.followup.send(
-                "That reminder is no longer available.",
-                ephemeral=self.response_ephemeral,
-            )
             return
 
         result_message = no_change_message if "already_" in result else desired_message
@@ -533,10 +529,6 @@ class ReminderOutputView(discord.ui.View):
             interaction,
             source_message=interaction.message,
             result_message=result_message,
-        )
-        await interaction.followup.send(
-            result_message,
-            ephemeral=self.response_ephemeral,
         )
 
     @discord.ui.button(
