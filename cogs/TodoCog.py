@@ -969,9 +969,10 @@ class TodoCog(commands.Cog):
                 scope_value,
             )
             items = await asyncio.to_thread(
-                TodoFunctions.list_items_on_list,
+                TodoFunctions.autocomplete_items_on_list,
                 todo_list["_id"],
-                "ascending",
+                query,
+                25,
             )
         except Exception:
             return []
@@ -982,21 +983,13 @@ class TodoCog(commands.Cog):
             if not isinstance(item_no, int):
                 continue
 
-            task_name = str(item.get("name") or "").strip() or "Untitled"
-            status = TodoFunctions.status_label(TodoFunctions.item_status(item))
-            search_text = f"{item_no} {task_name} {status}".lower()
-            if query and query not in search_text:
-                continue
-
-            label = f"#{item_no} {task_name} [{status}]"
+            label = TodoFunctions.item_option_label(item)
             options.append(
                 app_commands.Choice(
                     name=label[:100],
                     value=item_no,
                 )
             )
-            if len(options) >= 25:
-                break
 
         return options[:25]
 

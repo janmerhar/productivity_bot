@@ -933,17 +933,11 @@ class TodoListItemsView(discord.ui.View):
             item_id = str(item.get("_id") or "").strip()
             if not item_id:
                 continue
-            item_name = str(item.get("name") or "Untitled").strip() or "Untitled"
             item_status_value = TodoFunctions.item_status(item)
             status_label = TodoFunctions.status_label(item_status_value)
-            status_emoji = {
-                "todo": "\u26aa",
-                "in_progress": "\U0001f7e1",
-                "done": "\U0001f7e2",
-            }.get(item_status_value, "\u26aa")
             select_options.append(
                 discord.SelectOption(
-                    label=f"{status_emoji} {item_name}"[:100],
+                    label=TodoFunctions.item_option_label(item)[:100],
                     value=item_id,
                     description=status_label[:100],
                     default=(item_id == selected_item_id),

@@ -456,6 +456,22 @@ class TodoFunctions:
         return labels.get(status, status)
 
     @staticmethod
+    def item_status_emoji(status: str) -> str:
+        emojis = {
+            "todo": "\u26aa",
+            "in_progress": "\U0001f7e1",
+            "done": "\U0001f7e2",
+        }
+        return emojis.get(status, "\u26aa")
+
+    @staticmethod
+    def item_option_label(item: Dict[str, Any]) -> str:
+        item_name = str(item.get("name") or "Untitled").strip() or "Untitled"
+        item_status_value = TodoFunctions.item_status(item)
+        status_emoji = TodoFunctions.item_status_emoji(item_status_value)
+        return f"{status_emoji} {item_name}"
+
+    @staticmethod
     def truncate_multiline(text: str, limit: int = 220) -> str:
         normalized = " ".join(text.split())
         if len(normalized) <= limit:
@@ -885,6 +901,50 @@ class TodoFunctions:
         sort_direction = 1 if sort == "ascending" else -1
         cursor = mongo_db["todos"].find({"list_id": object_id}).sort(
             "item_no", sort_direction
+        )
+        return list(cursor)
+
+    @staticmethod
+    def autocomplete_items_on_list(
+        list_id: Any,
+        query: str = "",
+        limit: int = 25,
+    ) -> List[Dict[str, Any]]:
+        object_id = TodoFunctions._coerce_object_id(list_id)
+        if object_id is None:
+            return []
+
+        capped_limit = max(1, min(limit, 25))
+        normalized_query = (query or "").strip().lower()
+        mongo_query: Dict[str, Any] = {"list_id": object_id}
+
+        if normalized_query:
+            or_clauses: List[Dict[str, Any]] = [
+                {"name": {"$regex": re.escape(normalized_query), "$options": "i"}}
+            ]
+
+            if normalized_query.isdigit():
+                or_clauses.append({"item_no": int(normalized_query)})
+
+            matching_statuses = [
+                status_key
+                for status_key, label in {
+                    "todo": "to do",
+                    "in_progress": "in progress",
+                    "done": "done",
+                }.items()
+                if normalized_query in label
+            ]
+            if matching_statuses:
+                or_clauses.append({"status": {"$in": matching_statuses}})
+
+            mongo_query["$or"] = or_clauses
+
+        cursor = (
+            mongo_db["todos"]
+            .find(mongo_query)
+            .sort("item_no", 1)
+            .limit(capped_limit)
         )
         return list(cursor)
 
