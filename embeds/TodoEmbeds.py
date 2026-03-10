@@ -2379,14 +2379,14 @@ class TodoEmbeds:
         status = TodoFunctions.status_label(item_status)
         status_emoji = TodoFunctions.item_status_emoji(item_status)
         text = TodoFunctions.item_text(item) or "No text"
-        due_text = TodoEmbeds._due_line(item.get("due")) or "Not set"
+        due_text = TodoEmbeds._due_line(item.get("due"))
         assignees = item.get("assignees") or []
-        mentions = " ".join(f"<@{uid}>" for uid in assignees) if assignees else "None"
+        mentions = " ".join(f"<@{uid}>" for uid in assignees) if assignees else ""
         list_reference = TodoEmbeds._list_reference_label(todo_list) or str(
             todo_list.get("name") or "List"
         )
         item_number_value = f"#{item_no}" if item_no is not None else "Not set"
-        metadata = " • ".join(
+        metadata = " \u2022 ".join(
             part for part in [list_reference, item_number_value] if part
         )
         status_line = f"{status_emoji} {status}"
@@ -2400,19 +2400,19 @@ class TodoEmbeds:
             metadata,
             "\u200b",
             f"**Status**\n{status_line}",
-            "\u200b",
-            f"**Due**\n{due_text}",
-            "\u200b",
         ]
+        if due_text:
+            description_lines.extend([ "\u200b", f"**Due**\n{due_text}" ])
         if description_line:
-            description_lines.extend(["**Description**", description_line, "\u200b"])
+            description_lines.extend(["\u200b", "**Description**", description_line])
 
         embed = discord.Embed(
             title=f"{status_emoji} {item_name}",
             color=discord.Colour.blurple(),
             description="\n".join(description_lines),
         )
-        embed.add_field(name="Assignees", value=f"👥 {mentions}", inline=False)
+        if mentions:
+            embed.add_field(name="Assignees", value=f"👥 {mentions}", inline=False)
 
         payload: Dict[str, Any] = {"embed": embed}
         if include_actions:
