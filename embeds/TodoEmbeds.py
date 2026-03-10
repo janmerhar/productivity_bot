@@ -1048,12 +1048,13 @@ class TodoListItemsView(discord.ui.View):
             confirm_view = TodoDeleteConfirmView(
                 item_id=selected_id,
                 item_number=selected.get("item_no"),
+                item_name=str(selected.get("name") or "").strip(),
                 list_name=str(self.todo_list.get("name") or "List"),
                 source_message=interaction.message,
             )
             await interaction.response.send_message(
                 ephemeral=True,
-                content=f"Delete item #{selected_item_label}?",
+                content=f"Delete `{str(selected.get('name') or 'Untitled').strip() or 'Untitled'}`?",
                 view=confirm_view,
             )
 
@@ -1184,6 +1185,7 @@ class TodoDeleteConfirmView(discord.ui.View):
         self,
         item_id: str,
         item_number: Any,
+        item_name: str,
         list_name: str,
         source_message: Optional[discord.Message],
     ) -> None:
@@ -1191,6 +1193,7 @@ class TodoDeleteConfirmView(discord.ui.View):
         self.item_id = item_id
         self.item_number = item_number
         self.item_label = str(item_number if item_number is not None else "?")
+        self.item_name = item_name.strip() or f"Item #{self.item_label}"
         self.list_name = list_name
         self.source_message = source_message
 
@@ -1207,19 +1210,13 @@ class TodoDeleteConfirmView(discord.ui.View):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        await interaction.response.defer(ephemeral=True)
-
         deleted = await asyncio.to_thread(TodoFunctions.delete_item, self.item_id)
         self._disable_buttons()
-        try:
-            await interaction.edit_original_response(view=self)
-        except Exception:
-            pass
 
         if not deleted:
-            await interaction.followup.send(
-                ephemeral=True,
-                content=f"Couldn't delete item #{self.item_label}.",
+            await interaction.response.edit_message(
+                content=f"Couldn't delete `{self.item_name}`.",
+                view=self,
             )
             return
 
@@ -1234,15 +1231,15 @@ class TodoDeleteConfirmView(discord.ui.View):
             except discord.NotFound:
                 pass
             except Exception:
-                await interaction.followup.send(
-                    ephemeral=True,
+                await interaction.response.edit_message(
                     content="Item deleted, but updating the card failed.",
+                    view=self,
                 )
                 return
 
-        await interaction.followup.send(
-            ephemeral=True,
-            content=f"Deleted item #{self.item_label}.",
+        await interaction.response.edit_message(
+            content=f"`{self.item_name}` was successfully deleted.",
+            view=None,
         )
 
     @discord.ui.button(label="✖️ Cancel", style=discord.ButtonStyle.secondary)
@@ -1323,6 +1320,7 @@ class TodoAssignPickerView(discord.ui.View):
         self.item_id = str(item.get("_id") or "")
         self.item_number = item.get("item_no")
         self.item_label = str(self.item_number if self.item_number is not None else "?")
+        self.item_name = str(item.get("name") or "").strip() or f"Item #{self.item_label}"
         self.guild_id = item.get("guild_id")
         self.source_message = source_message
 
@@ -1511,6 +1509,7 @@ class TodoItemActionsView(discord.ui.View):
         self.item_id = str(item.get("_id") or "")
         self.item_number = item.get("item_no")
         self.item_label = str(self.item_number if self.item_number is not None else "?")
+        self.item_name = str(item.get("name") or "").strip() or f"Item #{self.item_label}"
         self.guild_id = item.get("guild_id")
 
         item_status = TodoFunctions.item_status(item)
@@ -1765,12 +1764,13 @@ class TodoItemActionsView(discord.ui.View):
         confirm_view = TodoDeleteConfirmView(
             item_id=self.item_id,
             item_number=self.item_number,
+            item_name=self.item_name,
             list_name=str(self.todo_list.get("name") or "List"),
             source_message=interaction.message,
         )
         await interaction.response.send_message(
             ephemeral=True,
-            content=f"Delete item #{self.item_label}?",
+            content=f"Delete `{self.item_name}`?",
             view=confirm_view,
         )
 
