@@ -2069,6 +2069,8 @@ class TodoEmbeds:
 
         list_name = str(todo_list.get("name") or "").strip()
         if list_name:
+            if todo_list.get("scope") == "personal":
+                return list_name
             return f"#{list_name}"
         return None
 
