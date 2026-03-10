@@ -2374,20 +2374,45 @@ class TodoEmbeds:
         include_actions: bool = True,
     ) -> dict:
         item_no = item.get("item_no")
+        item_name = str(item.get("name") or "Untitled").strip() or "Untitled"
+        item_status = TodoFunctions.item_status(item)
+        status = TodoFunctions.status_label(item_status)
+        status_emoji = TodoFunctions.item_status_emoji(item_status)
         text = TodoFunctions.item_text(item) or "No text"
-        status = TodoFunctions.status_label(TodoFunctions.item_status(item))
         due_text = TodoEmbeds._due_line(item.get("due")) or "Not set"
         assignees = item.get("assignees") or []
         mentions = " ".join(f"<@{uid}>" for uid in assignees) if assignees else "None"
+        list_reference = TodoEmbeds._list_reference_label(todo_list) or str(
+            todo_list.get("name") or "List"
+        )
+        item_number_value = f"#{item_no}" if item_no is not None else "Not set"
+        metadata = " • ".join(
+            part for part in [list_reference, item_number_value] if part
+        )
+        status_line = f"{status_emoji} {status}"
+        description_text = text if len(text) <= 800 else text[:797] + "..."
+        description_line = (
+            description_text
+            if description_text.strip().lower() != item_name.strip().lower()
+            else None
+        )
+        description_lines = [
+            metadata,
+            "\u200b",
+            f"**Status**\n{status_line}",
+            "\u200b",
+            f"**Due**\n{due_text}",
+            "\u200b",
+        ]
+        if description_line:
+            description_lines.extend(["**Description**", description_line, "\u200b"])
 
         embed = discord.Embed(
-            title=f"{todo_list.get('name') or 'List'} | Item #{item_no}",
+            title=f"{status_emoji} {item_name}",
             color=discord.Colour.blurple(),
-            description=text if len(text) <= 3500 else text[:3497] + "...",
+            description="\n".join(description_lines),
         )
-        embed.add_field(name="Status", value=status, inline=True)
-        embed.add_field(name="Due", value=due_text, inline=True)
-        embed.add_field(name="Assignees", value=mentions, inline=False)
+        embed.add_field(name="Assignees", value=f"👥 {mentions}", inline=False)
 
         payload: Dict[str, Any] = {"embed": embed}
         if include_actions:
