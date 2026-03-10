@@ -486,10 +486,7 @@ class TodoItemEditModal(discord.ui.Modal):
                 **payload,
             )
             return
-
-        await interaction.followup.send(
-            ephemeral=True, content=f"Updated item #{self.item_number}."
-        )
+        return
 
 
 class TodoListItemsView(discord.ui.View):
@@ -1443,10 +1440,7 @@ class TodoAssignPickerView(discord.ui.View):
             )
             return
 
-        await interaction.followup.send(
-            ephemeral=True,
-            content=f"Assigned item #{self.item_label} to <@{target_user_id}>.",
-        )
+        return
 
     @discord.ui.button(emoji="➖", style=discord.ButtonStyle.secondary, row=1)
     async def unassign(
@@ -1476,10 +1470,7 @@ class TodoAssignPickerView(discord.ui.View):
             )
             return
 
-        await interaction.followup.send(
-            ephemeral=True,
-            content=f"Unassigned item #{self.item_label}.",
-        )
+        return
 
     @discord.ui.button(emoji="✖️", style=discord.ButtonStyle.secondary, row=1)
     async def cancel(
@@ -1748,13 +1739,7 @@ class TodoItemActionsView(discord.ui.View):
 
         updated_list = await self._resolve_list_for_item(updated_item)
         await self._refresh_source_card(interaction, updated_list, updated_item)
-        await interaction.followup.send(
-            ephemeral=True,
-            content=(
-                f"Updated item #{self.item_label} to "
-                f"{TodoFunctions.status_label(next_status)}."
-            ),
-        )
+        return
 
     @discord.ui.button(
         label="\U0001F5D1\uFE0F Delete",
@@ -1833,15 +1818,7 @@ class TodoItemActionsView(discord.ui.View):
 
         updated_list = await self._resolve_list_for_item(updated_item)
         await self._refresh_source_card(interaction, updated_list, updated_item)
-
-        if is_assigned_to_me:
-            message = f"Unassigned item #{self.item_label}."
-        else:
-            message = f"Assigned item #{self.item_label} to you."
-        await interaction.followup.send(
-            ephemeral=True,
-            content=message,
-        )
+        return
 
     @discord.ui.button(
         emoji="\U0001F465",
