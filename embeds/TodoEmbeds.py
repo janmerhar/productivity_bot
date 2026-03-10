@@ -1099,9 +1099,7 @@ class TodoListItemsView(discord.ui.View):
         sort_button = discord.ui.Button(
             style=discord.ButtonStyle.secondary,
             label=(
-                "Sort ↓ Descending"
-                if self.sort == "ascending"
-                else "Sort ↑ Ascending"
+                "Sort ↓ Descending" if self.sort == "ascending" else "Sort ↑ Ascending"
             ),
             row=3,
         )
@@ -1297,9 +1295,7 @@ class TodoClearListConfirmView(discord.ui.View):
 
         await interaction.followup.send(
             ephemeral=True,
-            content=(
-                f"Cleared `{self.list_name}` ({deleted_count} items removed)."
-            ),
+            content=(f"Cleared `{self.list_name}` ({deleted_count} items removed)."),
         )
 
     @discord.ui.button(label="\u2716\ufe0f Cancel", style=discord.ButtonStyle.secondary)
@@ -2036,7 +2032,7 @@ class TodoEmbeds:
 
         due_dt = TodoEmbeds._parse_due_dt(due)
         if due_dt is None:
-            return f"🗓️ Due: {TodoFunctions.format_due(due)}"
+            return f"\U0001f5d3\ufe0f Due: {TodoFunctions.format_due(due)}"
 
         if due_dt.tzinfo is not None and due_dt.utcoffset() is not None:
             now = datetime.datetime.now(datetime.timezone.utc).astimezone(due_dt.tzinfo)
@@ -2052,10 +2048,10 @@ class TodoEmbeds:
         rel = f"<t:{unix_ts}:R>"
 
         if due_dt < now:
-            return f"🔴 Overdue: {rel}"
+            return f"\U0001f6a8 Overdue: {rel}"
         if due_dt.date() == now.date():
-            return f"🟠 Due: {rel}"
-        return f"🗓️ Due: {rel}"
+            return f"\u23f0 Due: {rel}"
+        return f"\U0001f5d3\ufe0f Due: {rel}"
 
     @staticmethod
     def _list_title(todo_list: Dict[str, Any]) -> str:
@@ -2108,7 +2104,10 @@ class TodoEmbeds:
         if description:
             lines.append(str(description))
         if due:
-            lines.append(f"📅 {TodoEmbeds._format_due(due)}")
+            lines.append(
+                TodoEmbeds._due_line(due)
+                or f"\U0001f5d3\ufe0f Due: {TodoEmbeds._format_due(due)}"
+            )
 
         embed.add_field(
             name=name,
@@ -2134,7 +2133,10 @@ class TodoEmbeds:
         if description:
             lines.append(str(description))
         if due:
-            lines.append(f"Due: {TodoEmbeds._format_due(due)}")
+            lines.append(
+                TodoEmbeds._due_line(due)
+                or f"\U0001f5d3\ufe0f Due: {TodoEmbeds._format_due(due)}"
+            )
 
         embed.add_field(
             name=name,
@@ -2352,7 +2354,7 @@ class TodoEmbeds:
         item_no = item.get("item_no")
         text = TodoFunctions.item_text(item) or "No text"
         status = TodoFunctions.status_label(TodoFunctions.item_status(item))
-        due_text = TodoEmbeds._due_relative(item.get("due")) or "Not set"
+        due_text = TodoEmbeds._due_line(item.get("due")) or "Not set"
         assignees = item.get("assignees") or []
         mentions = " ".join(f"<@{uid}>" for uid in assignees) if assignees else "None"
 
