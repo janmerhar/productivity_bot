@@ -1238,11 +1238,11 @@ class TodoDeleteConfirmView(discord.ui.View):
                 return
 
         await interaction.response.edit_message(
-            content=f"`{self.item_name}` was successfully deleted.",
+            content=f"\U0001f5d1\ufe0f `{self.item_name}` was successfully deleted.",
             view=None,
         )
 
-    @discord.ui.button(label="✖️ Cancel", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="\u274c Cancel", style=discord.ButtonStyle.secondary)
     async def cancel_delete(
         self,
         interaction: discord.Interaction,
@@ -1250,8 +1250,8 @@ class TodoDeleteConfirmView(discord.ui.View):
     ) -> None:
         self._disable_buttons()
         await interaction.response.edit_message(
-            content="Deletion cancelled.",
-            view=self,
+            content=f"\u274c Deletion of `{self.item_name}` cancelled.",
+            view=None,
         )
 
 
@@ -1320,7 +1320,9 @@ class TodoAssignPickerView(discord.ui.View):
         self.item_id = str(item.get("_id") or "")
         self.item_number = item.get("item_no")
         self.item_label = str(self.item_number if self.item_number is not None else "?")
-        self.item_name = str(item.get("name") or "").strip() or f"Item #{self.item_label}"
+        self.item_name = (
+            str(item.get("name") or "").strip() or f"Item #{self.item_label}"
+        )
         self.guild_id = item.get("guild_id")
         self.source_message = source_message
 
@@ -1509,7 +1511,9 @@ class TodoItemActionsView(discord.ui.View):
         self.item_id = str(item.get("_id") or "")
         self.item_number = item.get("item_no")
         self.item_label = str(self.item_number if self.item_number is not None else "?")
-        self.item_name = str(item.get("name") or "").strip() or f"Item #{self.item_label}"
+        self.item_name = (
+            str(item.get("name") or "").strip() or f"Item #{self.item_label}"
+        )
         self.guild_id = item.get("guild_id")
 
         item_status = TodoFunctions.item_status(item)

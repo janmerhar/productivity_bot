@@ -10,6 +10,7 @@ from embeds.TodoEmbeds import (
     TodoEmbeds,
     TodoListItemsView,
     TodoItemEditModal,
+    TodoDeleteConfirmView,
     TodoClearListConfirmView,
 )
 from services.discord_helpers import resolve_ephemeral_from_scope
@@ -799,8 +800,6 @@ class TodoCog(commands.Cog):
             scope_value,
             visibility,
         )
-        await interaction.response.defer(ephemeral=ephemeral)
-
         try:
             todo_list = await asyncio.to_thread(
                 TodoFunctions.get_or_create_implicit_list,
@@ -815,7 +814,6 @@ class TodoCog(commands.Cog):
                 todo_list["_id"],
                 todo,
             )
-            deleted = await asyncio.to_thread(TodoFunctions.delete_item, item["_id"])
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
         except Exception as exc:
@@ -825,15 +823,17 @@ class TodoCog(commands.Cog):
                 cause=exc,
             )
 
-        if not deleted:
-            raise UserVisibleError(
-                "That item could not be deleted.",
-                ephemeral=ephemeral,
-            )
-
-        await interaction.followup.send(
+        confirm_view = TodoDeleteConfirmView(
+            item_id=str(item.get("_id") or ""),
+            item_number=item.get("item_no"),
+            item_name=str(item.get("name") or "").strip(),
+            list_name=str(todo_list.get("name") or "List"),
+            source_message=None,
+        )
+        await interaction.response.send_message(
             ephemeral=ephemeral,
-            content=f"Deleted item #{todo} from `{todo_list.get('name')}`.",
+            content=f"Delete `{str(item.get('name') or 'Untitled').strip() or 'Untitled'}`?",
+            view=confirm_view,
         )
 
     @todo_group.command(name="assign", description="Assign or unassign an item")
