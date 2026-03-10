@@ -1530,19 +1530,21 @@ class TodoItemActionsView(discord.ui.View):
     def _apply_progress_button_state(self, current_status: str) -> None:
         if current_status == "todo":
             self.complete_todo.style = discord.ButtonStyle.primary
-            self.complete_todo.emoji = "🟡"
+            self.complete_todo.emoji = None
+            self.complete_todo.label = "\U0001F7E1 In Progress"
             self.complete_todo.disabled = False
             return
         if current_status == "in_progress":
             self.complete_todo.style = discord.ButtonStyle.success
-            self.complete_todo.emoji = "✅"
+            self.complete_todo.emoji = None
+            self.complete_todo.label = "\U0001F7E2 Complete"
             self.complete_todo.disabled = False
             return
 
         self.complete_todo.style = discord.ButtonStyle.secondary
-        self.complete_todo.emoji = "✅"
+        self.complete_todo.emoji = None
+        self.complete_todo.label = "\U0001F7E2 Complete"
         self.complete_todo.disabled = True
-
     async def _resolve_list_for_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
         list_id = item.get("list_id")
         if not list_id:
@@ -1602,7 +1604,11 @@ class TodoItemActionsView(discord.ui.View):
             )
             return False
 
-    @discord.ui.button(emoji="✏️", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(
+        label="\u270F\uFE0F Edit",
+        style=discord.ButtonStyle.secondary,
+        row=0,
+    )
     async def edit_todo(
         self,
         interaction: discord.Interaction,
@@ -1692,7 +1698,11 @@ class TodoItemActionsView(discord.ui.View):
             )
         )
 
-    @discord.ui.button(emoji="✅", style=discord.ButtonStyle.success, row=0)
+    @discord.ui.button(
+        label="\U0001F7E2 Complete",
+        style=discord.ButtonStyle.success,
+        row=0,
+    )
     async def complete_todo(
         self,
         interaction: discord.Interaction,
@@ -1746,7 +1756,11 @@ class TodoItemActionsView(discord.ui.View):
             ),
         )
 
-    @discord.ui.button(emoji="🗑️", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(
+        label="\U0001F5D1\uFE0F Delete",
+        style=discord.ButtonStyle.danger,
+        row=0,
+    )
     async def delete_todo(
         self,
         interaction: discord.Interaction,
@@ -1772,7 +1786,12 @@ class TodoItemActionsView(discord.ui.View):
             view=confirm_view,
         )
 
-    @discord.ui.button(emoji="🙋", style=discord.ButtonStyle.primary, row=0)
+    @discord.ui.button(
+        emoji="\U0001F64B",
+        label="Assign Me",
+        style=discord.ButtonStyle.primary,
+        row=0,
+    )
     async def assign_to_me(
         self,
         interaction: discord.Interaction,
@@ -1824,7 +1843,12 @@ class TodoItemActionsView(discord.ui.View):
             content=message,
         )
 
-    @discord.ui.button(emoji="👥", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(
+        emoji="\U0001F465",
+        label="Assign User",
+        style=discord.ButtonStyle.secondary,
+        row=0,
+    )
     async def assign_to_user(
         self,
         interaction: discord.Interaction,
