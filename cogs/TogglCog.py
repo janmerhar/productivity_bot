@@ -1,7 +1,7 @@
 # Color palette
 # https://colorswall.com/palette/72717/
 import asyncio
-from typing import Callable, Optional
+from typing import Callable
 
 import discord
 from discord.ext import commands
@@ -14,6 +14,7 @@ from services.toggl_key_gate import ensure_toggl_api_key
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 alias_disabled = env.get("ALIAS_DISABLED") == "true"
+DEFAULT_VISIBILITY = "public"
 
 
 class TogglCog(commands.Cog):
@@ -93,9 +94,9 @@ class TogglCog(commands.Cog):
     async def aboutme(
         self,
         interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -121,9 +122,9 @@ class TogglCog(commands.Cog):
         interaction: discord.Interaction,
         project: str = None,
         description: str = None,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -142,9 +143,9 @@ class TogglCog(commands.Cog):
     async def timer(
         self,
         interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -161,9 +162,9 @@ class TogglCog(commands.Cog):
     async def stop(
         self,
         interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -180,9 +181,9 @@ class TogglCog(commands.Cog):
     async def inserttimer(
         self,
         interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         pass
 
     #
@@ -216,9 +217,9 @@ class TogglCog(commands.Cog):
         pid: int = None,
         tags: str = None,
         tid: int = None,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -245,9 +246,9 @@ class TogglCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         identifier: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -269,9 +270,9 @@ class TogglCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         identifier: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -305,9 +306,9 @@ class TogglCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         n: int = 5,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -329,9 +330,9 @@ class TogglCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         n: int,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -356,9 +357,9 @@ class TogglCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         name: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -376,9 +377,9 @@ class TogglCog(commands.Cog):
     async def workspaceprojects(
         self,
         interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -399,9 +400,9 @@ class TogglCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         project_id: int,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -482,9 +483,9 @@ class TogglCog(commands.Cog):
             command: str,
             alias: str,
             arguments: str = "",
-            visibility: Optional[app_commands.Choice[str]] = None,
+            visibility: str = DEFAULT_VISIBILITY,
         ):
-            ephemeral = resolve_visibility(visibility, default="public")
+            ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
             normalized_command = self._normalize_alias_command(command)
             if normalized_command:
                 command = normalized_command
