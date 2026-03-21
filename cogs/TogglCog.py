@@ -85,7 +85,7 @@ class TogglCog(commands.Cog):
     #
     # Authentication
     #
-    @toggl.command(name="aboutme", description="About your Toggl account")
+    @toggl.command(name="account", description="Show your Toggl account")
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def aboutme(
@@ -97,7 +97,7 @@ class TogglCog(commands.Cog):
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
-            command_label="/toggl aboutme",
+            command_label="/toggl account",
             payload_builder=lambda: TogglEmbeds.aboutme_embed(
                 interaction.guild_id,
                 interaction.user.id,
@@ -493,6 +493,7 @@ class TogglCog(commands.Cog):
         def _alias_command_map() -> dict:
             alias_map = {
                 "about": "aboutme",
+                "account": "aboutme",
                 "timer start": "start",
                 "timer stop": "stop",
                 "timer current": "timer",

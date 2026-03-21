@@ -130,6 +130,7 @@ class TogglEmbeds(EmbedsAbstract):
             cleaned = cleaned[len("toggl ") :].strip()
         alias_map = {
             "about": "aboutme",
+            "account": "aboutme",
             "key clear": "togglkeyclear",
             "timer start": "start",
             "timer stop": "stop",
@@ -165,7 +166,7 @@ class TogglEmbeds(EmbedsAbstract):
             return TogglEmbeds._missing_key_embed()
         data = toggl.aboutMe()
 
-        embed = discord.Embed(title=":stopwatch: Toggl About Me", color=0xDF80C7)
+        embed = discord.Embed(title=":stopwatch: Toggl Account", color=0xDF80C7)
         embed.set_thumbnail(url="https://assets.track.toggl.com/images/profile.png")
 
         embed.add_field(name="ID", value=data["id"], inline=False)
