@@ -9,6 +9,9 @@ from abstract.EmbedsAbstract import EmbedsAbstract
 
 
 class TogglEmbeds(EmbedsAbstract):
+    MAX_EMBEDS_PER_MESSAGE = 10
+    MAX_EMBED_DESCRIPTION = 4096
+
     @staticmethod
     def _get_toggl(guild_id: int, user_id: int) -> Optional[TogglFunctions]:
         if guild_id is None or user_id is None:
@@ -27,6 +30,77 @@ class TogglEmbeds(EmbedsAbstract):
         )
         embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
         return {"embeds": [embed]}
+
+    @staticmethod
+    def _build_line_embeds(
+        *,
+        title: str,
+        lines: list[str],
+        empty_description: str,
+        color: str = "#552d4f",
+    ) -> list[discord.Embed]:
+        if not lines:
+            embed = discord.Embed(
+                title=title,
+                color=discord.Colour.from_str(color),
+                description=empty_description,
+            )
+            embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
+            return [embed]
+
+        embeds: list[discord.Embed] = []
+        current_lines: list[str] = []
+        current_length = 0
+
+        for line in lines:
+            line_length = len(line) + (1 if current_lines else 0)
+            if (
+                current_lines
+                and current_length + line_length
+                > TogglEmbeds.MAX_EMBED_DESCRIPTION
+            ):
+                embed = discord.Embed(
+                    title=title,
+                    color=discord.Colour.from_str(color),
+                    description="\n".join(current_lines),
+                )
+                embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
+                embeds.append(embed)
+                if len(embeds) >= TogglEmbeds.MAX_EMBEDS_PER_MESSAGE:
+                    break
+                current_lines = [line]
+                current_length = len(line)
+            else:
+                current_lines.append(line)
+                current_length += line_length
+
+        if (
+            current_lines
+            and len(embeds) < TogglEmbeds.MAX_EMBEDS_PER_MESSAGE
+        ):
+            embed = discord.Embed(
+                title=title,
+                color=discord.Colour.from_str(color),
+                description="\n".join(current_lines),
+            )
+            embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
+            embeds.append(embed)
+
+        total_embeds = len(embeds)
+        for index, embed in enumerate(embeds, start=1):
+            if total_embeds > 1:
+                embed.set_footer(text=f"Page {index}/{total_embeds}")
+
+        if len(embeds) >= TogglEmbeds.MAX_EMBEDS_PER_MESSAGE and len(lines) > sum(
+            len(embed.description.splitlines()) for embed in embeds if embed.description
+        ):
+            last_embed = embeds[-1]
+            suffix = "\n… truncated"
+            description = last_embed.description or ""
+            if len(description) + len(suffix) <= TogglEmbeds.MAX_EMBED_DESCRIPTION:
+                last_embed.description = f"{description}{suffix}"
+
+        return embeds
 
     @staticmethod
     def _get_function_by_name(name: str):
@@ -515,22 +589,21 @@ class TogglEmbeds(EmbedsAbstract):
         if toggl is None:
             return TogglEmbeds._missing_key_embed()
         projects = toggl.getProjectsByWorkspace(toggl.aboutMe()["default_workspace_id"])
-
-        embed = discord.Embed(
-            title=":stopwatch: Toggl All Projects",
-            color=discord.Colour.from_str("#552d4f"),
-        )
-
-        embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
-
+        lines = []
         for project in projects:
-            embed.add_field(name="Project ID", value=project["id"], inline=True)
-            embed.add_field(name="Project name", value=project["name"], inline=True)
-            embed.add_field(
-                name="Hours documented", value=project["actual_hours"], inline=True
+            project_id = project.get("id")
+            project_name = str(project.get("name") or "Unnamed project").strip()
+            actual_hours = project.get("actual_hours")
+            lines.append(
+                f"`{project_id}` | {project_name} | {actual_hours}h"
             )
 
-        return {"embeds": [embed]}
+        embeds = TogglEmbeds._build_line_embeds(
+            title=":stopwatch: Toggl All Projects",
+            lines=lines,
+            empty_description="No projects found.",
+        )
+        return {"embeds": embeds}
 
     @staticmethod
     def getproject_embed(project: str, guild_id: int, user_id: int) -> dict:
