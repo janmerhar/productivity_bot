@@ -13,6 +13,7 @@ from services.toggl_key_gate import ensure_toggl_api_key
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
 alias_disabled = env.get("ALIAS_DISABLED") == "true"
+saved_disabled = "true"
 DEFAULT_VISIBILITY = "public"
 
 
@@ -27,7 +28,8 @@ class TogglCog(commands.Cog):
         )
     toggl.add_command(project)
     toggl.add_command(timer_group)
-    toggl.add_command(saved)
+    if not saved_disabled:
+        toggl.add_command(saved)
     if not alias_disabled:
         toggl.add_command(alias_group)
 
@@ -489,22 +491,28 @@ class TogglCog(commands.Cog):
 
         @staticmethod
         def _alias_command_map() -> dict:
-            return {
+            alias_map = {
                 "about": "aboutme",
                 "timer start": "start",
                 "timer stop": "stop",
                 "timer current": "timer",
                 "timer insert": "inserttimer",
                 "timer history": "timerhistory",
-                "saved create": "savetimer",
-                "saved delete": "removetimer",
-                "saved start": "startsaved",
-                "saved popular": "populartimers",
                 "project create": "newproject",
                 "project list": "workspaceprojects",
                 "project get": "getproject",
                 "alias create": "createalias",
             }
+            if not saved_disabled:
+                alias_map.update(
+                    {
+                        "saved create": "savetimer",
+                        "saved delete": "removetimer",
+                        "saved start": "startsaved",
+                        "saved popular": "populartimers",
+                    }
+                )
+            return alias_map
 
         def getFunctionByName(self, name):
             key = self._normalize_alias_command(name)
@@ -514,6 +522,13 @@ class TogglCog(commands.Cog):
             if key in alias_map:
                 key = alias_map[key]
             elif " " in key:
+                return None
+            if saved_disabled and key in {
+                "savetimer",
+                "removetimer",
+                "startsaved",
+                "populartimers",
+            }:
                 return None
             try:
                 fn = getattr(self, f"{key}")
@@ -569,6 +584,9 @@ class TogglCog(commands.Cog):
 
 
 async def setup(client):
+    if saved_disabled:
+        TogglCog.toggl.remove_command("saved")
+
     if alias_disabled:
         TogglCog.toggl.remove_command("alias")
 
