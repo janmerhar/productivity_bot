@@ -216,7 +216,7 @@ class TogglCog(commands.Cog):
         workspace_id="Workspace id",
         billable="Billable",
         description="Description of the saved timer",
-        pid="Project id",
+        project="Project",
         tags="Tags, separated by whitespaces",
         tid="Tid",
         visibility=VISIBILITY_DESC,
@@ -229,7 +229,7 @@ class TogglCog(commands.Cog):
         workspace_id: int = None,
         billable: str = None,
         description: str = None,
-        pid: int = None,
+        project: str = None,
         tags: str = None,
         tid: int = None,
         visibility: str = DEFAULT_VISIBILITY,
@@ -246,10 +246,18 @@ class TogglCog(commands.Cog):
                 workspace_id=workspace_id,
                 billable=billable,
                 description=description,
-                pid=pid,
+                project=project,
                 tags=tags,
             ),
         )
+
+    @savetimer.autocomplete("project")
+    async def savetimer_project_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str = "",
+    ) -> list[app_commands.Choice[str]]:
+        return await self.start_project_autocomplete(interaction, current)
 
     @saved.command(name="delete", description="Delete a saved timer")
     @app_commands.describe(

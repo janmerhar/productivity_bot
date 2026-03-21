@@ -206,8 +206,9 @@ class TogglFunctions:
             workspace_id = (
                 workspace_id if workspace_id is not None else self.workspace_id
             )
-            project_data = self.getProjectById(
-                workspace_id=workspace_id, project_id=project
+            project_data = self.getProject(
+                identifier=str(project),
+                workspace_id=workspace_id,
             )
             pid = project_data["id"] if project_data["id"] is not None else None
 

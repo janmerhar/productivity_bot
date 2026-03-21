@@ -326,7 +326,7 @@ class TogglEmbeds(EmbedsAbstract):
         workspace_id: int = None,
         billable: str = None,
         description: str = None,
-        pid: int = None,
+        project: str = None,
         tags: str = None,
         tid: int = None,
     ):
@@ -341,7 +341,7 @@ class TogglEmbeds(EmbedsAbstract):
             workspace_id=workspace_id,
             billable=billable,
             description=description,
-            project=pid,
+            project=project,
             tid=tid,
         )
 
