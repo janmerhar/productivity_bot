@@ -9,7 +9,6 @@ from discord import app_commands
 
 from config.env import env
 from embeds.TogglEmbeds import TogglEmbeds
-from services.error_reporting import ValidationError
 from services.toggl_key_gate import ensure_toggl_api_key
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 
@@ -61,12 +60,6 @@ class TogglCog(commands.Cog):
         command_label: str,
         payload_builder: Callable[[], dict],
     ) -> None:
-        if interaction.guild_id is None:
-            raise ValidationError(
-                "Use this command inside a server.",
-                ephemeral=ephemeral,
-            )
-
         async def _continue_with_key(
             followup_interaction: discord.Interaction,
             _api_key: str,

@@ -25,6 +25,19 @@ class TogglFunctions:
         self.custom_commands = []
         self.updateSavedTimers(None, None)
 
+    @staticmethod
+    def _user_scope_query(
+        *,
+        user_id: Optional[int],
+        guild_id: Optional[int],
+        application: str = "toggl",
+    ) -> dict:
+        return {
+            "application": application,
+            "guild_id": guild_id,
+            "user_id": user_id,
+        }
+
     #
     # Authentication
     # https://developers.track.toggl.com/docs/authentication
@@ -189,7 +202,7 @@ class TogglFunctions:
 
     def saveTimer(
         self,
-        guild_id: int,
+        guild_id: Optional[int],
         user_id: int,
         command,
         workspace_id=None,
@@ -237,14 +250,10 @@ class TogglFunctions:
         return res.inserted_id
 
     def updateSavedTimers(self, guild_id: Optional[int], user_id: Optional[int]):
-        if guild_id is None or user_id is None:
+        if user_id is None:
             self.custom_commands = []
             return []
-        search = {
-            "application": "toggl",
-            "guild_id": guild_id,
-            "user_id": user_id,
-        }
+        search = self._user_scope_query(user_id=user_id, guild_id=guild_id)
 
         commands = list(self.mongo_commands.find(search))
         self.custom_commands = commands
@@ -254,7 +263,7 @@ class TogglFunctions:
     def startSavedTimer(
         self,
         command: str,
-        guild_id: int,
+        guild_id: Optional[int],
         user_id: int,
     ) -> Union[None, int]:
         # Cheking for ative timer
@@ -268,9 +277,7 @@ class TogglFunctions:
         search_timer = self.mongo_commands.find_one(
             {
                 "command": command,
-                "application": "toggl",
-                "guild_id": guild_id,
-                "user_id": user_id,
+                **self._user_scope_query(user_id=user_id, guild_id=guild_id),
             }
         )
 
@@ -289,26 +296,25 @@ class TogglFunctions:
     def findSavedTimersLike(
         self,
         identifier: str,
-        guild_id: int,
+        guild_id: Optional[int],
         user_id: int,
     ):
         res_command = self.mongo_commands.find(
             {
                 "command": {"$regex": identifier, "$options": "i"},
-                "application": "toggl",
-                "guild_id": guild_id,
-                "user_id": user_id,
+                **self._user_scope_query(user_id=user_id, guild_id=guild_id),
             }
         ).sort("number_of_runs", -1)
 
         return list(res_command)
 
-    def mostCommonlyUsedTimers(self, n: int, guild_id: int, user_id: int):
-        search_param = {
-            "application": "toggl",
-            "guild_id": guild_id,
-            "user_id": user_id,
-        }
+    def mostCommonlyUsedTimers(
+        self,
+        n: int,
+        guild_id: Optional[int],
+        user_id: int,
+    ):
+        search_param = self._user_scope_query(user_id=user_id, guild_id=guild_id)
 
         res = self.mongo_commands.find(search_param, limit=int(n)).sort(
             "number_of_runs", -1
@@ -316,14 +322,17 @@ class TogglFunctions:
 
         return list(res)
 
-    def findSavedTimer(self, identifier: str, guild_id: int, user_id: int):
+    def findSavedTimer(
+        self,
+        identifier: str,
+        guild_id: Optional[int],
+        user_id: int,
+    ):
         res_command = list(
             self.mongo_commands.find(
                 {
                     "command": identifier,
-                    "application": "toggl",
-                    "guild_id": guild_id,
-                    "user_id": user_id,
+                    **self._user_scope_query(user_id=user_id, guild_id=guild_id),
                 }
             )
         )
@@ -338,9 +347,7 @@ class TogglFunctions:
                 self.mongo_commands.find(
                     {
                         "_id": search_id,
-                        "application": "toggl",
-                        "guild_id": guild_id,
-                        "user_id": user_id,
+                        **self._user_scope_query(user_id=user_id, guild_id=guild_id),
                     }
                 )
             )
@@ -352,7 +359,12 @@ class TogglFunctions:
         else:
             return res_command[0]
 
-    def removeSavedTimer(self, identifier: str, guild_id: int, user_id: int) -> bool:
+    def removeSavedTimer(
+        self,
+        identifier: str,
+        guild_id: Optional[int],
+        user_id: int,
+    ) -> bool:
         timer = self.findSavedTimer(identifier, guild_id, user_id)
 
         if timer is None:
@@ -573,7 +585,7 @@ class TogglFunctions:
 
     def saveShortcut(
         self,
-        guild_id: int,
+        guild_id: Optional[int],
         user_id: int,
         command: str,
         alias: str,
@@ -597,7 +609,7 @@ class TogglFunctions:
 
     def saveShortcut2(
         self,
-        guild_id: int,
+        guild_id: Optional[int],
         user_id: int,
         command: str,
         alias: str,
@@ -614,6 +626,7 @@ class TogglFunctions:
         }
 
         res = self.mongo_aliases.insert_one(data)
+        data["_id"] = res.inserted_id
 
         return data
 
@@ -631,13 +644,16 @@ class TogglFunctions:
 
         return param
 
-    def findSavedShortcut(self, alias: str, guild_id: int, user_id: int):
+    def findSavedShortcut(
+        self,
+        alias: str,
+        guild_id: Optional[int],
+        user_id: int,
+    ):
         saved_shortcut = self.mongo_aliases.find_one(
             {
                 "alias": alias,
-                "application": "toggl",
-                "guild_id": guild_id,
-                "user_id": user_id,
+                **self._user_scope_query(user_id=user_id, guild_id=guild_id),
             }
         )
 

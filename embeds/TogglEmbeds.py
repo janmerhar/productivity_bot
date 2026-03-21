@@ -13,8 +13,11 @@ class TogglEmbeds(EmbedsAbstract):
     MAX_EMBED_DESCRIPTION = 4096
 
     @staticmethod
-    def _get_toggl(guild_id: int, user_id: int) -> Optional[TogglFunctions]:
-        if guild_id is None or user_id is None:
+    def _get_toggl(
+        guild_id: Optional[int],
+        user_id: Optional[int],
+    ) -> Optional[TogglFunctions]:
+        if user_id is None:
             return None
         api_key = UserSettingsFunctions.get_toggl_api_key(user_id)
         if not api_key:
