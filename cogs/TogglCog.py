@@ -23,7 +23,9 @@ class TogglCog(commands.Cog):
     timer_group = app_commands.Group(name="timer", description="Manage Toggl timers")
     saved = app_commands.Group(name="saved", description="Manage saved timers")
     if not alias_disabled:
-        alias_group = app_commands.Group(name="alias", description="Manage Toggl aliases")
+        alias_group = app_commands.Group(
+            name="alias", description="Manage Toggl aliases"
+        )
     toggl.add_command(project)
     toggl.add_command(timer_group)
     toggl.add_command(saved)
@@ -505,5 +507,9 @@ class TogglCog(commands.Cog):
                 ),
             )
 
+
 async def setup(client):
+    if alias_disabled:
+        TogglCog.toggl.remove_command("alias")
+
     await client.add_cog(TogglCog(client))
