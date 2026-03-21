@@ -83,7 +83,7 @@ class TogglCog(commands.Cog):
     #
     # Authentication
     #
-    @toggl.command(name="about", description="About your Toggl account")
+    @toggl.command(name="aboutme", description="About your Toggl account")
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def aboutme(
@@ -95,7 +95,7 @@ class TogglCog(commands.Cog):
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
-            command_label="/toggl about",
+            command_label="/toggl aboutme",
             payload_builder=lambda: TogglEmbeds.aboutme_embed(
                 interaction.guild_id,
                 interaction.user.id,
@@ -145,7 +145,7 @@ class TogglCog(commands.Cog):
             interaction.user.id,
         )
 
-    @timer_group.command(name="current", description="Get active Toggl timer")
+    @timer_group.command(name="active", description="Get active Toggl timer")
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def timer(
@@ -157,7 +157,7 @@ class TogglCog(commands.Cog):
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
-            command_label="/toggl timer current",
+            command_label="/toggl timer active",
             payload_builder=lambda: TogglEmbeds.timer_embed(
                 interaction.guild_id,
                 interaction.user.id,
@@ -203,7 +203,7 @@ class TogglCog(commands.Cog):
     - Improve tags handling
     """
 
-    @saved.command(name="create", description="Save a timer preset")
+    @saved.command(name="add", description="Save a timer preset")
     @app_commands.describe(
         command="Name of the saved timer",
         workspace_id="Workspace id",
@@ -231,7 +231,7 @@ class TogglCog(commands.Cog):
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
-            command_label="/toggl saved create",
+            command_label="/toggl saved add",
             payload_builder=lambda: TogglEmbeds.savetimer_embed(
                 guild_id=interaction.guild_id,
                 user_id=interaction.user.id,
@@ -312,7 +312,7 @@ class TogglCog(commands.Cog):
 
         return options
 
-    @saved.command(name="popular", description="Most popular saved timers")
+    @saved.command(name="list", description="Most popular saved timers")
     @app_commands.describe(
         n="Number of most popular timers to be displayed",
         visibility=VISIBILITY_DESC,
@@ -328,7 +328,7 @@ class TogglCog(commands.Cog):
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
-            command_label="/toggl saved popular",
+            command_label="/toggl saved list",
             payload_builder=lambda: TogglEmbeds.populartimers_embed(
                 n=n,
                 guild_id=interaction.guild_id,
