@@ -158,7 +158,10 @@ class TogglEmbeds(EmbedsAbstract):
 
         print(project)
         if project is not None:
-            project_data = toggl.getProject(identifier=project)
+            project_data = toggl.getProject(
+                identifier=project,
+                workspace_id=workspace_id,
+            )
 
             new_time = toggl.startCurrentTimeEntry(
                 workspace_id,
@@ -530,28 +533,30 @@ class TogglEmbeds(EmbedsAbstract):
         return {"embeds": [embed]}
 
     @staticmethod
-    def getproject_embed(project_id: int, guild_id: int, user_id: int) -> dict:
+    def getproject_embed(project: str, guild_id: int, user_id: int) -> dict:
         toggl = TogglEmbeds._get_toggl(guild_id, user_id)
         if toggl is None:
             return TogglEmbeds._missing_key_embed()
         workspace_id = toggl.aboutMe()["default_workspace_id"]
-        project = toggl.getProjectById(workspace_id=workspace_id, project_id=project_id)
+        project_data = toggl.getProject(project, workspace_id=workspace_id)
 
-        if project != "Resource can not be found":
+        if project_data is not None:
             embed = discord.Embed(
                 title=":stopwatch: Toggl Project Details",
-                color=discord.Colour.from_str(project["color"]),
-                description=project["name"],
+                color=discord.Colour.from_str(project_data["color"] or "#552d4f"),
+                description=project_data["name"],
             )
             embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
 
-            embed.add_field(name="Project ID", value=project["id"], inline=True)
+            embed.add_field(name="Project ID", value=project_data["id"], inline=True)
             embed.add_field(name="Workspace ID", value=workspace_id, inline=True)
             embed.add_field(
-                name="Creation date", value=project["created_at"], inline=False
+                name="Creation date", value=project_data["created_at"], inline=False
             )
             embed.add_field(
-                name="Hours documented", value=project["actual_hours"], inline=False
+                name="Hours documented",
+                value=project_data["actual_hours"],
+                inline=False,
             )
 
             return {"embeds": [embed]}
@@ -565,6 +570,39 @@ class TogglEmbeds(EmbedsAbstract):
             embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
 
             return {"embeds": [embed]}
+
+    @staticmethod
+    def project_autocomplete_embed(
+        current: str,
+        guild_id: int,
+        user_id: int,
+    ) -> list[app_commands.Choice[str]]:
+        toggl = TogglEmbeds._get_toggl(guild_id, user_id)
+        if toggl is None:
+            return []
+
+        projects = toggl.findProjectsLike(
+            identifier=current,
+            workspace_id=toggl.workspace_id,
+            limit=25,
+        )
+
+        choices: list[app_commands.Choice[str]] = []
+        for project in projects:
+            project_id = project.get("id")
+            if project_id is None:
+                continue
+
+            project_name = str(project.get("name") or "").strip() or "Unnamed project"
+            label = f"{project_name} | #{project_id}"
+            choices.append(
+                app_commands.Choice(
+                    name=label[:100],
+                    value=str(project_id),
+                )
+            )
+
+        return choices
 
     #
     # Shortcuts

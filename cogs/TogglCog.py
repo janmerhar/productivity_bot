@@ -139,6 +139,19 @@ class TogglCog(commands.Cog):
             ),
         )
 
+    @start.autocomplete("project")
+    async def start_project_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str = "",
+    ) -> list[app_commands.Choice[str]]:
+        return await asyncio.to_thread(
+            TogglEmbeds.project_autocomplete_embed,
+            current,
+            interaction.guild_id,
+            interaction.user.id,
+        )
+
     @timer_group.command(name="current", description="Get active Toggl timer")
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -392,16 +405,16 @@ class TogglCog(commands.Cog):
             ),
         )
 
-    @project.command(name="get", description="Get a Toggl project by id")
+    @project.command(name="get", description="Get a Toggl project")
     @app_commands.describe(
-        project_id="Project id",
+        project="Project from autocomplete",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def getproject(
         self,
         interaction: discord.Interaction,
-        project_id: int,
+        project: str,
         visibility: str = DEFAULT_VISIBILITY,
     ):
         ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
@@ -410,11 +423,19 @@ class TogglCog(commands.Cog):
             ephemeral=ephemeral,
             command_label="/toggl project get",
             payload_builder=lambda: TogglEmbeds.getproject_embed(
-                project_id=project_id,
+                project=project,
                 guild_id=interaction.guild_id,
                 user_id=interaction.user.id,
             ),
         )
+
+    @getproject.autocomplete("project")
+    async def getproject_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str = "",
+    ) -> list[app_commands.Choice[str]]:
+        return await self.start_project_autocomplete(interaction, current)
 
     if not alias_disabled:
 

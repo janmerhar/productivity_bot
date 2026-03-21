@@ -426,6 +426,92 @@ class TogglFunctions:
         )
         return res.json()
 
+    @staticmethod
+    def _normalize_projects_response(response) -> list[dict]:
+        if isinstance(response, list):
+            return response
+        if isinstance(response, dict):
+            items = response.get("items")
+            if isinstance(items, list):
+                return items
+            data = response.get("data")
+            if isinstance(data, list):
+                return data
+        return []
+
+    def searchProjectsByWorkspace(
+        self,
+        workspace_id: int,
+        name: Optional[str] = None,
+        page_size: int = 25,
+        start: int = 0,
+        is_active: bool = True,
+    ) -> list[dict]:
+        json_data = {
+            "page_size": page_size,
+            "start": start,
+            "is_active": is_active,
+        }
+        if name:
+            json_data["name"] = name
+
+        res = requests.post(
+            f"https://api.track.toggl.com/reports/api/v3/workspace/{workspace_id}/search/projects",
+            json=json_data,
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
+        return self._normalize_projects_response(res.json())
+
+    def findProjectsLike(
+        self,
+        identifier: str,
+        workspace_id: Optional[int] = None,
+        limit: int = 25,
+    ) -> list[dict]:
+        workspace_id = workspace_id if workspace_id is not None else self.workspace_id
+        query = str(identifier or "").strip()
+
+        if query and not query.isdigit():
+            projects = self.searchProjectsByWorkspace(
+                workspace_id=workspace_id,
+                name=query,
+                page_size=max(limit, 25),
+            )
+        else:
+            projects = self._normalize_projects_response(
+                self.getProjectsByWorkspace(workspace_id)
+            )
+
+        normalized_query = query.lower()
+        filtered_projects = []
+        for project in projects:
+            if project.get("active") is False:
+                continue
+
+            project_name = str(project.get("name") or "").strip()
+            project_id = project.get("id")
+            if project_id is None:
+                continue
+
+            project_id_text = str(project_id)
+            if normalized_query and (
+                normalized_query not in project_name.lower()
+                and normalized_query not in project_id_text
+            ):
+                continue
+
+            filtered_projects.append(project)
+
+        filtered_projects.sort(
+            key=lambda project: (
+                not str(project.get("name") or "").lower().startswith(normalized_query),
+                str(project.get("name") or "").lower(),
+                str(project.get("id") or ""),
+            )
+        )
+        return filtered_projects[:limit]
+
     def getProjectById(
         self, project_id: int, workspace_id: Optional[int] = None
     ) -> Union[None, dict]:
@@ -466,14 +552,17 @@ class TogglFunctions:
 
         return search_projects[0] if len(search_projects) > 0 else None
 
-    def getProject(self, identifier: str) -> Union[None, dict]:
+    def getProject(
+        self, identifier: str, workspace_id: Optional[int] = None
+    ) -> Union[None, dict]:
+        workspace_id = workspace_id if workspace_id is not None else self.workspace_id
         try:
             identifier_int = int(identifier)
             project = self.getProjectById(
-                workspace_id=self.workspace_id, project_id=identifier_int
+                workspace_id=workspace_id, project_id=identifier_int
             )
-        except:
-            project = self.getProjectByName(identifier)
+        except (TypeError, ValueError):
+            project = self.getProjectByName(identifier, workspace_id=workspace_id)
 
         return project
 
