@@ -58,7 +58,7 @@ class TogglFunctions:
         billable=None,
         description=None,
         pid=None,
-        tags=[],
+        tags=None,
         tid=None,
     ):
         start_date = (
@@ -77,14 +77,14 @@ class TogglFunctions:
             "project_id": pid,
             "pid": pid,
             "tid": tid,
-            "tags": tags,
+            "tags": tags or [],
             "wid": workspace_id,
             "server_deleted_at": None,
             "start": start_date,
         }
 
         res = requests.post(
-            "https://api.track.toggl.com/api/v9/time_entries",
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries",
             json=json_data,
             auth=self.auth,
         )

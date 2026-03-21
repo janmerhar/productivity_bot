@@ -111,6 +111,7 @@ class TogglCog(commands.Cog):
     @app_commands.describe(
         project="Project that timer will start in",
         description="Description of this timer",
+        billable="Whether this timer is billable",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -119,6 +120,7 @@ class TogglCog(commands.Cog):
         interaction: discord.Interaction,
         project: str = None,
         description: str = None,
+        billable: Optional[bool] = None,
         visibility: str = DEFAULT_VISIBILITY,
     ):
         ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
@@ -131,6 +133,7 @@ class TogglCog(commands.Cog):
                 interaction.user.id,
                 project=project,
                 description=description,
+                billable=billable,
             ),
         )
 
