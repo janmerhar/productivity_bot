@@ -1,7 +1,7 @@
 # Color palette
 # https://colorswall.com/palette/72717/
 import asyncio
-from typing import Callable
+from typing import Callable, Optional
 
 import discord
 from discord.ext import commands
@@ -184,15 +184,53 @@ class TogglCog(commands.Cog):
         )
 
     @timer_group.command(name="insert", description="Insert past Toggl time")
-    @app_commands.describe(visibility=VISIBILITY_DESC)
+    @app_commands.describe(
+        project="Project for the inserted timer",
+        description="Description of this timer",
+        start="Start time, for example `yesterday 14:00`",
+        stop="Stop time, for example `yesterday 16:30`",
+        tags="Tags separated by spaces or commas",
+        billable="Whether this timer is billable",
+        visibility=VISIBILITY_DESC,
+    )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def inserttimer(
         self,
         interaction: discord.Interaction,
+        start: str,
+        stop: str,
+        project: Optional[str] = None,
+        description: Optional[str] = None,
+        tags: Optional[str] = None,
+        billable: Optional[bool] = None,
         visibility: str = DEFAULT_VISIBILITY,
     ):
         ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
-        pass
+        locale_code = str(getattr(interaction, "locale", "") or "").strip() or None
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl timer insert",
+            payload_builder=lambda: TogglEmbeds.inserttimer_embed(
+                guild_id=interaction.guild_id,
+                user_id=interaction.user.id,
+                start=start,
+                stop=stop,
+                project=project,
+                description=description,
+                tags=tags,
+                billable=billable,
+                locale_code=locale_code,
+            ),
+        )
+
+    @inserttimer.autocomplete("project")
+    async def inserttimer_project_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str = "",
+    ) -> list[app_commands.Choice[str]]:
+        return await self.start_project_autocomplete(interaction, current)
 
     #
     # Saved timers

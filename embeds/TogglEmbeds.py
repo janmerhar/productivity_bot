@@ -1,4 +1,3 @@
-from re import A
 from typing import Dict, Optional
 import discord
 from discord.ext import commands
@@ -6,6 +5,7 @@ from discord import app_commands
 from classes.UserSettingsFunctions import UserSettingsFunctions
 from classes.TogglFunctions import TogglFunctions
 from abstract.EmbedsAbstract import EmbedsAbstract
+from services.toggl_time_entry_service import TogglTimeEntryService
 
 
 class TogglEmbeds(EmbedsAbstract):
@@ -104,6 +104,22 @@ class TogglEmbeds(EmbedsAbstract):
                 last_embed.description = f"{description}{suffix}"
 
         return embeds
+
+    @staticmethod
+    def _format_duration(seconds: int) -> str:
+        total_seconds = max(0, int(seconds))
+        minutes, sec = divmod(total_seconds, 60)
+        hours, minutes = divmod(minutes, 60)
+
+        parts: list[str] = []
+        if hours:
+            parts.append(f"{hours}h")
+        if minutes:
+            parts.append(f"{minutes}m")
+        if sec or not parts:
+            parts.append(f"{sec}s")
+
+        return " ".join(parts)
 
     @staticmethod
     def _get_function_by_name(name: str):
@@ -311,6 +327,95 @@ class TogglEmbeds(EmbedsAbstract):
             # embed.add_field(name="Time passed", value=timer_data["start"], inline=False)
 
         return {"embed": embed}
+
+    @staticmethod
+    def inserttimer_embed(
+        guild_id: int,
+        user_id: int,
+        start: str,
+        stop: str,
+        project: str = None,
+        description: str = None,
+        tags: str = None,
+        billable=None,
+        locale_code: Optional[str] = None,
+    ) -> dict:
+        toggl = TogglEmbeds._get_toggl(guild_id, user_id)
+        if toggl is None:
+            return TogglEmbeds._missing_key_embed()
+
+        workspace_id = toggl.workspace_id
+        project_data = None
+        project_id = None
+        if project is not None:
+            project_data = toggl.getProject(project, workspace_id=workspace_id)
+            if project_data is None:
+                raise ValueError("No Toggl project matched that `project` value.")
+            project_id = project_data.get("id")
+
+        timezone = UserSettingsFunctions.get_timezone(user_id)
+        parsed_range = TogglTimeEntryService.parse_insert_range(
+            start,
+            stop,
+            timezone=timezone,
+            locale_code=locale_code,
+        )
+        normalized_tags = TogglTimeEntryService.parse_tags(tags)
+        normalized_billable = TogglTimeEntryService.normalize_billable(billable)
+
+        inserted = toggl.insertTimeEntry(
+            workspace_id=workspace_id,
+            billable=normalized_billable,
+            created_with="productivity_bot",
+            description=description,
+            duration=parsed_range.duration_seconds,
+            pid=project_id,
+            project_id=project_id,
+            start=TogglTimeEntryService.to_toggl_timestamp(parsed_range.start),
+            stop=TogglTimeEntryService.to_toggl_timestamp(parsed_range.stop),
+            tags=normalized_tags,
+        )
+
+        if not isinstance(inserted, dict) or inserted.get("id") is None:
+            raise ValueError("Toggl rejected that timer insert request.")
+
+        color = "#552d4f"
+        if project_data is not None and project_data.get("color"):
+            color = project_data["color"]
+
+        embed = discord.Embed(
+            title=":stopwatch: Toggl Insert Timer",
+            color=discord.Colour.from_str(color),
+            description=description or "Inserted past timer.",
+        )
+        embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
+
+        if project_data is not None:
+            embed.add_field(name="Project ID", value=project_data["id"], inline=False)
+            embed.add_field(
+                name="Project name",
+                value=project_data["name"],
+                inline=False,
+            )
+
+        embed.add_field(name="Start", value=inserted["start"], inline=False)
+        embed.add_field(name="Stop", value=inserted["stop"], inline=False)
+        embed.add_field(
+            name="Duration",
+            value=TogglEmbeds._format_duration(inserted.get("duration", 0)),
+            inline=False,
+        )
+
+        if normalized_tags:
+            embed.add_field(name="Tags", value=", ".join(normalized_tags), inline=False)
+        if normalized_billable is not None:
+            embed.add_field(
+                name="Billable",
+                value="Yes" if normalized_billable else "No",
+                inline=False,
+            )
+
+        return {"embeds": [embed]}
 
     #
     # Saved timers
