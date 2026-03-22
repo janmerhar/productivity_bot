@@ -265,14 +265,7 @@ class TogglFunctions:
         command: str,
         guild_id: Optional[int],
         user_id: int,
-    ) -> Union[None, int]:
-        # Cheking for ative timer
-        current_timer = self.getCurrentTimeEntry()
-
-        # Stopping an active timer
-        if current_timer is not None:
-            self.stopCurrentTimeEntry()
-
+    ) -> Union[None, dict]:
         # Search for the timer in database
         search_timer = self.mongo_commands.find_one(
             {

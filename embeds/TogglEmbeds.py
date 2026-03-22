@@ -63,6 +63,74 @@ class TogglEmbeds(EmbedsAbstract):
         return f"<t:{int(parsed.timestamp())}:{style}>"
 
     @staticmethod
+    def _get_time_entry_project(
+        toggl: TogglFunctions,
+        timer_data: Optional[dict],
+    ) -> Optional[dict]:
+        if not timer_data:
+            return None
+
+        workspace_id = timer_data.get("workspace_id") or timer_data.get("wid")
+        project_id = timer_data.get("project_id") or timer_data.get("pid")
+
+        if workspace_id is None or project_id is None:
+            return None
+
+        return toggl.getProjectById(
+            workspace_id=workspace_id,
+            project_id=project_id,
+        )
+
+    @staticmethod
+    def _format_time_entry_started(timer_data: Optional[dict]) -> Optional[str]:
+        if not timer_data:
+            return None
+
+        started_full = TogglEmbeds._format_discord_datetime(timer_data.get("start"))
+        started_relative = TogglEmbeds._format_discord_datetime(
+            timer_data.get("start"),
+            style="R",
+        )
+
+        if started_full and started_relative:
+            return f"{started_full}\n{started_relative}"
+
+        return started_full or started_relative or timer_data.get("start")
+
+    @staticmethod
+    def _active_timer_conflict_embed(
+        title: str,
+        toggl: TogglFunctions,
+        timer_data: dict,
+    ) -> dict:
+        project_data = TogglEmbeds._get_time_entry_project(toggl, timer_data)
+        embed = discord.Embed(
+            title=title,
+            color=discord.Colour.from_str("#c96a40"),
+            description=(
+                "A Toggl timer is already running. "
+                "Use `/toggl timer stop` to end it, then try again."
+            ),
+        )
+        embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
+        embed.add_field(
+            name="Active description",
+            value=timer_data.get("description") or "No description",
+            inline=False,
+        )
+        embed.add_field(
+            name="Active project",
+            value=project_data.get("name") if project_data is not None else "No project",
+            inline=False,
+        )
+
+        started_at = TogglEmbeds._format_time_entry_started(timer_data)
+        if started_at:
+            embed.add_field(name="Started", value=started_at, inline=False)
+
+        return {"embeds": [embed]}
+
+    @staticmethod
     def _tag_embed(tag: dict, fallback_name: str) -> dict:
         embed = discord.Embed(
             title=":stopwatch: Toggl Tag",
@@ -293,18 +361,20 @@ class TogglEmbeds(EmbedsAbstract):
         toggl = TogglEmbeds._get_toggl(guild_id, user_id)
         if toggl is None:
             return TogglEmbeds._missing_key_embed()
-        workspace_id = toggl.aboutMe()["default_workspace_id"]
         curr_timer = toggl.getCurrentTimeEntry()
         normalized_tags = TogglTimeEntryService.parse_tags(tags)
         normalized_billable = TogglTimeEntryService.normalize_billable(billable)
 
-        embeds = []
         project_data = None
 
         if curr_timer is not None:
-            timer_stopped_embed = TogglEmbeds.stop_embed(guild_id, user_id)
+            return TogglEmbeds._active_timer_conflict_embed(
+                title=":stopwatch: Toggl Start Timer",
+                toggl=toggl,
+                timer_data=curr_timer,
+            )
 
-            embeds.append(timer_stopped_embed["embed"])
+        workspace_id = toggl.aboutMe()["default_workspace_id"]
 
         if project is not None:
             project_data = toggl.getProject(
@@ -363,9 +433,7 @@ class TogglEmbeds(EmbedsAbstract):
                 inline=False,
             )
 
-        embeds.append(embed)
-
-        return {"embeds": embeds}
+        return {"embeds": [embed]}
 
     """
     - Stops the timer but does not send embed back
@@ -658,7 +726,6 @@ class TogglEmbeds(EmbedsAbstract):
 
     @staticmethod
     def startsaved_embed(identifier: str, guild_id: int, user_id: int):
-        embeds = []
         toggl = TogglEmbeds._get_toggl(guild_id, user_id)
         if toggl is None:
             return TogglEmbeds._missing_key_embed()
@@ -666,9 +733,11 @@ class TogglEmbeds(EmbedsAbstract):
         active_timer = toggl.getCurrentTimeEntry()
 
         if active_timer is not None:
-            stopped_embed = TogglEmbeds.stop_embed(guild_id, user_id)
-
-            embeds.append(stopped_embed["embed"])
+            return TogglEmbeds._active_timer_conflict_embed(
+                title=":stopwatch: Toggl Start Saved Timer",
+                toggl=toggl,
+                timer_data=active_timer,
+            )
 
         timer = toggl.startSavedTimer(identifier, guild_id, user_id)
 
@@ -698,9 +767,7 @@ class TogglEmbeds(EmbedsAbstract):
                 name="Timer description", value=timer["description"], inline=False
             )
 
-            embeds.append(embed)
-
-            return {"embeds": embeds}
+            return {"embeds": [embed]}
 
     @staticmethod
     def startsaved_autocomplete_embed(
