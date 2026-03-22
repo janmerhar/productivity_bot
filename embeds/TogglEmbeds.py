@@ -36,7 +36,11 @@ class TogglEmbeds(EmbedsAbstract):
         return {"embeds": [embed]}
 
     @staticmethod
-    def _format_discord_datetime(value: object) -> Optional[str]:
+    def _format_discord_datetime(
+        value: object,
+        *,
+        style: str = "F",
+    ) -> Optional[str]:
         if not value:
             return None
 
@@ -56,7 +60,7 @@ class TogglEmbeds(EmbedsAbstract):
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=datetime.timezone.utc)
 
-        return f"<t:{int(parsed.timestamp())}:F>"
+        return f"<t:{int(parsed.timestamp())}:{style}>"
 
     @staticmethod
     def _tag_embed(tag: dict, fallback_name: str) -> dict:
@@ -216,9 +220,14 @@ class TogglEmbeds(EmbedsAbstract):
         embed.add_field(name="Full name", value=data["fullname"], inline=False)
 
         embed.add_field(name="Timezone", value=data["timezone"], inline=False)
-        embed.add_field(
-            name="Registration date", value=data["created_at"], inline=False
+        registration_date = TogglEmbeds._format_discord_datetime(
+            data.get("created_at"),
+            style="D",
         )
+        if registration_date:
+            embed.add_field(
+                name="Registration date", value=registration_date, inline=False
+            )
         embed.add_field(
             name="Default workspace ID",
             value=data["default_workspace_id"],
