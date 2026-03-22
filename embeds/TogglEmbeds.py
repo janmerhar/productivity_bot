@@ -132,6 +132,7 @@ class TogglEmbeds(EmbedsAbstract):
             "about": "aboutme",
             "account": "aboutme",
             "key clear": "togglkeyclear",
+            "tag add": "addtags",
             "timer start": "start",
             "timer stop": "stop",
             "timer current": "timer",
@@ -354,6 +355,41 @@ class TogglEmbeds(EmbedsAbstract):
             # embed.add_field(name="Time passed", value=timer_data["start"], inline=False)
 
         return {"embed": embed}
+
+    @staticmethod
+    def addtags_embed(
+        guild_id: int,
+        user_id: int,
+        name: str,
+    ) -> dict:
+        toggl = TogglEmbeds._get_toggl(guild_id, user_id)
+        if toggl is None:
+            return TogglEmbeds._missing_key_embed()
+
+        cleaned_name = str(name or "").strip()
+        if not cleaned_name:
+            raise ValueError("`name` cannot be empty.")
+
+        created_tag = toggl.createTag(toggl.workspace_id, cleaned_name)
+        if not isinstance(created_tag, dict) or created_tag.get("id") is None:
+            raise ValueError("Toggl rejected that tag creation request.")
+
+        embed = discord.Embed(
+            title=":stopwatch: Toggl Tag Created",
+            color=discord.Colour.from_str("#552d4f"),
+            description=created_tag.get("name") or cleaned_name,
+        )
+        embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
+        embed.add_field(name="Tag ID", value=created_tag["id"], inline=False)
+        embed.add_field(
+            name="Workspace ID",
+            value=created_tag.get("workspace_id") or toggl.workspace_id,
+            inline=False,
+        )
+        if created_tag.get("at"):
+            embed.add_field(name="Created at", value=created_tag["at"], inline=False)
+
+        return {"embeds": [embed]}
 
     @staticmethod
     def inserttimer_embed(

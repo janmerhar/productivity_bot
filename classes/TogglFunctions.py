@@ -386,6 +386,15 @@ class TogglFunctions:
         )
         return res.json()
 
+    def createTag(self, workspace_id, name: str):
+        res = requests.post(
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/tags",
+            json={"name": name},
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
+        return res.json()
+
     #
     # Projects
     # https://developers.track.toggl.com/docs/projects

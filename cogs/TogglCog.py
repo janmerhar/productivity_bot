@@ -20,6 +20,7 @@ DEFAULT_VISIBILITY = "public"
 class TogglCog(commands.Cog):
     toggl = app_commands.Group(name="toggl", description="Toggl commands")
     project = app_commands.Group(name="project", description="Manage Toggl projects")
+    tag_group = app_commands.Group(name="tag", description="Manage Toggl timer tags")
     timer_group = app_commands.Group(name="timer", description="Manage Toggl timers")
     saved = app_commands.Group(name="saved", description="Manage saved timers")
     if not alias_disabled:
@@ -27,6 +28,7 @@ class TogglCog(commands.Cog):
             name="alias", description="Manage Toggl aliases"
         )
     toggl.add_command(project)
+    toggl.add_command(tag_group)
     toggl.add_command(timer_group)
     if not saved_disabled:
         toggl.add_command(saved)
@@ -185,6 +187,30 @@ class TogglCog(commands.Cog):
             payload_builder=lambda: TogglEmbeds.stop_embed(
                 interaction.guild_id,
                 interaction.user.id,
+            ),
+        )
+
+    @tag_group.command(name="add", description="Create a new Toggl tag")
+    @app_commands.describe(
+        name="Tag name",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def addtags(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        visibility: str = DEFAULT_VISIBILITY,
+    ):
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl tag add",
+            payload_builder=lambda: TogglEmbeds.addtags_embed(
+                interaction.guild_id,
+                interaction.user.id,
+                name=name,
             ),
         )
 
