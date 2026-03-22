@@ -63,6 +63,14 @@ class TogglEmbeds(EmbedsAbstract):
         return f"<t:{int(parsed.timestamp())}:{style}>"
 
     @staticmethod
+    def _format_timer_timestamp(value: object) -> Optional[str]:
+        formatted_relative = TogglEmbeds._format_discord_datetime(value, style="R")
+
+        return formatted_relative or (
+            str(value).strip() if value is not None else None
+        )
+
+    @staticmethod
     def _get_time_entry_project(
         toggl: TogglFunctions,
         timer_data: Optional[dict],
@@ -86,16 +94,69 @@ class TogglEmbeds(EmbedsAbstract):
         if not timer_data:
             return None
 
-        started_full = TogglEmbeds._format_discord_datetime(timer_data.get("start"))
-        started_relative = TogglEmbeds._format_discord_datetime(
-            timer_data.get("start"),
-            style="R",
+        return TogglEmbeds._format_timer_timestamp(timer_data.get("start"))
+
+    @staticmethod
+    def _format_billable(value: object) -> str:
+        if value is True:
+            return "Yes"
+        if value is False:
+            return "No"
+        return "Not set"
+
+    @staticmethod
+    def _single_timer_embed(
+        title: str,
+        toggl: TogglFunctions,
+        timer_data: dict,
+        *,
+        description: Optional[str] = None,
+        project_data: Optional[dict] = None,
+        color: Optional[str] = None,
+        fallback_color: str = "#df80c7",
+    ) -> discord.Embed:
+        resolved_project = project_data or TogglEmbeds._get_time_entry_project(
+            toggl,
+            timer_data,
+        )
+        resolved_color = color or (
+            resolved_project.get("color")
+            if resolved_project is not None and resolved_project.get("color")
+            else fallback_color
         )
 
-        if started_full and started_relative:
-            return f"{started_full}\n{started_relative}"
+        embed = discord.Embed(
+            title=title,
+            color=discord.Colour.from_str(resolved_color),
+            description=description,
+        )
+        embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
+        embed.add_field(
+            name="Description",
+            value=timer_data.get("description") or "No description",
+            inline=False,
+        )
+        embed.add_field(
+            name="Project",
+            value=(
+                resolved_project.get("name")
+                if resolved_project is not None and resolved_project.get("name")
+                else "No project"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Billable",
+            value=TogglEmbeds._format_billable(timer_data.get("billable")),
+            inline=False,
+        )
+        embed.add_field(
+            name="Start",
+            value=TogglEmbeds._format_time_entry_started(timer_data) or "Unknown",
+            inline=False,
+        )
 
-        return started_full or started_relative or timer_data.get("start")
+        return embed
 
     @staticmethod
     def _active_timer_conflict_embed(
@@ -103,30 +164,16 @@ class TogglEmbeds(EmbedsAbstract):
         toggl: TogglFunctions,
         timer_data: dict,
     ) -> dict:
-        project_data = TogglEmbeds._get_time_entry_project(toggl, timer_data)
-        embed = discord.Embed(
+        embed = TogglEmbeds._single_timer_embed(
             title=title,
-            color=discord.Colour.from_str("#c96a40"),
+            toggl=toggl,
+            timer_data=timer_data,
             description=(
                 "A Toggl timer is already running. "
                 "Use `/toggl timer stop` to end it, then try again."
             ),
+            color="#c96a40",
         )
-        embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
-        embed.add_field(
-            name="Active description",
-            value=timer_data.get("description") or "No description",
-            inline=False,
-        )
-        embed.add_field(
-            name="Active project",
-            value=project_data.get("name") if project_data is not None else "No project",
-            inline=False,
-        )
-
-        started_at = TogglEmbeds._format_time_entry_started(timer_data)
-        if started_at:
-            embed.add_field(name="Started", value=started_at, inline=False)
 
         return {"embeds": [embed]}
 
@@ -316,23 +363,11 @@ class TogglEmbeds(EmbedsAbstract):
         timer_data = toggl.getCurrentTimeEntry()
 
         if timer_data is not None:
-            project_data = toggl.getProjectById(
-                workspace_id=timer_data["workspace_id"],
-                project_id=timer_data["project_id"],
-            )
-
-            if project_data["color"] is None:
-                project_data["color"] = "#000000"
-
-            embed = discord.Embed(
+            embed = TogglEmbeds._single_timer_embed(
                 title=":stopwatch: Toggl Current Timer",
-                color=discord.Colour.from_str(project_data["color"]),
-                description=timer_data["description"],
+                toggl=toggl,
+                timer_data=timer_data,
             )
-            embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
-
-            embed.add_field(name="Projekt", value=project_data["name"], inline=False)
-            embed.add_field(name="Time passed", value=timer_data["start"], inline=False)
 
             return {"embeds": [embed]}
         else:
@@ -402,36 +437,14 @@ class TogglEmbeds(EmbedsAbstract):
         if not isinstance(new_time, dict) or new_time.get("id") is None:
             raise ValueError("Toggl rejected that timer start request.")
 
-        embed = discord.Embed(
+        embed = TogglEmbeds._single_timer_embed(
             title=":stopwatch: Toggl Start Timer",
-            color=discord.Colour.from_str(
-                project_data["color"]
-                if project_data is not None and project_data.get("color")
-                else "#df80c7"
-            ),
+            toggl=toggl,
+            timer_data=new_time,
+            project_data=project_data,
         )
-        embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
-
-        if project is not None and project_data is not None:
-            embed.add_field(name="Project ID", value=project_data["id"], inline=False)
-            embed.add_field(
-                name="Project name", value=project_data["name"], inline=False
-            )
-
-        embed.add_field(
-            name="Timer description",
-            value=new_time.get("description") or "No description",
-            inline=False,
-        )
-        embed.add_field(name="Timer start", value=new_time["start"], inline=False)
         if normalized_tags:
             embed.add_field(name="Tags", value=", ".join(normalized_tags), inline=False)
-        if normalized_billable is not None:
-            embed.add_field(
-                name="Billable",
-                value="Yes" if normalized_billable else "No",
-                inline=False,
-            )
 
         return {"embeds": [embed]}
 
@@ -462,15 +475,14 @@ class TogglEmbeds(EmbedsAbstract):
         embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
 
         if timer_data is not None:
-            project_data = toggl.getProjectById(
-                workspace_id=timer_data["workspace_id"],
-                project_id=timer_data["project_id"],
+            toggl.stopCurrentTimeEntry()
+            embed = TogglEmbeds._single_timer_embed(
+                title=":stopwatch: Toggl Stop Timer",
+                toggl=toggl,
+                timer_data=timer_data,
+                description=description,
+                color="#552d4f",
             )
-            timer_stop = toggl.stopCurrentTimeEntry()
-            embed.add_field(name="Projekt", value=project_data["name"], inline=False)
-            # This field causes chrashes
-            # by passing timer_data[]
-            # embed.add_field(name="Time passed", value=timer_data["start"], inline=False)
 
         return {"embed": embed}
 
@@ -588,27 +600,19 @@ class TogglEmbeds(EmbedsAbstract):
         if not isinstance(inserted, dict) or inserted.get("id") is None:
             raise ValueError("Toggl rejected that timer insert request.")
 
-        color = "#552d4f"
-        if project_data is not None and project_data.get("color"):
-            color = project_data["color"]
-
-        embed = discord.Embed(
+        embed = TogglEmbeds._single_timer_embed(
             title=":stopwatch: Toggl Insert Timer",
-            color=discord.Colour.from_str(color),
+            toggl=toggl,
+            timer_data=inserted,
             description=description or "Inserted past timer.",
+            project_data=project_data,
+            fallback_color="#552d4f",
         )
-        embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
-
-        if project_data is not None:
-            embed.add_field(name="Project ID", value=project_data["id"], inline=False)
-            embed.add_field(
-                name="Project name",
-                value=project_data["name"],
-                inline=False,
-            )
-
-        embed.add_field(name="Start", value=inserted["start"], inline=False)
-        embed.add_field(name="Stop", value=inserted["stop"], inline=False)
+        embed.add_field(
+            name="Stop",
+            value=TogglEmbeds._format_timer_timestamp(inserted.get("stop")) or "Unknown",
+            inline=False,
+        )
         embed.add_field(
             name="Duration",
             value=TogglEmbeds._format_duration(inserted.get("duration", 0)),
@@ -751,20 +755,13 @@ class TogglEmbeds(EmbedsAbstract):
 
             return {"embeds": [embed]}
         else:
-            project = toggl.getProjectById(
-                workspace_id=timer["workspace_id"], project_id=timer["pid"]
-            )
+            if not isinstance(timer, dict) or timer.get("id") is None:
+                raise ValueError("Toggl rejected that saved timer start request.")
 
-            embed = discord.Embed(
+            embed = TogglEmbeds._single_timer_embed(
                 title=":stopwatch: Toggl Start Saved Timer",
-                color=discord.Colour.from_str(project["color"]),
-            )
-            embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
-
-            embed.add_field(name="Project ID", value=timer["pid"], inline=False)
-            embed.add_field(name="Project name", value=project["name"], inline=False)
-            embed.add_field(
-                name="Timer description", value=timer["description"], inline=False
+                toggl=toggl,
+                timer_data=timer,
             )
 
             return {"embeds": [embed]}

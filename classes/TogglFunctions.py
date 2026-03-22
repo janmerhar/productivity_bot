@@ -278,13 +278,16 @@ class TogglFunctions:
         if search_timer is None:
             return None
 
-        self.startCurrentTimeEntry(**search_timer["param"])
+        started_timer = self.startCurrentTimeEntry(**search_timer["param"])
+        if not isinstance(started_timer, dict) or started_timer.get("id") is None:
+            return started_timer
+
         # Increment number_of_runs
         search_param = {"_id": search_timer["_id"]}
         update_param = {"$inc": {"number_of_runs": 1}}
 
         res = self.mongo_commands.update_one(search_param, update_param)
-        return search_timer["param"]
+        return started_timer
 
     def findSavedTimersLike(
         self,
