@@ -12,18 +12,21 @@ from config.db import mongo_db
 
 
 class TogglFunctions:
-    def __init__(self, API_KEY: str):
+    def __init__(self, API_KEY: str, workspace_id: Optional[int] = None):
         self.auth = (API_KEY, "api_token")
-        self.workspace_id = self.aboutMe()["default_workspace_id"]
-        # save a default project/workspace id
-        # and have functions to change them
+        self._workspace_id = workspace_id
 
-        # add implementation for API_KEY and email:passwd authentications
-        self.mongo_commands = mongo_db["custom_commands"]
-        self.mongo_aliases = mongo_db["aliases"]
+    @property
+    def workspace_id(self):
+        if self._workspace_id is None:
+            profile = self.aboutMe()
+            if isinstance(profile, dict):
+                self._workspace_id = profile.get("default_workspace_id")
+        return self._workspace_id
 
-        self.custom_commands = []
-        self.updateSavedTimers(None, None)
+    @workspace_id.setter
+    def workspace_id(self, value):
+        self._workspace_id = value
 
     @staticmethod
     def _user_scope_query(
@@ -38,6 +41,14 @@ class TogglFunctions:
             "user_id": user_id,
         }
 
+    @staticmethod
+    def _mongo_commands():
+        return mongo_db["custom_commands"]
+
+    @staticmethod
+    def _mongo_aliases():
+        return mongo_db["aliases"]
+
     #
     # Authentication
     # https://developers.track.toggl.com/docs/authentication
@@ -45,7 +56,11 @@ class TogglFunctions:
 
     def aboutMe(self):
         res = requests.get("https://api.track.toggl.com/api/v9/me", auth=self.auth)
-        return res.json()
+        try:
+            payload = res.json()
+        except ValueError:
+            return None
+        return payload if isinstance(payload, dict) else None
 
     #
     # Tracking
@@ -244,21 +259,16 @@ class TogglFunctions:
             },
         }
 
-        res = self.mongo_commands.insert_one(data)
-        self.updateSavedTimers(guild_id, user_id)
+        res = self._mongo_commands().insert_one(data)
 
         return res.inserted_id
 
     def updateSavedTimers(self, guild_id: Optional[int], user_id: Optional[int]):
         if user_id is None:
-            self.custom_commands = []
             return []
         search = self._user_scope_query(user_id=user_id, guild_id=guild_id)
 
-        commands = list(self.mongo_commands.find(search))
-        self.custom_commands = commands
-
-        return commands
+        return list(self._mongo_commands().find(search))
 
     def startSavedTimer(
         self,
@@ -267,7 +277,7 @@ class TogglFunctions:
         user_id: int,
     ) -> Union[None, dict]:
         # Search for the timer in database
-        search_timer = self.mongo_commands.find_one(
+        search_timer = self._mongo_commands().find_one(
             {
                 "command": command,
                 **self._user_scope_query(user_id=user_id, guild_id=guild_id),
@@ -286,7 +296,7 @@ class TogglFunctions:
         search_param = {"_id": search_timer["_id"]}
         update_param = {"$inc": {"number_of_runs": 1}}
 
-        res = self.mongo_commands.update_one(search_param, update_param)
+        res = self._mongo_commands().update_one(search_param, update_param)
         return started_timer
 
     def findSavedTimersLike(
@@ -295,7 +305,7 @@ class TogglFunctions:
         guild_id: Optional[int],
         user_id: int,
     ):
-        res_command = self.mongo_commands.find(
+        res_command = self._mongo_commands().find(
             {
                 "command": {"$regex": identifier, "$options": "i"},
                 **self._user_scope_query(user_id=user_id, guild_id=guild_id),
@@ -312,7 +322,7 @@ class TogglFunctions:
     ):
         search_param = self._user_scope_query(user_id=user_id, guild_id=guild_id)
 
-        res = self.mongo_commands.find(search_param, limit=int(n)).sort(
+        res = self._mongo_commands().find(search_param, limit=int(n)).sort(
             "number_of_runs", -1
         )
 
@@ -325,7 +335,7 @@ class TogglFunctions:
         user_id: int,
     ):
         res_command = list(
-            self.mongo_commands.find(
+            self._mongo_commands().find(
                 {
                     "command": identifier,
                     **self._user_scope_query(user_id=user_id, guild_id=guild_id),
@@ -340,7 +350,7 @@ class TogglFunctions:
                 return None
 
             res_id = list(
-                self.mongo_commands.find(
+                self._mongo_commands().find(
                     {
                         "_id": search_id,
                         **self._user_scope_query(user_id=user_id, guild_id=guild_id),
@@ -366,7 +376,7 @@ class TogglFunctions:
         if timer is None:
             return False
         else:
-            self.mongo_commands.delete_one({"_id": timer["_id"]})
+            self._mongo_commands().delete_one({"_id": timer["_id"]})
             return True
 
     #
@@ -674,7 +684,7 @@ class TogglFunctions:
             "param": param,  # Parameters passed to aliased slash command
         }
 
-        res = self.mongo_aliases.insert_one(data)
+        res = self._mongo_aliases().insert_one(data)
 
         return data
 
@@ -696,7 +706,7 @@ class TogglFunctions:
             "param": param,  # Parameters passed to aliased slash command
         }
 
-        res = self.mongo_aliases.insert_one(data)
+        res = self._mongo_aliases().insert_one(data)
         data["_id"] = res.inserted_id
 
         return data
@@ -721,7 +731,7 @@ class TogglFunctions:
         guild_id: Optional[int],
         user_id: int,
     ):
-        saved_shortcut = self.mongo_aliases.find_one(
+        saved_shortcut = self._mongo_aliases().find_one(
             {
                 "alias": alias,
                 **self._user_scope_query(user_id=user_id, guild_id=guild_id),

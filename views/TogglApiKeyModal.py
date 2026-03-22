@@ -3,6 +3,7 @@ from typing import Awaitable, Callable, Optional
 
 import discord
 
+from classes.TogglFunctions import TogglFunctions
 from classes.UserSettingsFunctions import UserSettingsFunctions
 from services.error_reporting import UserVisibleError, handle_interaction_error
 
@@ -44,9 +45,18 @@ class TogglApiKeyModal(discord.ui.Modal, title="Set Toggl API Key"):
             )
             return
 
+        workspace_id = None
+        try:
+            workspace_id = await asyncio.to_thread(self._resolve_workspace_id, cleaned)
+        except Exception:
+            workspace_id = None
+
         try:
             await asyncio.to_thread(
-                UserSettingsFunctions.set_toggl_api_key, self._user_id, cleaned
+                UserSettingsFunctions.set_toggl_api_key,
+                self._user_id,
+                cleaned,
+                workspace_id,
             )
         except Exception as exc:
             await handle_interaction_error(
@@ -77,3 +87,11 @@ class TogglApiKeyModal(discord.ui.Modal, title="Set Toggl API Key"):
                 ),
                 ephemeral=True,
             )
+
+    @staticmethod
+    def _resolve_workspace_id(api_key: str) -> int:
+        toggl = TogglFunctions(api_key)
+        workspace_id = toggl.workspace_id
+        if workspace_id is None:
+            raise ValueError("Could not determine Toggl workspace.")
+        return int(workspace_id)

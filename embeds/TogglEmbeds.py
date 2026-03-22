@@ -18,12 +18,25 @@ class TogglEmbeds(EmbedsAbstract):
         guild_id: Optional[int],
         user_id: Optional[int],
     ) -> Optional[TogglFunctions]:
+        del guild_id
         if user_id is None:
             return None
         api_key = UserSettingsFunctions.get_toggl_api_key(user_id)
         if not api_key:
             return None
-        return TogglFunctions(api_key)
+        workspace_id = UserSettingsFunctions.get_toggl_workspace_id(user_id)
+        toggl = TogglFunctions(api_key, workspace_id=workspace_id)
+        if workspace_id is None:
+            resolved_workspace_id = toggl.workspace_id
+            if resolved_workspace_id is not None:
+                try:
+                    UserSettingsFunctions.set_toggl_workspace_id(
+                        user_id,
+                        resolved_workspace_id,
+                    )
+                except Exception:
+                    pass
+        return toggl
 
     @staticmethod
     def _missing_key_embed() -> dict:
@@ -159,10 +172,32 @@ class TogglEmbeds(EmbedsAbstract):
         return embed
 
     @staticmethod
+    def _single_timer_payload(
+        *,
+        embed: discord.Embed,
+        guild_id: Optional[int],
+        user_id: int,
+        timer_data: dict,
+        is_active: bool,
+    ) -> dict:
+        return {
+            "embeds": [embed],
+            "_toggl_timer_view": {
+                "guild_id": guild_id,
+                "user_id": user_id,
+                "timer_data": timer_data,
+                "is_active": is_active,
+            },
+        }
+
+    @staticmethod
     def _active_timer_conflict_embed(
         title: str,
         toggl: TogglFunctions,
         timer_data: dict,
+        *,
+        guild_id: Optional[int],
+        user_id: int,
     ) -> dict:
         embed = TogglEmbeds._single_timer_embed(
             title=title,
@@ -175,7 +210,13 @@ class TogglEmbeds(EmbedsAbstract):
             color="#c96a40",
         )
 
-        return {"embeds": [embed]}
+        return TogglEmbeds._single_timer_payload(
+            embed=embed,
+            guild_id=guild_id,
+            user_id=user_id,
+            timer_data=timer_data,
+            is_active=True,
+        )
 
     @staticmethod
     def _tag_embed(tag: dict, fallback_name: str) -> dict:
@@ -368,8 +409,13 @@ class TogglEmbeds(EmbedsAbstract):
                 toggl=toggl,
                 timer_data=timer_data,
             )
-
-            return {"embeds": [embed]}
+            return TogglEmbeds._single_timer_payload(
+                embed=embed,
+                guild_id=guild_id,
+                user_id=user_id,
+                timer_data=timer_data,
+                is_active=True,
+            )
         else:
             embed = discord.Embed(
                 title=":stopwatch: Toggl Current Timer",
@@ -407,9 +453,13 @@ class TogglEmbeds(EmbedsAbstract):
                 title=":stopwatch: Toggl Start Timer",
                 toggl=toggl,
                 timer_data=curr_timer,
+                guild_id=guild_id,
+                user_id=user_id,
             )
 
-        workspace_id = toggl.aboutMe()["default_workspace_id"]
+        workspace_id = toggl.workspace_id
+        if workspace_id is None:
+            raise ValueError("Could not determine your Toggl workspace.")
 
         if project is not None:
             project_data = toggl.getProject(
@@ -446,7 +496,13 @@ class TogglEmbeds(EmbedsAbstract):
         if normalized_tags:
             embed.add_field(name="Tags", value=", ".join(normalized_tags), inline=False)
 
-        return {"embeds": [embed]}
+        return TogglEmbeds._single_timer_payload(
+            embed=embed,
+            guild_id=guild_id,
+            user_id=user_id,
+            timer_data=new_time,
+            is_active=True,
+        )
 
     """
     - Stops the timer but does not send embed back
@@ -482,6 +538,13 @@ class TogglEmbeds(EmbedsAbstract):
                 timer_data=timer_data,
                 description=description,
                 color="#552d4f",
+            )
+            return TogglEmbeds._single_timer_payload(
+                embed=embed,
+                guild_id=guild_id,
+                user_id=user_id,
+                timer_data=timer_data,
+                is_active=False,
             )
 
         return {"embed": embed}
@@ -741,6 +804,8 @@ class TogglEmbeds(EmbedsAbstract):
                 title=":stopwatch: Toggl Start Saved Timer",
                 toggl=toggl,
                 timer_data=active_timer,
+                guild_id=guild_id,
+                user_id=user_id,
             )
 
         timer = toggl.startSavedTimer(identifier, guild_id, user_id)
@@ -763,8 +828,13 @@ class TogglEmbeds(EmbedsAbstract):
                 toggl=toggl,
                 timer_data=timer,
             )
-
-            return {"embeds": [embed]}
+            return TogglEmbeds._single_timer_payload(
+                embed=embed,
+                guild_id=guild_id,
+                user_id=user_id,
+                timer_data=timer,
+                is_active=True,
+            )
 
     @staticmethod
     def startsaved_autocomplete_embed(
@@ -898,7 +968,9 @@ class TogglEmbeds(EmbedsAbstract):
         toggl: TogglFunctions,
         project: str,
     ) -> Optional[dict]:
-        workspace_id = toggl.aboutMe()["default_workspace_id"]
+        workspace_id = toggl.workspace_id
+        if workspace_id is None:
+            raise ValueError("Could not determine your Toggl workspace.")
         project_data = toggl.createProject(workspace_id, name=project)
         if isinstance(project_data, dict) and project_data.get("id") is not None:
             return {
@@ -912,7 +984,9 @@ class TogglEmbeds(EmbedsAbstract):
         toggl: TogglFunctions,
         project: str,
     ) -> Optional[dict]:
-        workspace_id = toggl.aboutMe()["default_workspace_id"]
+        workspace_id = toggl.workspace_id
+        if workspace_id is None:
+            raise ValueError("Could not determine your Toggl workspace.")
         project_data = toggl.getProject(project, workspace_id=workspace_id)
         if isinstance(project_data, dict) and project_data.get("id") is not None:
             return project_data
@@ -964,7 +1038,10 @@ class TogglEmbeds(EmbedsAbstract):
         toggl = TogglEmbeds._get_toggl(guild_id, user_id)
         if toggl is None:
             return TogglEmbeds._missing_key_embed()
-        projects = toggl.getProjectsByWorkspace(toggl.aboutMe()["default_workspace_id"])
+        workspace_id = toggl.workspace_id
+        if workspace_id is None:
+            raise ValueError("Could not determine your Toggl workspace.")
+        projects = toggl.getProjectsByWorkspace(workspace_id)
         lines = []
         for project in projects:
             project_id = project.get("id")

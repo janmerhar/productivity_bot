@@ -11,6 +11,7 @@ from config.env import env
 from embeds.TogglEmbeds import TogglEmbeds
 from services.toggl_key_gate import ensure_toggl_api_key
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from views.TogglTimerView import TogglTimerView
 
 alias_disabled = env.get("ALIAS_DISABLED") == "true"
 saved_disabled = "true"
@@ -50,6 +51,11 @@ class TogglCog(commands.Cog):
         payload: dict,
         ephemeral: bool,
     ) -> None:
+        payload = dict(payload)
+        toggl_timer_view = payload.pop("_toggl_timer_view", None)
+        if toggl_timer_view is not None:
+            payload["view"] = TogglTimerView(**toggl_timer_view)
+
         if interaction.response.is_done():
             await interaction.followup.send(ephemeral=ephemeral, **payload)
             return
