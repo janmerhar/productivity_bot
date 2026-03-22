@@ -486,10 +486,11 @@ class TogglCog(commands.Cog):
             interaction,
             ephemeral=ephemeral,
             command_label="/toggl project create",
-            payload_builder=lambda: TogglEmbeds.newproject_embed(
-                name=name,
+            payload_builder=lambda: TogglEmbeds.project_embed(
+                project=name,
                 guild_id=interaction.guild_id,
                 user_id=interaction.user.id,
+                create=True,
             ),
         )
 
@@ -529,7 +530,7 @@ class TogglCog(commands.Cog):
             interaction,
             ephemeral=ephemeral,
             command_label="/toggl project get",
-            payload_builder=lambda: TogglEmbeds.getproject_embed(
+            payload_builder=lambda: TogglEmbeds.project_embed(
                 project=project,
                 guild_id=interaction.guild_id,
                 user_id=interaction.user.id,

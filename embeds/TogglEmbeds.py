@@ -791,31 +791,94 @@ class TogglEmbeds(EmbedsAbstract):
     """
 
     @staticmethod
-    def newproject_embed(name: str, guild_id: int, user_id: int) -> dict:
+    def _build_project_details_embed(
+        project_data: dict,
+        *,
+        actual_hours: Optional[object] = None,
+    ) -> discord.Embed:
+        embed = discord.Embed(
+            title=":stopwatch: Toggl Project Details",
+            color=discord.Colour.from_str(project_data.get("color") or "#552d4f"),
+            description=project_data.get("name") or "Unnamed project",
+        )
+        embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
+        embed.add_field(name="Project ID", value=project_data["id"], inline=True)
+
+        created_at = TogglEmbeds._format_discord_datetime(
+            project_data.get("created_at") or project_data.get("at")
+        )
+        if created_at:
+            embed.add_field(name="Creation date", value=created_at, inline=False)
+
+        hours_documented = (
+            actual_hours if actual_hours is not None else project_data.get("actual_hours")
+        )
+        embed.add_field(
+            name="Hours documented",
+            value=str(hours_documented if hours_documented is not None else 0),
+            inline=False,
+        )
+        return embed
+
+    @staticmethod
+    def _create_project_data(
+        toggl: TogglFunctions,
+        project: str,
+    ) -> Optional[dict]:
+        workspace_id = toggl.aboutMe()["default_workspace_id"]
+        project_data = toggl.createProject(workspace_id, name=project)
+        if isinstance(project_data, dict) and project_data.get("id") is not None:
+            return {
+                **project_data,
+                "actual_hours": 0,
+            }
+        return None
+
+    @staticmethod
+    def _get_project_data(
+        toggl: TogglFunctions,
+        project: str,
+    ) -> Optional[dict]:
+        workspace_id = toggl.aboutMe()["default_workspace_id"]
+        project_data = toggl.getProject(project, workspace_id=workspace_id)
+        if isinstance(project_data, dict) and project_data.get("id") is not None:
+            return project_data
+        return None
+
+    @staticmethod
+    def project_embed(
+        *,
+        project: str,
+        guild_id: int,
+        user_id: int,
+        create: bool = False,
+    ) -> dict:
         toggl = TogglEmbeds._get_toggl(guild_id, user_id)
         if toggl is None:
             return TogglEmbeds._missing_key_embed()
-        project = toggl.createProject(
-            toggl.aboutMe()["default_workspace_id"], name=name
-        )
 
-        if type(project) != str:
-            embed = discord.Embed(
-                title=":stopwatch: Toggl Create Project Details", description=name
-            )
-
-            embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
-            embed.add_field(name="Project ID", value=project["id"], inline=True)
-            embed.add_field(name="Workspace ID", value=project["wid"], inline=True)
-            embed.add_field(name="Creation date", value=project["at"], inline=False)
+        if create:
+            project_data = TogglEmbeds._create_project_data(toggl, project)
+            if project_data is None:
+                embed = discord.Embed(
+                    title=":stopwatch: Toggl Project Details",
+                    color=discord.Colour.from_str("#552d4f"),
+                    description=f"Project {project} already exists",
+                )
+                embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
+                return {"embeds": [embed]}
         else:
-            embed = discord.Embed(
-                title=":stopwatch: Toggl Create Project Details",
-                description=f"Project {name} already exists",
-            )
+            project_data = TogglEmbeds._get_project_data(toggl, project)
+            if project_data is None:
+                embed = discord.Embed(
+                    title=":stopwatch: Toggl Project Details",
+                    color=discord.Colour.from_str("#552d4f"),
+                    description="No project was found",
+                )
+                embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
+                return {"embeds": [embed]}
 
-            embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
-
+        embed = TogglEmbeds._build_project_details_embed(project_data)
         return {"embeds": [embed]}
 
     """
@@ -844,45 +907,6 @@ class TogglEmbeds(EmbedsAbstract):
             empty_description="No projects found.",
         )
         return {"embeds": embeds}
-
-    @staticmethod
-    def getproject_embed(project: str, guild_id: int, user_id: int) -> dict:
-        toggl = TogglEmbeds._get_toggl(guild_id, user_id)
-        if toggl is None:
-            return TogglEmbeds._missing_key_embed()
-        workspace_id = toggl.aboutMe()["default_workspace_id"]
-        project_data = toggl.getProject(project, workspace_id=workspace_id)
-
-        if project_data is not None:
-            embed = discord.Embed(
-                title=":stopwatch: Toggl Project Details",
-                color=discord.Colour.from_str(project_data["color"] or "#552d4f"),
-                description=project_data["name"],
-            )
-            embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
-
-            embed.add_field(name="Project ID", value=project_data["id"], inline=True)
-            embed.add_field(name="Workspace ID", value=workspace_id, inline=True)
-            embed.add_field(
-                name="Creation date", value=project_data["created_at"], inline=False
-            )
-            embed.add_field(
-                name="Hours documented",
-                value=project_data["actual_hours"],
-                inline=False,
-            )
-
-            return {"embeds": [embed]}
-        else:
-            embed = discord.Embed(
-                title=":stopwatch: Toggl Timer History",
-                color=discord.Colour.from_str("#552d4f"),
-                description="No project was found",
-            )
-
-            embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
-
-            return {"embeds": [embed]}
 
     @staticmethod
     def project_autocomplete_embed(
