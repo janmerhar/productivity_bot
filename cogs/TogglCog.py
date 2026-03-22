@@ -214,6 +214,43 @@ class TogglCog(commands.Cog):
             ),
         )
 
+    @tag_group.command(name="show", description="Show a Toggl tag")
+    @app_commands.describe(
+        tag="Tag to show",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def showtag(
+        self,
+        interaction: discord.Interaction,
+        tag: str,
+        visibility: str = DEFAULT_VISIBILITY,
+    ):
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl tag show",
+            payload_builder=lambda: TogglEmbeds.showtag_embed(
+                interaction.guild_id,
+                interaction.user.id,
+                tag=tag,
+            ),
+        )
+
+    @showtag.autocomplete("tag")
+    async def showtag_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str = "",
+    ) -> list[app_commands.Choice[str]]:
+        return await asyncio.to_thread(
+            TogglEmbeds.tag_autocomplete_embed,
+            current,
+            interaction.guild_id,
+            interaction.user.id,
+        )
+
     @timer_group.command(name="insert", description="Insert past Toggl time")
     @app_commands.describe(
         project="Project for the inserted timer",

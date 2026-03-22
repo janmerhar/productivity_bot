@@ -133,6 +133,7 @@ class TogglEmbeds(EmbedsAbstract):
             "account": "aboutme",
             "key clear": "togglkeyclear",
             "tag add": "addtags",
+            "tag show": "showtag",
             "timer start": "start",
             "timer stop": "stop",
             "timer current": "timer",
@@ -390,6 +391,76 @@ class TogglEmbeds(EmbedsAbstract):
             embed.add_field(name="Created at", value=created_tag["at"], inline=False)
 
         return {"embeds": [embed]}
+
+    @staticmethod
+    def showtag_embed(
+        guild_id: int,
+        user_id: int,
+        tag: str,
+    ) -> dict:
+        toggl = TogglEmbeds._get_toggl(guild_id, user_id)
+        if toggl is None:
+            return TogglEmbeds._missing_key_embed()
+
+        selected_tag = toggl.getTag(tag, toggl.workspace_id)
+        if selected_tag is None:
+            raise ValueError("No Toggl tag matched that `tag` value.")
+
+        embed = discord.Embed(
+            title=":stopwatch: Toggl Tag",
+            color=discord.Colour.from_str("#552d4f"),
+            description=selected_tag.get("name") or "Unnamed tag",
+        )
+        embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
+        embed.add_field(name="Tag ID", value=selected_tag["id"], inline=False)
+        embed.add_field(
+            name="Workspace ID",
+            value=selected_tag.get("workspace_id") or toggl.workspace_id,
+            inline=False,
+        )
+        if selected_tag.get("creator_id") is not None:
+            embed.add_field(
+                name="Creator ID",
+                value=selected_tag["creator_id"],
+                inline=False,
+            )
+        if selected_tag.get("at"):
+            embed.add_field(name="Updated at", value=selected_tag["at"], inline=False)
+
+        return {"embeds": [embed]}
+
+    @staticmethod
+    def tag_autocomplete_embed(
+        current: str,
+        guild_id: int,
+        user_id: int,
+    ) -> list[app_commands.Choice[str]]:
+        toggl = TogglEmbeds._get_toggl(guild_id, user_id)
+        if toggl is None:
+            return []
+
+        tags = toggl.findTagsLike(
+            identifier=current,
+            workspace_id=toggl.workspace_id,
+            limit=25,
+        )
+
+        choices: list[app_commands.Choice[str]] = []
+        for tag in tags:
+            tag_id = tag.get("id")
+            tag_name = str(tag.get("name") or "").strip()
+            if tag_id is None or not tag_name:
+                continue
+
+            label = f"{tag_name} | #{tag_id}"
+            choices.append(
+                app_commands.Choice(
+                    name=label[:100],
+                    value=tag_name,
+                )
+            )
+
+        return choices
 
     @staticmethod
     def inserttimer_embed(

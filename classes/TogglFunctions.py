@@ -395,6 +395,72 @@ class TogglFunctions:
         )
         return res.json()
 
+    @staticmethod
+    def _normalize_tags_response(response) -> list[dict]:
+        if isinstance(response, list):
+            return response
+        if isinstance(response, dict):
+            items = response.get("items")
+            if isinstance(items, list):
+                return items
+        return []
+
+    def getTagsByWorkspace(self, workspace_id) -> list[dict]:
+        res = requests.get(
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/tags",
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
+        return self._normalize_tags_response(res.json())
+
+    def findTagsLike(
+        self,
+        identifier: str,
+        workspace_id: Optional[int] = None,
+        limit: int = 25,
+    ) -> list[dict]:
+        workspace_id = workspace_id if workspace_id is not None else self.workspace_id
+        query = str(identifier or "").strip().lower()
+        tags = self.getTagsByWorkspace(workspace_id)
+
+        if not query:
+            filtered_tags = tags
+        else:
+            filtered_tags = []
+            for tag in tags:
+                tag_name = str(tag.get("name") or "").strip()
+                tag_id = str(tag.get("id") or "")
+                if query in tag_name.lower() or query in tag_id:
+                    filtered_tags.append(tag)
+
+        filtered_tags.sort(
+            key=lambda tag: (
+                not str(tag.get("name") or "").lower().startswith(query),
+                str(tag.get("name") or "").lower(),
+                str(tag.get("id") or ""),
+            )
+        )
+        return filtered_tags[:limit]
+
+    def getTag(
+        self,
+        identifier: str,
+        workspace_id: Optional[int] = None,
+    ) -> Optional[dict]:
+        workspace_id = workspace_id if workspace_id is not None else self.workspace_id
+        normalized_identifier = str(identifier or "").strip()
+        if not normalized_identifier:
+            return None
+
+        normalized_lower = normalized_identifier.lower()
+        for tag in self.getTagsByWorkspace(workspace_id):
+            if str(tag.get("id") or "") == normalized_identifier:
+                return tag
+            if str(tag.get("name") or "").strip().lower() == normalized_lower:
+                return tag
+
+        return None
+
     #
     # Projects
     # https://developers.track.toggl.com/docs/projects
