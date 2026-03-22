@@ -1,3 +1,4 @@
+import datetime
 from typing import Dict, Optional
 import discord
 from discord.ext import commands
@@ -32,6 +33,45 @@ class TogglEmbeds(EmbedsAbstract):
             description="Run any Toggl command and provide your API key in the popup.",
         )
         embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
+        return {"embeds": [embed]}
+
+    @staticmethod
+    def _format_discord_datetime(value: object) -> Optional[str]:
+        if not value:
+            return None
+
+        if isinstance(value, datetime.datetime):
+            parsed = value
+        else:
+            raw_value = str(value).strip()
+            if not raw_value:
+                return None
+            try:
+                parsed = datetime.datetime.fromisoformat(
+                    raw_value.replace("Z", "+00:00")
+                )
+            except ValueError:
+                return raw_value
+
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+
+        return f"<t:{int(parsed.timestamp())}:F>"
+
+    @staticmethod
+    def _tag_embed(tag: dict, fallback_name: str) -> dict:
+        embed = discord.Embed(
+            title=":stopwatch: Toggl Tag",
+            color=discord.Colour.from_str("#552d4f"),
+            description=tag.get("name") or fallback_name,
+        )
+        embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
+        embed.add_field(name="Tag ID", value=tag["id"], inline=False)
+
+        created_at = TogglEmbeds._format_discord_datetime(tag.get("at"))
+        if created_at:
+            embed.add_field(name="Created at", value=created_at, inline=False)
+
         return {"embeds": [embed]}
 
     @staticmethod
@@ -358,76 +398,34 @@ class TogglEmbeds(EmbedsAbstract):
         return {"embed": embed}
 
     @staticmethod
-    def addtags_embed(
+    def tag_embed(
         guild_id: int,
         user_id: int,
-        name: str,
+        *,
+        name: Optional[str] = None,
+        tag: Optional[str] = None,
     ) -> dict:
         toggl = TogglEmbeds._get_toggl(guild_id, user_id)
         if toggl is None:
             return TogglEmbeds._missing_key_embed()
 
         cleaned_name = str(name or "").strip()
-        if not cleaned_name:
-            raise ValueError("`name` cannot be empty.")
+        cleaned_tag = str(tag or "").strip()
 
-        created_tag = toggl.createTag(toggl.workspace_id, cleaned_name)
-        if not isinstance(created_tag, dict) or created_tag.get("id") is None:
-            raise ValueError("Toggl rejected that tag creation request.")
+        if bool(cleaned_name) == bool(cleaned_tag):
+            raise ValueError("Provide exactly one of `name` or `tag`.")
 
-        embed = discord.Embed(
-            title=":stopwatch: Toggl Tag Created",
-            color=discord.Colour.from_str("#552d4f"),
-            description=created_tag.get("name") or cleaned_name,
-        )
-        embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
-        embed.add_field(name="Tag ID", value=created_tag["id"], inline=False)
-        embed.add_field(
-            name="Workspace ID",
-            value=created_tag.get("workspace_id") or toggl.workspace_id,
-            inline=False,
-        )
-        if created_tag.get("at"):
-            embed.add_field(name="Created at", value=created_tag["at"], inline=False)
+        if cleaned_name:
+            created_tag = toggl.createTag(toggl.workspace_id, cleaned_name)
+            if not isinstance(created_tag, dict) or created_tag.get("id") is None:
+                raise ValueError("Toggl rejected that tag creation request.")
+            return TogglEmbeds._tag_embed(created_tag, cleaned_name)
 
-        return {"embeds": [embed]}
-
-    @staticmethod
-    def showtag_embed(
-        guild_id: int,
-        user_id: int,
-        tag: str,
-    ) -> dict:
-        toggl = TogglEmbeds._get_toggl(guild_id, user_id)
-        if toggl is None:
-            return TogglEmbeds._missing_key_embed()
-
-        selected_tag = toggl.getTag(tag, toggl.workspace_id)
+        selected_tag = toggl.getTag(cleaned_tag, toggl.workspace_id)
         if selected_tag is None:
             raise ValueError("No Toggl tag matched that `tag` value.")
 
-        embed = discord.Embed(
-            title=":stopwatch: Toggl Tag",
-            color=discord.Colour.from_str("#552d4f"),
-            description=selected_tag.get("name") or "Unnamed tag",
-        )
-        embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
-        embed.add_field(name="Tag ID", value=selected_tag["id"], inline=False)
-        embed.add_field(
-            name="Workspace ID",
-            value=selected_tag.get("workspace_id") or toggl.workspace_id,
-            inline=False,
-        )
-        if selected_tag.get("creator_id") is not None:
-            embed.add_field(
-                name="Creator ID",
-                value=selected_tag["creator_id"],
-                inline=False,
-            )
-        if selected_tag.get("at"):
-            embed.add_field(name="Updated at", value=selected_tag["at"], inline=False)
-
-        return {"embeds": [embed]}
+        return TogglEmbeds._tag_embed(selected_tag, "Unnamed tag")
 
     @staticmethod
     def tag_autocomplete_embed(

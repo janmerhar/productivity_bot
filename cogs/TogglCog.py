@@ -207,7 +207,7 @@ class TogglCog(commands.Cog):
             interaction,
             ephemeral=ephemeral,
             command_label="/toggl tag add",
-            payload_builder=lambda: TogglEmbeds.addtags_embed(
+            payload_builder=lambda: TogglEmbeds.tag_embed(
                 interaction.guild_id,
                 interaction.user.id,
                 name=name,
@@ -231,7 +231,7 @@ class TogglCog(commands.Cog):
             interaction,
             ephemeral=ephemeral,
             command_label="/toggl tag show",
-            payload_builder=lambda: TogglEmbeds.showtag_embed(
+            payload_builder=lambda: TogglEmbeds.tag_embed(
                 interaction.guild_id,
                 interaction.user.id,
                 tag=tag,
