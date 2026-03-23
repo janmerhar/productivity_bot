@@ -118,6 +118,17 @@ class TogglEmbeds(EmbedsAbstract):
         return "Not set"
 
     @staticmethod
+    def _format_tags(tags: object) -> str:
+        if not isinstance(tags, list):
+            return "None"
+
+        cleaned_tags = [str(tag).strip() for tag in tags if str(tag).strip()]
+        if not cleaned_tags:
+            return "None"
+
+        return ", ".join(cleaned_tags)
+
+    @staticmethod
     def _single_timer_embed(
         title: str,
         toggl: TogglFunctions,
@@ -161,6 +172,11 @@ class TogglEmbeds(EmbedsAbstract):
         embed.add_field(
             name="Billable",
             value=TogglEmbeds._format_billable(timer_data.get("billable")),
+            inline=False,
+        )
+        embed.add_field(
+            name="Tags",
+            value=TogglEmbeds._format_tags(timer_data.get("tags")),
             inline=False,
         )
         embed.add_field(
@@ -493,8 +509,6 @@ class TogglEmbeds(EmbedsAbstract):
             timer_data=new_time,
             project_data=project_data,
         )
-        if normalized_tags:
-            embed.add_field(name="Tags", value=", ".join(normalized_tags), inline=False)
 
         return TogglEmbeds._single_timer_payload(
             embed=embed,
@@ -681,15 +695,6 @@ class TogglEmbeds(EmbedsAbstract):
             value=TogglEmbeds._format_duration(inserted.get("duration", 0)),
             inline=False,
         )
-
-        if normalized_tags:
-            embed.add_field(name="Tags", value=", ".join(normalized_tags), inline=False)
-        if normalized_billable is not None:
-            embed.add_field(
-                name="Billable",
-                value="Yes" if normalized_billable else "No",
-                inline=False,
-            )
 
         return {"embeds": [embed]}
 
@@ -901,21 +906,27 @@ class TogglEmbeds(EmbedsAbstract):
         embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
 
         for timer in history:
-            project_data = toggl.getProjectById(
-                workspace_id=timer["workspace_id"], project_id=timer["project_id"]
-            )
+            workspace_id = timer.get("workspace_id") or timer.get("wid")
+            project_id = timer.get("project_id") or timer.get("pid")
+            project_data = None
+            if workspace_id is not None and project_id is not None:
+                project_data = toggl.getProjectById(
+                    workspace_id=workspace_id,
+                    project_id=project_id,
+                )
 
-            project = (
-                project_data["name"]
-                if project_data["name"] is not None
-                else "<no project name>"
-            )
-            name = (
-                timer["description"]
-                if len(timer["description"]) > 0
-                else "<no description>"
-            )
-            duration = f"{timer['duration'] // 60} minutes"
+            project_name = str((project_data or {}).get("name") or "").strip()
+            project = project_name or "<no project>"
+
+            description = str(timer.get("description") or "").strip()
+            name = description or "<no description>"
+
+            duration_raw = timer.get("duration") or 0
+            try:
+                duration_seconds = abs(int(duration_raw))
+            except (TypeError, ValueError):
+                duration_seconds = 0
+            duration = TogglEmbeds._format_duration(duration_seconds)
 
             embed.add_field(name="Project", value=project, inline=True)
             embed.add_field(name="Name", value=name, inline=True)

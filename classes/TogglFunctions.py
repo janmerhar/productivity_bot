@@ -129,6 +129,61 @@ class TogglFunctions:
         )
         return res.json()
 
+    def updateTimeEntry(
+        self,
+        workspace_id,
+        time_entry_id,
+        *,
+        timer_data: Optional[dict] = None,
+        billable=None,
+        description=None,
+        pid=None,
+        project_id=None,
+        tags=None,
+        task_id=None,
+        tid=None,
+    ):
+        source = dict(timer_data or {})
+        resolved_project_id = project_id if project_id is not None else pid
+        resolved_task_id = task_id if task_id is not None else tid
+
+        json_data = {
+            "billable": billable,
+            "created_with": source.get("created_with") or "productivity_bot",
+            "description": description,
+            "duration": source.get("duration"),
+            "project_id": resolved_project_id,
+            "pid": resolved_project_id,
+            "start": source.get("start"),
+            "stop": source.get("stop"),
+            "tags": tags if tags is not None else (source.get("tags") or []),
+            "task_id": resolved_task_id,
+            "tid": resolved_task_id,
+            "wid": workspace_id,
+            "workspace_id": workspace_id,
+        }
+
+        res = requests.put(
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}",
+            json=json_data,
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
+        return res.json()
+
+    def deleteTimeEntry(self, workspace_id, time_entry_id):
+        res = requests.delete(
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}",
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
+        if not res.content:
+            return {"ok": res.ok}
+        try:
+            return res.json()
+        except ValueError:
+            return {"ok": res.ok}
+
     def insertTimeEntry(
         self,
         workspace_id,
