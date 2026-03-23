@@ -254,7 +254,15 @@ class TogglFunctions:
             headers={"Content-Type": "application/json"},
             auth=self.auth,
         )
-        return res.json()
+        if not res.ok:
+            message = str(res.text or "").strip()
+            if not message:
+                message = f"Toggl request failed with status {res.status_code}."
+            raise ValueError(message)
+        try:
+            return res.json()
+        except ValueError as exc:
+            raise ValueError("Toggl returned an invalid response for time entry history.") from exc
 
     def getLastNTimeEntryHistory(self, n) -> List:
         res = requests.get(
@@ -262,7 +270,17 @@ class TogglFunctions:
             headers={"Content-Type": "application/json"},
             auth=self.auth,
         )
-        entries = res.json()
+        if not res.ok:
+            message = str(res.text or "").strip()
+            if not message:
+                message = f"Toggl request failed with status {res.status_code}."
+            raise ValueError(message)
+        try:
+            entries = res.json()
+        except ValueError as exc:
+            raise ValueError(
+                "Toggl returned an invalid response for recent time entries."
+            ) from exc
         return entries[0:n] if len(entries) >= n else entries
 
     #

@@ -11,6 +11,7 @@ from config.env import env
 from embeds.TogglEmbeds import TogglEmbeds
 from services.toggl_key_gate import ensure_toggl_api_key
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from views.TogglTimerHistoryView import TogglTimerHistoryView
 from views.TogglTimerView import TogglTimerView
 
 alias_disabled = env.get("ALIAS_DISABLED") == "true"
@@ -55,6 +56,9 @@ class TogglCog(commands.Cog):
         toggl_timer_view = payload.pop("_toggl_timer_view", None)
         if toggl_timer_view is not None:
             payload["view"] = TogglTimerView(**toggl_timer_view)
+        toggl_timer_history_view = payload.pop("_toggl_timer_history_view", None)
+        if toggl_timer_history_view is not None:
+            payload["view"] = TogglTimerHistoryView(**toggl_timer_history_view)
 
         if interaction.response.is_done():
             await interaction.followup.send(ephemeral=ephemeral, **payload)
@@ -448,25 +452,23 @@ class TogglCog(commands.Cog):
             ),
         )
 
-    @timer_group.command(name="history", description="Get Toggl timer history")
+    @timer_group.command(name="list", description="Get the last 5 Toggl timers")
     @app_commands.describe(
-        n="Number of timers to display",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def timerhistory(
         self,
         interaction: discord.Interaction,
-        n: int,
         visibility: str = DEFAULT_VISIBILITY,
     ):
         ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
-            command_label="/toggl timer history",
+            command_label="/toggl timer list",
             payload_builder=lambda: TogglEmbeds.timerhistory_embed(
-                n=n,
+                n=5,
                 guild_id=interaction.guild_id,
                 user_id=interaction.user.id,
             ),
@@ -571,7 +573,7 @@ class TogglCog(commands.Cog):
                 "timer stop": "stop",
                 "timer current": "timer",
                 "timer insert": "inserttimer",
-                "timer history": "timerhistory",
+                "timer list": "timerhistory",
                 "project create": "newproject",
                 "project list": "workspaceprojects",
                 "project get": "getproject",

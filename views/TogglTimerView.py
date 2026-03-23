@@ -449,6 +449,7 @@ class TogglTimerView(discord.ui.View):
         _: discord.ui.Button,
     ) -> None:
         from embeds.TogglEmbeds import TogglEmbeds
+        from views.TogglTimerHistoryView import TogglTimerHistoryView
 
         try:
             payload = await asyncio.to_thread(
@@ -463,6 +464,10 @@ class TogglTimerView(discord.ui.View):
                 "I couldn't load your recent Toggl timers right now. Please try again.",
             )
             return
+
+        toggl_timer_history_view = payload.pop("_toggl_timer_history_view", None)
+        if toggl_timer_history_view is not None:
+            payload["view"] = TogglTimerHistoryView(**toggl_timer_history_view)
 
         await interaction.response.send_message(
             ephemeral=True,

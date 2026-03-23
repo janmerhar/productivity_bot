@@ -895,17 +895,22 @@ class TogglEmbeds(EmbedsAbstract):
         toggl = TogglEmbeds._get_toggl(guild_id, user_id)
         if toggl is None:
             return TogglEmbeds._missing_key_embed()
-        history = toggl.getLastNTimeEntryHistory(n)
+        history = (toggl.getLastNTimeEntryHistory(n) or [])[:n]
 
         embed = discord.Embed(
-            title=":stopwatch: Toggl Timer History",
+            title=":stopwatch: Toggl Timer List",
             color=discord.Colour.from_str("#552d4f"),
-            description=f"Last {n} timers",
+            description=(
+                "Top row starts the matching timer again. "
+                "Second row opens the editor."
+                if history
+                else "No recent timers."
+            ),
         )
 
         embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
 
-        for timer in history:
+        for index, timer in enumerate(history, start=1):
             workspace_id = timer.get("workspace_id") or timer.get("wid")
             project_id = timer.get("project_id") or timer.get("pid")
             project_data = None
@@ -927,12 +932,27 @@ class TogglEmbeds(EmbedsAbstract):
             except (TypeError, ValueError):
                 duration_seconds = 0
             duration = TogglEmbeds._format_duration(duration_seconds)
+            started_at = TogglEmbeds._format_time_entry_started(timer) or "Unknown"
 
-            embed.add_field(name="Project", value=project, inline=True)
-            embed.add_field(name="Name", value=name, inline=True)
-            embed.add_field(name="Duration", value=duration, inline=True)
+            embed.add_field(
+                name=f"{index}. {name}"[:256],
+                value=(
+                    f"Project: {project}\n"
+                    f"Duration: {duration}\n"
+                    f"Start: {started_at}"
+                )[:1024],
+                inline=False,
+            )
 
-        return {"embeds": [embed]}
+        payload = {"embeds": [embed]}
+        if history:
+            payload["_toggl_timer_history_view"] = {
+                "guild_id": guild_id,
+                "user_id": user_id,
+                "timers": history,
+                "limit": n,
+            }
+        return payload
 
     #
     # Projects
