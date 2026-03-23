@@ -19,6 +19,39 @@ saved_disabled = "true"
 DEFAULT_VISIBILITY = "public"
 
 
+def _timer_description_from_message(message: discord.Message) -> str:
+    content = str(message.clean_content or message.content or "").strip()
+    if content:
+        return content.splitlines()[0].strip()[:300]
+
+    author_name = str(getattr(message.author, "display_name", "") or "Unknown").strip()
+    if message.attachments:
+        return f"Attachment from {author_name}"[:300]
+    return f"Message from {author_name}"[:300]
+
+
+@app_commands.context_menu(name="Start Timer")
+async def start_timer_from_message(
+    interaction: discord.Interaction,
+    message: discord.Message,
+) -> None:
+    cog = interaction.client.get_cog("TogglCog")
+    if cog is None:
+        raise RuntimeError("TogglCog is not loaded.")
+
+    description = _timer_description_from_message(message)
+    await cog._execute_with_toggl_key(
+        interaction,
+        ephemeral=False,
+        command_label="Start Timer",
+        payload_builder=lambda: TogglEmbeds.start_embed(
+            interaction.guild_id,
+            interaction.user.id,
+            description=description,
+        ),
+    )
+
+
 class TogglCog(commands.Cog):
     toggl = app_commands.Group(name="toggl", description="Toggl commands")
     project = app_commands.Group(name="project", description="Manage Toggl projects")
@@ -667,3 +700,4 @@ async def setup(client):
         TogglCog.toggl.remove_command("alias")
 
     await client.add_cog(TogglCog(client))
+    client.tree.add_command(start_timer_from_message)
