@@ -891,26 +891,50 @@ class TogglEmbeds(EmbedsAbstract):
     """
 
     @staticmethod
-    def timerhistory_embed(n: int, guild_id: int, user_id: int) -> dict:
+    def _sorted_timer_history(
+        history: list[dict],
+        sort: str,
+    ) -> list[dict]:
+        reverse = sort != "ascending"
+        return sorted(
+            [dict(timer or {}) for timer in (history or []) if isinstance(timer, dict)],
+            key=lambda timer: str(
+                timer.get("start") or timer.get("at") or timer.get("stop") or ""
+            ),
+            reverse=reverse,
+        )
+
+    @staticmethod
+    def timerhistory_payload_from_entries(
+        history: list[dict],
+        guild_id: int,
+        user_id: int,
+        *,
+        page: int = 1,
+        page_size: int = 5,
+        sort: str = "descending",
+    ) -> dict:
         toggl = TogglEmbeds._get_toggl(guild_id, user_id)
         if toggl is None:
             return TogglEmbeds._missing_key_embed()
-        history = (toggl.getLastNTimeEntryHistory(n) or [])[:n]
+
+        resolved_page_size = max(1, min(int(page_size or 5), 5))
+        sorted_history = TogglEmbeds._sorted_timer_history(history, sort)
+        total_items = len(sorted_history)
+        total_pages = max(1, (total_items + resolved_page_size - 1) // resolved_page_size)
+        resolved_page = max(1, min(int(page or 1), total_pages))
+        start_index = (resolved_page - 1) * resolved_page_size
+        page_history = sorted_history[start_index : start_index + resolved_page_size]
 
         embed = discord.Embed(
-            title=":stopwatch: Toggl Timer List",
+            title=":stopwatch: Toggl Timer History",
             color=discord.Colour.from_str("#552d4f"),
-            description=(
-                "Top row starts the matching timer again. "
-                "Second row opens the editor."
-                if history
-                else "No recent timers."
-            ),
+            description=f"Last {resolved_page_size} timers",
         )
 
         embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
 
-        for index, timer in enumerate(history, start=1):
+        for timer in page_history:
             workspace_id = timer.get("workspace_id") or timer.get("wid")
             project_id = timer.get("project_id") or timer.get("pid")
             project_data = None
@@ -932,27 +956,42 @@ class TogglEmbeds(EmbedsAbstract):
             except (TypeError, ValueError):
                 duration_seconds = 0
             duration = TogglEmbeds._format_duration(duration_seconds)
-            started_at = TogglEmbeds._format_time_entry_started(timer) or "Unknown"
 
-            embed.add_field(
-                name=f"{index}. {name}"[:256],
-                value=(
-                    f"Project: {project}\n"
-                    f"Duration: {duration}\n"
-                    f"Start: {started_at}"
-                )[:1024],
-                inline=False,
+            embed.add_field(name="Project", value=project, inline=True)
+            embed.add_field(name="Name", value=name, inline=True)
+            embed.add_field(name="Duration", value=duration, inline=True)
+
+        if total_items:
+            embed.set_footer(
+                text=f"Page {resolved_page}/{total_pages} • Sorted {sort}"
             )
 
         payload = {"embeds": [embed]}
-        if history:
+        if sorted_history:
             payload["_toggl_timer_history_view"] = {
                 "guild_id": guild_id,
                 "user_id": user_id,
-                "timers": history,
-                "limit": n,
+                "timers": sorted_history,
+                "page": resolved_page,
+                "page_size": resolved_page_size,
+                "sort": sort,
             }
         return payload
+
+    @staticmethod
+    def timerhistory_embed(n: int, guild_id: int, user_id: int) -> dict:
+        toggl = TogglEmbeds._get_toggl(guild_id, user_id)
+        if toggl is None:
+            return TogglEmbeds._missing_key_embed()
+        history = toggl.getLastNTimeEntryHistory(100) or []
+        return TogglEmbeds.timerhistory_payload_from_entries(
+            history,
+            guild_id,
+            user_id,
+            page=1,
+            page_size=n,
+            sort="descending",
+        )
 
     #
     # Projects
