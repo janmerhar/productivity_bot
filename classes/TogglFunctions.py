@@ -115,12 +115,15 @@ class TogglFunctions:
 
     def stopCurrentTimeEntry(self):
         currentTask = self.getCurrentTimeEntry()
-
         if currentTask is None:
             return
+        if not isinstance(currentTask, dict):
+            return currentTask
 
-        time_entry_id = self.getCurrentTimeEntry()["id"]
-        workspace_id = self.getCurrentTimeEntry()["wid"]
+        time_entry_id = currentTask.get("id")
+        workspace_id = currentTask.get("wid") or currentTask.get("workspace_id")
+        if time_entry_id is None or workspace_id is None:
+            return currentTask
 
         res = requests.patch(
             f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}/stop",

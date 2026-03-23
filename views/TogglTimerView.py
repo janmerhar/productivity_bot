@@ -232,8 +232,17 @@ class TogglTimerView(discord.ui.View):
             if self.is_active:
                 current_timer = await asyncio.to_thread(toggl.getCurrentTimeEntry)
                 if current_timer is not None:
-                    await asyncio.to_thread(toggl.stopCurrentTimeEntry)
-                    self.timer_data = current_timer
+                    stopped_timer = await asyncio.to_thread(toggl.stopCurrentTimeEntry)
+                    if (
+                        not isinstance(stopped_timer, dict)
+                        or stopped_timer.get("id") is None
+                    ):
+                        await self._send_error(
+                            interaction,
+                            "Toggl rejected that timer stop request.",
+                        )
+                        return
+                    self.timer_data = stopped_timer
                 self.is_active = False
                 self._sync_button_state()
                 await self._render_message(
@@ -308,8 +317,17 @@ class TogglTimerView(discord.ui.View):
         try:
             current_timer = await asyncio.to_thread(toggl.getCurrentTimeEntry)
             if current_timer is not None:
-                await asyncio.to_thread(toggl.stopCurrentTimeEntry)
-                self.timer_data = current_timer
+                stopped_timer = await asyncio.to_thread(toggl.stopCurrentTimeEntry)
+                if (
+                    not isinstance(stopped_timer, dict)
+                    or stopped_timer.get("id") is None
+                ):
+                    await self._send_error(
+                        interaction,
+                        "Toggl rejected that timer stop request.",
+                    )
+                    return
+                self.timer_data = stopped_timer
 
             self.is_active = False
             self.is_terminal = True

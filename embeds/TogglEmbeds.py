@@ -129,6 +129,13 @@ class TogglEmbeds(EmbedsAbstract):
         return ", ".join(cleaned_tags)
 
     @staticmethod
+    def _coerce_duration_seconds(value: object) -> Optional[int]:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
     def _single_timer_embed(
         title: str,
         toggl: TogglFunctions,
@@ -184,6 +191,20 @@ class TogglEmbeds(EmbedsAbstract):
             value=TogglEmbeds._format_time_entry_started(timer_data) or "Unknown",
             inline=False,
         )
+
+        stop_value = TogglEmbeds._format_timer_timestamp(timer_data.get("stop"))
+        if stop_value:
+            embed.add_field(name="Stop", value=stop_value, inline=False)
+
+        duration_seconds = TogglEmbeds._coerce_duration_seconds(
+            timer_data.get("duration")
+        )
+        if duration_seconds is not None and duration_seconds >= 0:
+            embed.add_field(
+                name="Duration",
+                value=TogglEmbeds._format_duration(duration_seconds),
+                inline=False,
+            )
 
         return embed
 
@@ -545,11 +566,13 @@ class TogglEmbeds(EmbedsAbstract):
         embed.set_thumbnail(url="https://i.imgur.com/Cmjl4Kb.png")
 
         if timer_data is not None:
-            toggl.stopCurrentTimeEntry()
+            stopped_timer = toggl.stopCurrentTimeEntry()
+            if not isinstance(stopped_timer, dict) or stopped_timer.get("id") is None:
+                raise ValueError("Toggl rejected that timer stop request.")
             embed = TogglEmbeds._single_timer_embed(
                 title=":stopwatch: Toggl Stop Timer",
                 toggl=toggl,
-                timer_data=timer_data,
+                timer_data=stopped_timer,
                 description=description,
                 color="#552d4f",
             )
@@ -557,7 +580,7 @@ class TogglEmbeds(EmbedsAbstract):
                 embed=embed,
                 guild_id=guild_id,
                 user_id=user_id,
-                timer_data=timer_data,
+                timer_data=stopped_timer,
                 is_active=False,
             )
 
@@ -684,16 +707,6 @@ class TogglEmbeds(EmbedsAbstract):
             description=description or "Inserted past timer.",
             project_data=project_data,
             fallback_color="#552d4f",
-        )
-        embed.add_field(
-            name="Stop",
-            value=TogglEmbeds._format_timer_timestamp(inserted.get("stop")) or "Unknown",
-            inline=False,
-        )
-        embed.add_field(
-            name="Duration",
-            value=TogglEmbeds._format_duration(inserted.get("duration", 0)),
-            inline=False,
         )
 
         return {"embeds": [embed]}
