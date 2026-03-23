@@ -45,11 +45,26 @@ class TogglApiKeyModal(discord.ui.Modal, title="Set Toggl API Key"):
             )
             return
 
-        workspace_id = None
         try:
             workspace_id = await asyncio.to_thread(self._resolve_workspace_id, cleaned)
-        except Exception:
-            workspace_id = None
+        except ValueError as exc:
+            await handle_interaction_error(
+                interaction,
+                exc,
+                ephemeral=True,
+            )
+            return
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "I couldn't validate that Toggl API key right now. Please try again.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+                ephemeral=True,
+            )
+            return
 
         try:
             await asyncio.to_thread(
@@ -91,7 +106,20 @@ class TogglApiKeyModal(discord.ui.Modal, title="Set Toggl API Key"):
     @staticmethod
     def _resolve_workspace_id(api_key: str) -> int:
         toggl = TogglFunctions(api_key)
-        workspace_id = toggl.workspace_id
+        profile = toggl.aboutMe()
+        if not isinstance(profile, dict):
+            raise ValueError("Toggl did not return account data for that API key.")
+
+        workspace_id = profile.get("default_workspace_id")
         if workspace_id is None:
-            raise ValueError("Could not determine Toggl workspace.")
+            error_message = str(
+                profile.get("error") or profile.get("message") or ""
+            ).strip()
+            if error_message:
+                raise ValueError(
+                    f"I couldn't validate that Toggl API key: {error_message}"
+                )
+            raise ValueError(
+                "I couldn't determine your default Toggl workspace for that API key."
+            )
         return int(workspace_id)
