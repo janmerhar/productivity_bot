@@ -164,15 +164,15 @@ class TogglTimerView(discord.ui.View):
         title: str,
         description: Optional[str] = None,
         color: Optional[str] = None,
-    ) -> None:
+    ) -> bool:
         from embeds.TogglEmbeds import TogglEmbeds
 
         if source_message is None:
-            return
+            return False
 
         toggl = self._get_toggl()
         if toggl is None:
-            return
+            return False
 
         current_embed = source_message.embeds[0] if source_message.embeds else None
         updated_embed = TogglEmbeds._single_timer_embed(
@@ -186,7 +186,8 @@ class TogglTimerView(discord.ui.View):
         try:
             await source_message.edit(embed=updated_embed, view=self)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-            return
+            return False
+        return True
 
     async def _handle_timer_edited(
         self,
@@ -197,16 +198,17 @@ class TogglTimerView(discord.ui.View):
     ) -> None:
         self.timer_data = dict(updated_timer or {})
         self._refresh_state_from_timer_data()
-        await self._refresh_message(
+        refreshed = await self._refresh_message(
             source_message,
             title=":stopwatch: Toggl Timer Updated",
             description="Timer updated.",
             color="#df80c7",
         )
-        await interaction.followup.send(
-            ephemeral=True,
-            content="Timer updated.",
-        )
+        if not refreshed:
+            await interaction.followup.send(
+                ephemeral=True,
+                content="Timer updated.",
+            )
 
     @discord.ui.button(emoji="⏸️", style=discord.ButtonStyle.secondary, row=0)
     async def play_pause_button(
