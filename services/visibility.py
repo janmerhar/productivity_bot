@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 from discord import app_commands
 
@@ -10,10 +10,12 @@ VISIBILITY_CHOICES = [
 
 
 def resolve_visibility(
-    visibility: Optional[app_commands.Choice[str]],
+    visibility: Optional[Union[app_commands.Choice[str], str]],
     default: str,
 ) -> bool:
-    value = visibility.value if visibility else default
+    value = visibility.value if isinstance(visibility, app_commands.Choice) else visibility
+    if value is None:
+        value = default
     return value == "private"
 
 

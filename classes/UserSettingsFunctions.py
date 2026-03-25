@@ -107,14 +107,35 @@ class UserSettingsFunctions:
         return cleaned or None
 
     @staticmethod
+    def get_toggl_workspace_id(user_id: int) -> Optional[int]:
+        settings = UserSettingsFunctions.fetch(user_id)
+        workspace_id = settings.toggl_workspace_id
+        if workspace_id is None:
+            return None
+        try:
+            return int(workspace_id)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
     def set_toggl_api_key(
         user_id: int,
         api_key: str,
+        workspace_id: Optional[int] = None,
     ) -> UserSettings:
         key = int(user_id)
         cleaned = api_key.strip()
         if not cleaned:
             raise ValueError("API key cannot be empty.")
+
+        cleaned_workspace_id: Optional[int]
+        if workspace_id is None:
+            cleaned_workspace_id = None
+        else:
+            try:
+                cleaned_workspace_id = int(workspace_id)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Workspace id must be an integer.") from exc
 
         now = datetime.datetime.utcnow().isoformat()
         updated_doc = UserSettingsFunctions._collection().find_one_and_update(
@@ -123,6 +144,35 @@ class UserSettingsFunctions:
                 "$set": {
                     "user_id": key,
                     "toggl_api_key": cleaned,
+                    "toggl_workspace_id": cleaned_workspace_id,
+                    "updated_at": now,
+                },
+                "$setOnInsert": {
+                    "created_at": now,
+                },
+            },
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        settings = UserSettings.from_document(updated_doc, user_id=key)
+        UserSettingsFunctions._cache_put(settings)
+        return settings
+
+    @staticmethod
+    def set_toggl_workspace_id(user_id: int, workspace_id: int) -> UserSettings:
+        key = int(user_id)
+        try:
+            cleaned_workspace_id = int(workspace_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Workspace id must be an integer.") from exc
+
+        now = datetime.datetime.utcnow().isoformat()
+        updated_doc = UserSettingsFunctions._collection().find_one_and_update(
+            {"user_id": key},
+            {
+                "$set": {
+                    "user_id": key,
+                    "toggl_workspace_id": cleaned_workspace_id,
                     "updated_at": now,
                 },
                 "$setOnInsert": {
@@ -146,6 +196,7 @@ class UserSettingsFunctions:
             {
                 "$unset": {
                     "toggl_api_key": "",
+                    "toggl_workspace_id": "",
                 },
                 "$set": {
                     "updated_at": now,

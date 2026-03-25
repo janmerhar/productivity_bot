@@ -3,6 +3,7 @@ from typing import Awaitable, Callable, Optional
 
 import discord
 
+from classes.TogglFunctions import TogglFunctions
 from classes.UserSettingsFunctions import UserSettingsFunctions
 from services.error_reporting import UserVisibleError, handle_interaction_error
 
@@ -45,8 +46,32 @@ class TogglApiKeyModal(discord.ui.Modal, title="Set Toggl API Key"):
             return
 
         try:
+            workspace_id = await asyncio.to_thread(self._resolve_workspace_id, cleaned)
+        except ValueError as exc:
+            await handle_interaction_error(
+                interaction,
+                exc,
+                ephemeral=True,
+            )
+            return
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "I couldn't validate that Toggl API key right now. Please try again.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+                ephemeral=True,
+            )
+            return
+
+        try:
             await asyncio.to_thread(
-                UserSettingsFunctions.set_toggl_api_key, self._user_id, cleaned
+                UserSettingsFunctions.set_toggl_api_key,
+                self._user_id,
+                cleaned,
+                workspace_id,
             )
         except Exception as exc:
             await handle_interaction_error(
@@ -77,3 +102,24 @@ class TogglApiKeyModal(discord.ui.Modal, title="Set Toggl API Key"):
                 ),
                 ephemeral=True,
             )
+
+    @staticmethod
+    def _resolve_workspace_id(api_key: str) -> int:
+        toggl = TogglFunctions(api_key)
+        profile = toggl.aboutMe()
+        if not isinstance(profile, dict):
+            raise ValueError("Toggl did not return account data for that API key.")
+
+        workspace_id = profile.get("default_workspace_id")
+        if workspace_id is None:
+            error_message = str(
+                profile.get("error") or profile.get("message") or ""
+            ).strip()
+            if error_message:
+                raise ValueError(
+                    f"I couldn't validate that Toggl API key: {error_message}"
+                )
+            raise ValueError(
+                "I couldn't determine your default Toggl workspace for that API key."
+            )
+        return int(workspace_id)

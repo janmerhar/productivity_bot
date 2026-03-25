@@ -12,18 +12,42 @@ from config.db import mongo_db
 
 
 class TogglFunctions:
-    def __init__(self, API_KEY: str):
+    def __init__(self, API_KEY: str, workspace_id: Optional[int] = None):
         self.auth = (API_KEY, "api_token")
-        self.workspace_id = self.aboutMe()["default_workspace_id"]
-        # save a default project/workspace id
-        # and have functions to change them
+        self._workspace_id = workspace_id
 
-        # add implementation for API_KEY and email:passwd authentications
-        self.mongo_commands = mongo_db["custom_commands"]
-        self.mongo_aliases = mongo_db["aliases"]
+    @property
+    def workspace_id(self):
+        if self._workspace_id is None:
+            profile = self.aboutMe()
+            if isinstance(profile, dict):
+                self._workspace_id = profile.get("default_workspace_id")
+        return self._workspace_id
 
-        self.custom_commands = []
-        self.updateSavedTimers(None, None)
+    @workspace_id.setter
+    def workspace_id(self, value):
+        self._workspace_id = value
+
+    @staticmethod
+    def _user_scope_query(
+        *,
+        user_id: Optional[int],
+        guild_id: Optional[int],
+        application: str = "toggl",
+    ) -> dict:
+        return {
+            "application": application,
+            "guild_id": guild_id,
+            "user_id": user_id,
+        }
+
+    @staticmethod
+    def _mongo_commands():
+        return mongo_db["custom_commands"]
+
+    @staticmethod
+    def _mongo_aliases():
+        return mongo_db["aliases"]
 
     #
     # Authentication
@@ -32,7 +56,11 @@ class TogglFunctions:
 
     def aboutMe(self):
         res = requests.get("https://api.track.toggl.com/api/v9/me", auth=self.auth)
-        return res.json()
+        try:
+            payload = res.json()
+        except ValueError:
+            return None
+        return payload if isinstance(payload, dict) else None
 
     #
     # Tracking
@@ -45,7 +73,7 @@ class TogglFunctions:
         billable=None,
         description=None,
         pid=None,
-        tags=[],
+        tags=None,
         tid=None,
     ):
         start_date = (
@@ -64,14 +92,14 @@ class TogglFunctions:
             "project_id": pid,
             "pid": pid,
             "tid": tid,
-            "tags": tags,
+            "tags": tags or [],
             "wid": workspace_id,
             "server_deleted_at": None,
             "start": start_date,
         }
 
         res = requests.post(
-            "https://api.track.toggl.com/api/v9/time_entries",
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries",
             json=json_data,
             auth=self.auth,
         )
@@ -87,12 +115,15 @@ class TogglFunctions:
 
     def stopCurrentTimeEntry(self):
         currentTask = self.getCurrentTimeEntry()
-
         if currentTask is None:
             return
+        if not isinstance(currentTask, dict):
+            return currentTask
 
-        time_entry_id = self.getCurrentTimeEntry()["id"]
-        workspace_id = self.getCurrentTimeEntry()["wid"]
+        time_entry_id = currentTask.get("id")
+        workspace_id = currentTask.get("wid") or currentTask.get("workspace_id")
+        if time_entry_id is None or workspace_id is None:
+            return currentTask
 
         res = requests.patch(
             f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}/stop",
@@ -100,6 +131,61 @@ class TogglFunctions:
             auth=self.auth,
         )
         return res.json()
+
+    def updateTimeEntry(
+        self,
+        workspace_id,
+        time_entry_id,
+        *,
+        timer_data: Optional[dict] = None,
+        billable=None,
+        description=None,
+        pid=None,
+        project_id=None,
+        tags=None,
+        task_id=None,
+        tid=None,
+    ):
+        source = dict(timer_data or {})
+        resolved_project_id = project_id if project_id is not None else pid
+        resolved_task_id = task_id if task_id is not None else tid
+
+        json_data = {
+            "billable": billable,
+            "created_with": source.get("created_with") or "productivity_bot",
+            "description": description,
+            "duration": source.get("duration"),
+            "project_id": resolved_project_id,
+            "pid": resolved_project_id,
+            "start": source.get("start"),
+            "stop": source.get("stop"),
+            "tags": tags if tags is not None else (source.get("tags") or []),
+            "task_id": resolved_task_id,
+            "tid": resolved_task_id,
+            "wid": workspace_id,
+            "workspace_id": workspace_id,
+        }
+
+        res = requests.put(
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}",
+            json=json_data,
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
+        return res.json()
+
+    def deleteTimeEntry(self, workspace_id, time_entry_id):
+        res = requests.delete(
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}",
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
+        if not res.content:
+            return {"ok": res.ok}
+        try:
+            return res.json()
+        except ValueError:
+            return {"ok": res.ok}
 
     def insertTimeEntry(
         self,
@@ -171,7 +257,15 @@ class TogglFunctions:
             headers={"Content-Type": "application/json"},
             auth=self.auth,
         )
-        return res.json()
+        if not res.ok:
+            message = str(res.text or "").strip()
+            if not message:
+                message = f"Toggl request failed with status {res.status_code}."
+            raise ValueError(message)
+        try:
+            return res.json()
+        except ValueError as exc:
+            raise ValueError("Toggl returned an invalid response for time entry history.") from exc
 
     def getLastNTimeEntryHistory(self, n) -> List:
         res = requests.get(
@@ -179,7 +273,17 @@ class TogglFunctions:
             headers={"Content-Type": "application/json"},
             auth=self.auth,
         )
-        entries = res.json()
+        if not res.ok:
+            message = str(res.text or "").strip()
+            if not message:
+                message = f"Toggl request failed with status {res.status_code}."
+            raise ValueError(message)
+        try:
+            entries = res.json()
+        except ValueError as exc:
+            raise ValueError(
+                "Toggl returned an invalid response for recent time entries."
+            ) from exc
         return entries[0:n] if len(entries) >= n else entries
 
     #
@@ -189,7 +293,7 @@ class TogglFunctions:
 
     def saveTimer(
         self,
-        guild_id: int,
+        guild_id: Optional[int],
         user_id: int,
         command,
         workspace_id=None,
@@ -206,8 +310,9 @@ class TogglFunctions:
             workspace_id = (
                 workspace_id if workspace_id is not None else self.workspace_id
             )
-            project_data = self.getProjectById(
-                workspace_id=workspace_id, project_id=project
+            project_data = self.getProject(
+                identifier=str(project),
+                workspace_id=workspace_id,
             )
             pid = project_data["id"] if project_data["id"] is not None else None
 
@@ -230,46 +335,28 @@ class TogglFunctions:
             },
         }
 
-        res = self.mongo_commands.insert_one(data)
-        self.updateSavedTimers(guild_id, user_id)
+        res = self._mongo_commands().insert_one(data)
 
         return res.inserted_id
 
     def updateSavedTimers(self, guild_id: Optional[int], user_id: Optional[int]):
-        if guild_id is None or user_id is None:
-            self.custom_commands = []
+        if user_id is None:
             return []
-        search = {
-            "application": "toggl",
-            "guild_id": guild_id,
-            "user_id": user_id,
-        }
+        search = self._user_scope_query(user_id=user_id, guild_id=guild_id)
 
-        commands = list(self.mongo_commands.find(search))
-        self.custom_commands = commands
-
-        return commands
+        return list(self._mongo_commands().find(search))
 
     def startSavedTimer(
         self,
         command: str,
-        guild_id: int,
+        guild_id: Optional[int],
         user_id: int,
-    ) -> Union[None, int]:
-        # Cheking for ative timer
-        current_timer = self.getCurrentTimeEntry()
-
-        # Stopping an active timer
-        if current_timer is not None:
-            self.stopCurrentTimeEntry()
-
+    ) -> Union[None, dict]:
         # Search for the timer in database
-        search_timer = self.mongo_commands.find_one(
+        search_timer = self._mongo_commands().find_one(
             {
                 "command": command,
-                "application": "toggl",
-                "guild_id": guild_id,
-                "user_id": user_id,
+                **self._user_scope_query(user_id=user_id, guild_id=guild_id),
             }
         )
 
@@ -277,52 +364,57 @@ class TogglFunctions:
         if search_timer is None:
             return None
 
-        self.startCurrentTimeEntry(**search_timer["param"])
+        started_timer = self.startCurrentTimeEntry(**search_timer["param"])
+        if not isinstance(started_timer, dict) or started_timer.get("id") is None:
+            return started_timer
+
         # Increment number_of_runs
         search_param = {"_id": search_timer["_id"]}
         update_param = {"$inc": {"number_of_runs": 1}}
 
-        res = self.mongo_commands.update_one(search_param, update_param)
-        return search_timer["param"]
+        res = self._mongo_commands().update_one(search_param, update_param)
+        return started_timer
 
     def findSavedTimersLike(
         self,
         identifier: str,
-        guild_id: int,
+        guild_id: Optional[int],
         user_id: int,
     ):
-        res_command = self.mongo_commands.find(
+        res_command = self._mongo_commands().find(
             {
                 "command": {"$regex": identifier, "$options": "i"},
-                "application": "toggl",
-                "guild_id": guild_id,
-                "user_id": user_id,
+                **self._user_scope_query(user_id=user_id, guild_id=guild_id),
             }
         ).sort("number_of_runs", -1)
 
         return list(res_command)
 
-    def mostCommonlyUsedTimers(self, n: int, guild_id: int, user_id: int):
-        search_param = {
-            "application": "toggl",
-            "guild_id": guild_id,
-            "user_id": user_id,
-        }
+    def mostCommonlyUsedTimers(
+        self,
+        n: int,
+        guild_id: Optional[int],
+        user_id: int,
+    ):
+        search_param = self._user_scope_query(user_id=user_id, guild_id=guild_id)
 
-        res = self.mongo_commands.find(search_param, limit=int(n)).sort(
+        res = self._mongo_commands().find(search_param, limit=int(n)).sort(
             "number_of_runs", -1
         )
 
         return list(res)
 
-    def findSavedTimer(self, identifier: str, guild_id: int, user_id: int):
+    def findSavedTimer(
+        self,
+        identifier: str,
+        guild_id: Optional[int],
+        user_id: int,
+    ):
         res_command = list(
-            self.mongo_commands.find(
+            self._mongo_commands().find(
                 {
                     "command": identifier,
-                    "application": "toggl",
-                    "guild_id": guild_id,
-                    "user_id": user_id,
+                    **self._user_scope_query(user_id=user_id, guild_id=guild_id),
                 }
             )
         )
@@ -334,12 +426,10 @@ class TogglFunctions:
                 return None
 
             res_id = list(
-                self.mongo_commands.find(
+                self._mongo_commands().find(
                     {
                         "_id": search_id,
-                        "application": "toggl",
-                        "guild_id": guild_id,
-                        "user_id": user_id,
+                        **self._user_scope_query(user_id=user_id, guild_id=guild_id),
                     }
                 )
             )
@@ -351,13 +441,18 @@ class TogglFunctions:
         else:
             return res_command[0]
 
-    def removeSavedTimer(self, identifier: str, guild_id: int, user_id: int) -> bool:
+    def removeSavedTimer(
+        self,
+        identifier: str,
+        guild_id: Optional[int],
+        user_id: int,
+    ) -> bool:
         timer = self.findSavedTimer(identifier, guild_id, user_id)
 
         if timer is None:
             return False
         else:
-            self.mongo_commands.delete_one({"_id": timer["_id"]})
+            self._mongo_commands().delete_one({"_id": timer["_id"]})
             return True
 
     #
@@ -372,6 +467,81 @@ class TogglFunctions:
             auth=self.auth,
         )
         return res.json()
+
+    def createTag(self, workspace_id, name: str):
+        res = requests.post(
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/tags",
+            json={"name": name},
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
+        return res.json()
+
+    @staticmethod
+    def _normalize_tags_response(response) -> list[dict]:
+        if isinstance(response, list):
+            return response
+        if isinstance(response, dict):
+            items = response.get("items")
+            if isinstance(items, list):
+                return items
+        return []
+
+    def getTagsByWorkspace(self, workspace_id) -> list[dict]:
+        res = requests.get(
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/tags",
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
+        return self._normalize_tags_response(res.json())
+
+    def findTagsLike(
+        self,
+        identifier: str,
+        workspace_id: Optional[int] = None,
+        limit: int = 25,
+    ) -> list[dict]:
+        workspace_id = workspace_id if workspace_id is not None else self.workspace_id
+        query = str(identifier or "").strip().lower()
+        tags = self.getTagsByWorkspace(workspace_id)
+
+        if not query:
+            filtered_tags = tags
+        else:
+            filtered_tags = []
+            for tag in tags:
+                tag_name = str(tag.get("name") or "").strip()
+                tag_id = str(tag.get("id") or "")
+                if query in tag_name.lower() or query in tag_id:
+                    filtered_tags.append(tag)
+
+        filtered_tags.sort(
+            key=lambda tag: (
+                not str(tag.get("name") or "").lower().startswith(query),
+                str(tag.get("name") or "").lower(),
+                str(tag.get("id") or ""),
+            )
+        )
+        return filtered_tags[:limit]
+
+    def getTag(
+        self,
+        identifier: str,
+        workspace_id: Optional[int] = None,
+    ) -> Optional[dict]:
+        workspace_id = workspace_id if workspace_id is not None else self.workspace_id
+        normalized_identifier = str(identifier or "").strip()
+        if not normalized_identifier:
+            return None
+
+        normalized_lower = normalized_identifier.lower()
+        for tag in self.getTagsByWorkspace(workspace_id):
+            if str(tag.get("id") or "") == normalized_identifier:
+                return tag
+            if str(tag.get("name") or "").strip().lower() == normalized_lower:
+                return tag
+
+        return None
 
     #
     # Projects
@@ -426,6 +596,92 @@ class TogglFunctions:
         )
         return res.json()
 
+    @staticmethod
+    def _normalize_projects_response(response) -> list[dict]:
+        if isinstance(response, list):
+            return response
+        if isinstance(response, dict):
+            items = response.get("items")
+            if isinstance(items, list):
+                return items
+            data = response.get("data")
+            if isinstance(data, list):
+                return data
+        return []
+
+    def searchProjectsByWorkspace(
+        self,
+        workspace_id: int,
+        name: Optional[str] = None,
+        page_size: int = 25,
+        start: int = 0,
+        is_active: bool = True,
+    ) -> list[dict]:
+        json_data = {
+            "page_size": page_size,
+            "start": start,
+            "is_active": is_active,
+        }
+        if name:
+            json_data["name"] = name
+
+        res = requests.post(
+            f"https://api.track.toggl.com/reports/api/v3/workspace/{workspace_id}/search/projects",
+            json=json_data,
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
+        return self._normalize_projects_response(res.json())
+
+    def findProjectsLike(
+        self,
+        identifier: str,
+        workspace_id: Optional[int] = None,
+        limit: int = 25,
+    ) -> list[dict]:
+        workspace_id = workspace_id if workspace_id is not None else self.workspace_id
+        query = str(identifier or "").strip()
+
+        if query and not query.isdigit():
+            projects = self.searchProjectsByWorkspace(
+                workspace_id=workspace_id,
+                name=query,
+                page_size=max(limit, 25),
+            )
+        else:
+            projects = self._normalize_projects_response(
+                self.getProjectsByWorkspace(workspace_id)
+            )
+
+        normalized_query = query.lower()
+        filtered_projects = []
+        for project in projects:
+            if project.get("active") is False:
+                continue
+
+            project_name = str(project.get("name") or "").strip()
+            project_id = project.get("id")
+            if project_id is None:
+                continue
+
+            project_id_text = str(project_id)
+            if normalized_query and (
+                normalized_query not in project_name.lower()
+                and normalized_query not in project_id_text
+            ):
+                continue
+
+            filtered_projects.append(project)
+
+        filtered_projects.sort(
+            key=lambda project: (
+                not str(project.get("name") or "").lower().startswith(normalized_query),
+                str(project.get("name") or "").lower(),
+                str(project.get("id") or ""),
+            )
+        )
+        return filtered_projects[:limit]
+
     def getProjectById(
         self, project_id: int, workspace_id: Optional[int] = None
     ) -> Union[None, dict]:
@@ -466,14 +722,17 @@ class TogglFunctions:
 
         return search_projects[0] if len(search_projects) > 0 else None
 
-    def getProject(self, identifier: str) -> Union[None, dict]:
+    def getProject(
+        self, identifier: str, workspace_id: Optional[int] = None
+    ) -> Union[None, dict]:
+        workspace_id = workspace_id if workspace_id is not None else self.workspace_id
         try:
             identifier_int = int(identifier)
             project = self.getProjectById(
-                workspace_id=self.workspace_id, project_id=identifier_int
+                workspace_id=workspace_id, project_id=identifier_int
             )
-        except:
-            project = self.getProjectByName(identifier)
+        except (TypeError, ValueError):
+            project = self.getProjectByName(identifier, workspace_id=workspace_id)
 
         return project
 
@@ -483,7 +742,7 @@ class TogglFunctions:
 
     def saveShortcut(
         self,
-        guild_id: int,
+        guild_id: Optional[int],
         user_id: int,
         command: str,
         alias: str,
@@ -501,13 +760,13 @@ class TogglFunctions:
             "param": param,  # Parameters passed to aliased slash command
         }
 
-        res = self.mongo_aliases.insert_one(data)
+        res = self._mongo_aliases().insert_one(data)
 
         return data
 
     def saveShortcut2(
         self,
-        guild_id: int,
+        guild_id: Optional[int],
         user_id: int,
         command: str,
         alias: str,
@@ -523,7 +782,8 @@ class TogglFunctions:
             "param": param,  # Parameters passed to aliased slash command
         }
 
-        res = self.mongo_aliases.insert_one(data)
+        res = self._mongo_aliases().insert_one(data)
+        data["_id"] = res.inserted_id
 
         return data
 
@@ -541,13 +801,16 @@ class TogglFunctions:
 
         return param
 
-    def findSavedShortcut(self, alias: str, guild_id: int, user_id: int):
-        saved_shortcut = self.mongo_aliases.find_one(
+    def findSavedShortcut(
+        self,
+        alias: str,
+        guild_id: Optional[int],
+        user_id: int,
+    ):
+        saved_shortcut = self._mongo_aliases().find_one(
             {
                 "alias": alias,
-                "application": "toggl",
-                "guild_id": guild_id,
-                "user_id": user_id,
+                **self._user_scope_query(user_id=user_id, guild_id=guild_id),
             }
         )
 

@@ -9,23 +9,64 @@ from discord import app_commands
 
 from config.env import env
 from embeds.TogglEmbeds import TogglEmbeds
-from services.error_reporting import ValidationError
 from services.toggl_key_gate import ensure_toggl_api_key
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from views.TogglTimerHistoryView import TogglTimerHistoryView
+from views.TogglTimerView import TogglTimerView
 
 alias_disabled = env.get("ALIAS_DISABLED") == "true"
+saved_disabled = "true"
+DEFAULT_VISIBILITY = "public"
+
+
+def _timer_description_from_message(message: discord.Message) -> str:
+    content = str(message.clean_content or message.content or "").strip()
+    if content:
+        return content.splitlines()[0].strip()[:300]
+
+    author_name = str(getattr(message.author, "display_name", "") or "Unknown").strip()
+    if message.attachments:
+        return f"Attachment from {author_name}"[:300]
+    return f"Message from {author_name}"[:300]
+
+
+@app_commands.context_menu(name="Start Timer")
+async def start_timer_from_message(
+    interaction: discord.Interaction,
+    message: discord.Message,
+) -> None:
+    cog = interaction.client.get_cog("TogglCog")
+    if cog is None:
+        raise RuntimeError("TogglCog is not loaded.")
+
+    description = _timer_description_from_message(message)
+    await cog._execute_with_toggl_key(
+        interaction,
+        ephemeral=False,
+        command_label="Start Timer",
+        payload_builder=lambda: TogglEmbeds.start_embed(
+            interaction.guild_id,
+            interaction.user.id,
+            description=description,
+        ),
+    )
 
 
 class TogglCog(commands.Cog):
     toggl = app_commands.Group(name="toggl", description="Toggl commands")
     project = app_commands.Group(name="project", description="Manage Toggl projects")
+    tag_group = app_commands.Group(name="tag", description="Manage Toggl timer tags")
     timer_group = app_commands.Group(name="timer", description="Manage Toggl timers")
     saved = app_commands.Group(name="saved", description="Manage saved timers")
     if not alias_disabled:
-        alias_group = app_commands.Group(name="alias", description="Manage Toggl aliases")
+        alias_group = app_commands.Group(
+            name="alias", description="Manage Toggl aliases"
+        )
     toggl.add_command(project)
+    toggl.add_command(tag_group)
     toggl.add_command(timer_group)
-    toggl.add_command(saved)
+    if not saved_disabled:
+        toggl.add_command(saved)
     if not alias_disabled:
         toggl.add_command(alias_group)
 
@@ -44,6 +85,14 @@ class TogglCog(commands.Cog):
         payload: dict,
         ephemeral: bool,
     ) -> None:
+        payload = dict(payload)
+        toggl_timer_view = payload.pop("_toggl_timer_view", None)
+        if toggl_timer_view is not None:
+            payload["view"] = TogglTimerView(**toggl_timer_view)
+        toggl_timer_history_view = payload.pop("_toggl_timer_history_view", None)
+        if toggl_timer_history_view is not None:
+            payload["view"] = TogglTimerHistoryView(**toggl_timer_history_view)
+
         if interaction.response.is_done():
             await interaction.followup.send(ephemeral=ephemeral, **payload)
             return
@@ -58,12 +107,6 @@ class TogglCog(commands.Cog):
         command_label: str,
         payload_builder: Callable[[], dict],
     ) -> None:
-        if interaction.guild_id is None:
-            raise ValidationError(
-                "Use this command inside a server.",
-                ephemeral=ephemeral,
-            )
-
         async def _continue_with_key(
             followup_interaction: discord.Interaction,
             _api_key: str,
@@ -87,19 +130,19 @@ class TogglCog(commands.Cog):
     #
     # Authentication
     #
-    @toggl.command(name="about", description="About your Toggl account")
+    @toggl.command(name="account", description="Show your Toggl account")
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def aboutme(
         self,
         interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
-            command_label="/toggl about",
+            command_label="/toggl account",
             payload_builder=lambda: TogglEmbeds.aboutme_embed(
                 interaction.guild_id,
                 interaction.user.id,
@@ -113,6 +156,7 @@ class TogglCog(commands.Cog):
     @app_commands.describe(
         project="Project that timer will start in",
         description="Description of this timer",
+        billable="Whether this timer is billable",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -121,9 +165,10 @@ class TogglCog(commands.Cog):
         interaction: discord.Interaction,
         project: str = None,
         description: str = None,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        billable: Optional[bool] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -133,22 +178,36 @@ class TogglCog(commands.Cog):
                 interaction.user.id,
                 project=project,
                 description=description,
+                billable=billable,
             ),
         )
 
-    @timer_group.command(name="current", description="Get active Toggl timer")
+    @start.autocomplete("project")
+    async def start_project_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str = "",
+    ) -> list[app_commands.Choice[str]]:
+        return await asyncio.to_thread(
+            TogglEmbeds.project_autocomplete_embed,
+            current,
+            interaction.guild_id,
+            interaction.user.id,
+        )
+
+    @timer_group.command(name="active", description="Get active Toggl timer")
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def timer(
         self,
         interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
-            command_label="/toggl timer current",
+            command_label="/toggl timer active",
             payload_builder=lambda: TogglEmbeds.timer_embed(
                 interaction.guild_id,
                 interaction.user.id,
@@ -161,9 +220,9 @@ class TogglCog(commands.Cog):
     async def stop(
         self,
         interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -174,16 +233,115 @@ class TogglCog(commands.Cog):
             ),
         )
 
+    @tag_group.command(name="add", description="Create a new Toggl tag")
+    @app_commands.describe(
+        name="Tag name",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def addtags(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        visibility: str = DEFAULT_VISIBILITY,
+    ):
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl tag add",
+            payload_builder=lambda: TogglEmbeds.tag_embed(
+                interaction.guild_id,
+                interaction.user.id,
+                name=name,
+            ),
+        )
+
+    @tag_group.command(name="show", description="Show a Toggl tag")
+    @app_commands.describe(
+        tag="Tag to show",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def showtag(
+        self,
+        interaction: discord.Interaction,
+        tag: str,
+        visibility: str = DEFAULT_VISIBILITY,
+    ):
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl tag show",
+            payload_builder=lambda: TogglEmbeds.tag_embed(
+                interaction.guild_id,
+                interaction.user.id,
+                tag=tag,
+            ),
+        )
+
+    @showtag.autocomplete("tag")
+    async def showtag_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str = "",
+    ) -> list[app_commands.Choice[str]]:
+        return await asyncio.to_thread(
+            TogglEmbeds.tag_autocomplete_embed,
+            current,
+            interaction.guild_id,
+            interaction.user.id,
+        )
+
     @timer_group.command(name="insert", description="Insert past Toggl time")
-    @app_commands.describe(visibility=VISIBILITY_DESC)
+    @app_commands.describe(
+        project="Project for the inserted timer",
+        description="Description of this timer",
+        start="Start time, for example `yesterday 14:00`",
+        stop="Stop time, for example `yesterday 16:30`",
+        tags="Tags separated by spaces or commas",
+        billable="Whether this timer is billable",
+        visibility=VISIBILITY_DESC,
+    )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def inserttimer(
         self,
         interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        start: str,
+        stop: str,
+        project: Optional[str] = None,
+        description: Optional[str] = None,
+        tags: Optional[str] = None,
+        billable: Optional[bool] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
-        pass
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
+        locale_code = str(getattr(interaction, "locale", "") or "").strip() or None
+        await self._execute_with_toggl_key(
+            interaction,
+            ephemeral=ephemeral,
+            command_label="/toggl timer insert",
+            payload_builder=lambda: TogglEmbeds.inserttimer_embed(
+                guild_id=interaction.guild_id,
+                user_id=interaction.user.id,
+                start=start,
+                stop=stop,
+                project=project,
+                description=description,
+                tags=tags,
+                billable=billable,
+                locale_code=locale_code,
+            ),
+        )
+
+    @inserttimer.autocomplete("project")
+    async def inserttimer_project_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str = "",
+    ) -> list[app_commands.Choice[str]]:
+        return await self.start_project_autocomplete(interaction, current)
 
     #
     # Saved timers
@@ -194,13 +352,13 @@ class TogglCog(commands.Cog):
     - Improve tags handling
     """
 
-    @saved.command(name="create", description="Save a timer preset")
+    @saved.command(name="add", description="Save a timer preset")
     @app_commands.describe(
         command="Name of the saved timer",
         workspace_id="Workspace id",
         billable="Billable",
         description="Description of the saved timer",
-        pid="Project id",
+        project="Project",
         tags="Tags, separated by whitespaces",
         tid="Tid",
         visibility=VISIBILITY_DESC,
@@ -213,16 +371,16 @@ class TogglCog(commands.Cog):
         workspace_id: int = None,
         billable: str = None,
         description: str = None,
-        pid: int = None,
+        project: str = None,
         tags: str = None,
         tid: int = None,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
-            command_label="/toggl saved create",
+            command_label="/toggl saved add",
             payload_builder=lambda: TogglEmbeds.savetimer_embed(
                 guild_id=interaction.guild_id,
                 user_id=interaction.user.id,
@@ -230,10 +388,18 @@ class TogglCog(commands.Cog):
                 workspace_id=workspace_id,
                 billable=billable,
                 description=description,
-                pid=pid,
+                project=project,
                 tags=tags,
             ),
         )
+
+    @savetimer.autocomplete("project")
+    async def savetimer_project_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str = "",
+    ) -> list[app_commands.Choice[str]]:
+        return await self.start_project_autocomplete(interaction, current)
 
     @saved.command(name="delete", description="Delete a saved timer")
     @app_commands.describe(
@@ -245,9 +411,9 @@ class TogglCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         identifier: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -269,9 +435,9 @@ class TogglCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         identifier: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -295,7 +461,7 @@ class TogglCog(commands.Cog):
 
         return options
 
-    @saved.command(name="popular", description="Most popular saved timers")
+    @saved.command(name="list", description="Most popular saved timers")
     @app_commands.describe(
         n="Number of most popular timers to be displayed",
         visibility=VISIBILITY_DESC,
@@ -305,13 +471,13 @@ class TogglCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         n: int = 5,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
-            command_label="/toggl saved popular",
+            command_label="/toggl saved list",
             payload_builder=lambda: TogglEmbeds.populartimers_embed(
                 n=n,
                 guild_id=interaction.guild_id,
@@ -319,25 +485,23 @@ class TogglCog(commands.Cog):
             ),
         )
 
-    @timer_group.command(name="history", description="Get Toggl timer history")
+    @timer_group.command(name="list", description="Get the last 5 Toggl timers")
     @app_commands.describe(
-        n="Number of timers to display",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def timerhistory(
         self,
         interaction: discord.Interaction,
-        n: int,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
-            command_label="/toggl timer history",
+            command_label="/toggl timer list",
             payload_builder=lambda: TogglEmbeds.timerhistory_embed(
-                n=n,
+                n=5,
                 guild_id=interaction.guild_id,
                 user_id=interaction.user.id,
             ),
@@ -356,17 +520,18 @@ class TogglCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         name: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
             command_label="/toggl project create",
-            payload_builder=lambda: TogglEmbeds.newproject_embed(
-                name=name,
+            payload_builder=lambda: TogglEmbeds.project_embed(
+                project=name,
                 guild_id=interaction.guild_id,
                 user_id=interaction.user.id,
+                create=True,
             ),
         )
 
@@ -376,9 +541,9 @@ class TogglCog(commands.Cog):
     async def workspaceprojects(
         self,
         interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
@@ -389,29 +554,37 @@ class TogglCog(commands.Cog):
             ),
         )
 
-    @project.command(name="get", description="Get a Toggl project by id")
+    @project.command(name="get", description="Get a Toggl project")
     @app_commands.describe(
-        project_id="Project id",
+        project="Project from autocomplete",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def getproject(
         self,
         interaction: discord.Interaction,
-        project_id: int,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        project: str,
+        visibility: str = DEFAULT_VISIBILITY,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
             command_label="/toggl project get",
-            payload_builder=lambda: TogglEmbeds.getproject_embed(
-                project_id=project_id,
+            payload_builder=lambda: TogglEmbeds.project_embed(
+                project=project,
                 guild_id=interaction.guild_id,
                 user_id=interaction.user.id,
             ),
         )
+
+    @getproject.autocomplete("project")
+    async def getproject_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str = "",
+    ) -> list[app_commands.Choice[str]]:
+        return await self.start_project_autocomplete(interaction, current)
 
     if not alias_disabled:
 
@@ -426,22 +599,29 @@ class TogglCog(commands.Cog):
 
         @staticmethod
         def _alias_command_map() -> dict:
-            return {
+            alias_map = {
                 "about": "aboutme",
+                "account": "aboutme",
                 "timer start": "start",
                 "timer stop": "stop",
                 "timer current": "timer",
                 "timer insert": "inserttimer",
-                "timer history": "timerhistory",
-                "saved create": "savetimer",
-                "saved delete": "removetimer",
-                "saved start": "startsaved",
-                "saved popular": "populartimers",
+                "timer list": "timerhistory",
                 "project create": "newproject",
                 "project list": "workspaceprojects",
                 "project get": "getproject",
                 "alias create": "createalias",
             }
+            if not saved_disabled:
+                alias_map.update(
+                    {
+                        "saved create": "savetimer",
+                        "saved delete": "removetimer",
+                        "saved start": "startsaved",
+                        "saved popular": "populartimers",
+                    }
+                )
+            return alias_map
 
         def getFunctionByName(self, name):
             key = self._normalize_alias_command(name)
@@ -451,6 +631,13 @@ class TogglCog(commands.Cog):
             if key in alias_map:
                 key = alias_map[key]
             elif " " in key:
+                return None
+            if saved_disabled and key in {
+                "savetimer",
+                "removetimer",
+                "startsaved",
+                "populartimers",
+            }:
                 return None
             try:
                 fn = getattr(self, f"{key}")
@@ -482,9 +669,9 @@ class TogglCog(commands.Cog):
             command: str,
             alias: str,
             arguments: str = "",
-            visibility: Optional[app_commands.Choice[str]] = None,
+            visibility: str = DEFAULT_VISIBILITY,
         ):
-            ephemeral = resolve_visibility(visibility, default="public")
+            ephemeral = resolve_visibility(visibility, default=DEFAULT_VISIBILITY)
             normalized_command = self._normalize_alias_command(command)
             if normalized_command:
                 command = normalized_command
@@ -504,5 +691,13 @@ class TogglCog(commands.Cog):
                 ),
             )
 
+
 async def setup(client):
+    if saved_disabled:
+        TogglCog.toggl.remove_command("saved")
+
+    if alias_disabled:
+        TogglCog.toggl.remove_command("alias")
+
     await client.add_cog(TogglCog(client))
+    client.tree.add_command(start_timer_from_message)

@@ -15,10 +15,6 @@ async def ensure_toggl_api_key(
     on_api_key_resolved: ApiKeyResolvedHandler,
     continue_message: Optional[str] = None,
 ) -> Optional[str]:
-    guild_id = interaction.guild_id
-    if guild_id is None:
-        return None
-
     api_key = await asyncio.to_thread(
         UserSettingsFunctions.get_toggl_api_key,
         interaction.user.id,
