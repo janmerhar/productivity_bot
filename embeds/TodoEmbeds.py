@@ -2676,6 +2676,58 @@ class TodoEmbeds:
         return {"embed": embed}
 
     @staticmethod
+    def list_directory_embed(
+        server_lists: List[Dict[str, Any]],
+        personal_lists: List[Dict[str, Any]],
+    ) -> dict:
+        embed = discord.Embed(
+            title="Available Todo Lists",
+            color=discord.Colour.blurple(),
+        )
+
+        if not server_lists and not personal_lists:
+            embed.description = "No todo lists available."
+            return {"embed": embed}
+
+        if server_lists:
+            server_lines = []
+            for entry in server_lists:
+                name = str(entry.get("name") or "Unnamed")
+                count = int(entry.get("item_count") or 0)
+                label = str(entry.get("label") or "").strip()
+                if label:
+                    server_lines.append(f"• {label}: `{name}` ({count})")
+                else:
+                    server_lines.append(f"• `{name}` ({count})")
+            embed.add_field(
+                name="Server",
+                value="\n".join(server_lines),
+                inline=False,
+            )
+
+        if personal_lists:
+            personal_lines = []
+            for entry in personal_lists:
+                name = str(entry.get("name") or "Unnamed")
+                count = int(entry.get("item_count") or 0)
+                label = str(entry.get("label") or "").strip()
+                if label:
+                    personal_lines.append(f"• {label}: `{name}` ({count})")
+                else:
+                    personal_lines.append(f"• `{name}` ({count})")
+            embed.add_field(
+                name="Personal",
+                value="\n".join(personal_lines),
+                inline=False,
+            )
+
+        total_lists = len(server_lists) + len(personal_lists)
+        total_items = sum(int(entry.get("item_count") or 0) for entry in server_lists)
+        total_items += sum(int(entry.get("item_count") or 0) for entry in personal_lists)
+        embed.set_footer(text=f"Lists: {total_lists} | Items: {total_items}")
+        return {"embed": embed}
+
+    @staticmethod
     def item_details_embed(
         todo_list: Dict[str, Any],
         item: Dict[str, Any],
