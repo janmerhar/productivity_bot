@@ -821,18 +821,15 @@ class TodoCog(commands.Cog):
     @app_commands.rename(list_target="list")
     @app_commands.describe(
         list_target="Which custom list to delete",
-        confirm="Delete the list and all items on it",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
-        confirm=_YES_NO_CHOICES,
         visibility=VISIBILITY_CHOICES,
     )
     async def list_delete(
         self,
         interaction: discord.Interaction,
         list_target: str,
-        confirm: app_commands.Choice[str],
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         todo_list, scope_value, use_all_server_channels = await self._resolve_list_target(
@@ -856,13 +853,6 @@ class TodoCog(commands.Cog):
             scope_value,
             visibility,
         )
-        if confirm.value != "yes":
-            await interaction.response.send_message(
-                ephemeral=True,
-                content="Deletion cancelled.",
-            )
-            return
-
         await interaction.response.defer(ephemeral=ephemeral)
 
         list_name = str(todo_list.get("name") or "List")
