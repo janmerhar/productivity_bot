@@ -2542,6 +2542,20 @@ class TodoEmbeds:
         return {"embed": embed}
 
     @staticmethod
+    def list_description_embed(
+        title: str,
+        description: Optional[str] = None,
+        color: Optional[discord.Colour] = None,
+    ) -> dict:
+        embed = discord.Embed(
+            title=(str(title or "").strip() or "Todo List")[:256],
+            description=(str(description or "").strip() or None),
+            color=color or discord.Colour.blurple(),
+        )
+
+        return {"embed": embed}
+
+    @staticmethod
     def list_items_embed(
         todo_list: Dict[str, Any],
         items: List[Dict[str, Any]],

@@ -13,6 +13,7 @@ from services.discord_helpers import resolve_ephemeral_from_scope
 from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC
+from views.TodoListDescriptionView import TodoListDescriptionView
 
 
 _SORT_CHOICES = [
@@ -539,9 +540,18 @@ class TodoCog(commands.Cog):
                 cause=exc,
             )
 
+        result_view = TodoListDescriptionView(
+            title="Todo List Cleared",
+            description=(
+                f"List: `{list_name}`\nRemoved items: `{deleted_count}`"
+                if not use_all_server_channels
+                else f"List: `All Server Channels`\nRemoved items: `{deleted_count}`"
+            ),
+            color=discord.Colour.orange(),
+        )
         await interaction.followup.send(
             ephemeral=ephemeral,
-            content=f"Cleared `{list_name}` ({deleted_count} items removed).",
+            **result_view.response_payload(),
         )
 
     @list_clear.autocomplete("list_target")
@@ -728,16 +738,17 @@ class TodoCog(commands.Cog):
                 cause=exc,
             )
 
-        payload = TodoEmbeds.list_items_embed(
-            todo_list,
-            [],
-            "ascending",
-            "all",
+        result_view = TodoListDescriptionView(
+            title="Todo List Created",
+            description=(
+                f"List: `{todo_list.get('name') or 'List'}`\n"
+                f"Items: `0`"
+            ),
+            color=discord.Colour.green(),
         )
         await interaction.followup.send(
             ephemeral=ephemeral,
-            content=f"Created list `{todo_list.get('name')}`.",
-            **payload,
+            **result_view.response_payload(),
         )
 
     @list_group.command(name="edit", description="Edit a custom todo list name")
@@ -800,9 +811,17 @@ class TodoCog(commands.Cog):
                 ephemeral=ephemeral,
             )
 
+        result_view = TodoListDescriptionView(
+            title="Todo List Updated",
+            description=(
+                f"Previous name: `{old_name}`\n"
+                f"New name: `{updated_list.get('name') or 'List'}`"
+            ),
+            color=discord.Colour.blurple(),
+        )
         await interaction.followup.send(
             ephemeral=ephemeral,
-            content=f"Renamed `{old_name}` to `{updated_list.get('name')}`.",
+            **result_view.response_payload(),
         )
 
     @list_rename.autocomplete("list_target")
@@ -874,9 +893,17 @@ class TodoCog(commands.Cog):
                 ephemeral=ephemeral,
             )
 
+        result_view = TodoListDescriptionView(
+            title="Todo List Deleted",
+            description=(
+                f"List: `{list_name}`\n"
+                f"Removed items: `{deleted_count}`"
+            ),
+            color=discord.Colour.red(),
+        )
         await interaction.followup.send(
             ephemeral=ephemeral,
-            content=f"Deleted `{list_name}` and removed {deleted_count} items.",
+            **result_view.response_payload(),
         )
 
     @list_delete.autocomplete("list_target")
