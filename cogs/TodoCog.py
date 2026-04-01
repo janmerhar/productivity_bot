@@ -548,6 +548,8 @@ class TodoCog(commands.Cog):
                 else f"List: `All Server Channels`\nRemoved items: `{deleted_count}`"
             ),
             color=discord.Colour.orange(),
+            todo_list=None if use_all_server_channels else todo_list,
+            user_id=interaction.user.id,
         )
         await interaction.followup.send(
             ephemeral=ephemeral,
@@ -745,6 +747,8 @@ class TodoCog(commands.Cog):
                 f"Items: `0`"
             ),
             color=discord.Colour.green(),
+            todo_list=todo_list,
+            user_id=interaction.user.id,
         )
         await interaction.followup.send(
             ephemeral=ephemeral,
@@ -818,6 +822,8 @@ class TodoCog(commands.Cog):
                 f"New name: `{updated_list.get('name') or 'List'}`"
             ),
             color=discord.Colour.blurple(),
+            todo_list=updated_list,
+            user_id=interaction.user.id,
         )
         await interaction.followup.send(
             ephemeral=ephemeral,
@@ -900,6 +906,8 @@ class TodoCog(commands.Cog):
                 f"Removed items: `{deleted_count}`"
             ),
             color=discord.Colour.red(),
+            todo_list=None,
+            user_id=interaction.user.id,
         )
         await interaction.followup.send(
             ephemeral=ephemeral,

@@ -857,6 +857,84 @@ class TodoListItemsView(discord.ui.View):
             )
         self._apply_filters()
 
+    async def open_create_modal(
+        self,
+        interaction: discord.Interaction,
+        *,
+        source_message: Optional[discord.Message],
+    ) -> None:
+        global _MODAL_SELECTS_SUPPORTED
+
+        if self.view_scope != "list" or self.todo_list.get("_id") is None:
+            await interaction.response.send_message(
+                ephemeral=True,
+                content="Open a specific list to create a task from this view.",
+            )
+            return
+
+        modal_locale = str(getattr(interaction, "locale", "") or "").strip() or None
+        try:
+            modal_timezone = await asyncio.to_thread(
+                UserSettingsFunctions.get_timezone,
+                interaction.user.id,
+            )
+        except Exception:
+            modal_timezone = None
+
+        assignee_options = self._build_assignee_select_options(
+            interaction,
+            {"assignees": []},
+        )
+        scope_item = {
+            "scope": str(self.todo_list.get("scope") or "channel"),
+            "guild_id": self.todo_list.get("guild_id"),
+            "channel_id": self.todo_list.get("channel_id"),
+            "user_id": self.todo_list.get("user_id") or interaction.user.id,
+            "list_id": self.todo_list.get("_id"),
+            "list_name": str(self.todo_list.get("name") or "List"),
+        }
+        list_options: List[discord.SelectOption] = []
+        try:
+            list_docs = await asyncio.to_thread(
+                TodoFunctions.list_candidate_lists_for_item_scope,
+                scope_item,
+                interaction.user.id,
+                25,
+            )
+            list_options = self._build_list_select_options(scope_item, list_docs)
+        except Exception:
+            list_options = []
+
+        if _MODAL_SELECTS_SUPPORTED:
+            try:
+                await interaction.response.send_modal(
+                    TodoItemCreateModal(
+                        parent_view=self,
+                        todo_list=self.todo_list,
+                        source_message=source_message,
+                        assignee_options=assignee_options,
+                        list_options=list_options,
+                        locale_code=modal_locale,
+                        timezone=modal_timezone,
+                    )
+                )
+                return
+            except discord.HTTPException as exc:
+                if exc.code == 50035 and "must be one of (4,)" in str(exc):
+                    _MODAL_SELECTS_SUPPORTED = False
+                else:
+                    raise
+
+        await interaction.response.send_modal(
+            TodoItemCreateModal(
+                parent_view=self,
+                todo_list=self.todo_list,
+                source_message=source_message,
+                locale_code=modal_locale,
+                timezone=modal_timezone,
+            )
+        )
+
     def _apply_filters(self) -> None:
         filtered_items = list(self._all_items)
         if self.assignee_filter_unassigned:
@@ -1328,75 +1406,9 @@ class TodoListItemsView(discord.ui.View):
             await self._safe_refresh_message(interaction)
 
         async def _add_callback(interaction: discord.Interaction) -> None:
-            global _MODAL_SELECTS_SUPPORTED
-            if self.view_scope != "list" or self.todo_list.get("_id") is None:
-                await interaction.response.send_message(
-                    ephemeral=True,
-                    content="Open a specific list to create a task from this view.",
-                )
-                return
-
-            modal_locale = str(getattr(interaction, "locale", "") or "").strip() or None
-            try:
-                modal_timezone = await asyncio.to_thread(
-                    UserSettingsFunctions.get_timezone,
-                    interaction.user.id,
-                )
-            except Exception:
-                modal_timezone = None
-
-            assignee_options = self._build_assignee_select_options(
+            await self.open_create_modal(
                 interaction,
-                {"assignees": []},
-            )
-            scope_item = {
-                "scope": str(self.todo_list.get("scope") or "channel"),
-                "guild_id": self.todo_list.get("guild_id"),
-                "channel_id": self.todo_list.get("channel_id"),
-                "user_id": self.todo_list.get("user_id") or interaction.user.id,
-                "list_id": self.todo_list.get("_id"),
-                "list_name": str(self.todo_list.get("name") or "List"),
-            }
-            list_options: List[discord.SelectOption] = []
-            try:
-                list_docs = await asyncio.to_thread(
-                    TodoFunctions.list_candidate_lists_for_item_scope,
-                    scope_item,
-                    interaction.user.id,
-                    25,
-                )
-                list_options = self._build_list_select_options(scope_item, list_docs)
-            except Exception:
-                list_options = []
-
-            if _MODAL_SELECTS_SUPPORTED:
-                try:
-                    await interaction.response.send_modal(
-                        TodoItemCreateModal(
-                            parent_view=self,
-                            todo_list=self.todo_list,
-                            source_message=interaction.message,
-                            assignee_options=assignee_options,
-                            list_options=list_options,
-                            locale_code=modal_locale,
-                            timezone=modal_timezone,
-                        )
-                    )
-                    return
-                except discord.HTTPException as exc:
-                    if exc.code == 50035 and "must be one of (4,)" in str(exc):
-                        _MODAL_SELECTS_SUPPORTED = False
-                    else:
-                        raise
-
-            await interaction.response.send_modal(
-                TodoItemCreateModal(
-                    parent_view=self,
-                    todo_list=self.todo_list,
-                    source_message=interaction.message,
-                    locale_code=modal_locale,
-                    timezone=modal_timezone,
-                )
+                source_message=interaction.message,
             )
 
         async def _sort_toggle_callback(interaction: discord.Interaction) -> None:
