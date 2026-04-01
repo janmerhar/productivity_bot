@@ -14,6 +14,7 @@ from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC
 from views.TodoListDescriptionView import TodoListDescriptionView
+from views.todo.TodoCreateListForAddModal import TodoCreateListForAddModal
 
 
 _SORT_CHOICES = [
@@ -47,6 +48,7 @@ _LIST_STATUS_FILTER_CHOICES = [
     app_commands.Choice(name="In Progress", value="in_progress"),
     app_commands.Choice(name="Done", value="done"),
 ]
+_CREATE_NEW_LIST_VALUE = "__create_new_list__"
 
 
 @app_commands.context_menu(name="Add to Todo")
@@ -954,6 +956,29 @@ class TodoCog(commands.Cog):
         notify_assignee: Optional[app_commands.Choice[str]] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
+        status_value = status.value if status else "todo"
+        notify_enabled = (notify_assignee.value if notify_assignee else "yes") == "yes"
+        locale_code = str(getattr(interaction, "locale", "") or "").strip() or None
+
+        if list == _CREATE_NEW_LIST_VALUE:
+            scope_value = "channel" if interaction.guild_id is not None else "personal"
+            await interaction.response.send_modal(
+                TodoCreateListForAddModal(
+                    self,
+                    user_id=interaction.user.id,
+                    text=text,
+                    description=description,
+                    due=due,
+                    status_value=status_value,
+                    assignee=assignee,
+                    notify_enabled=notify_enabled,
+                    visibility=visibility,
+                    locale_code=locale_code,
+                    scope_value=scope_value,
+                )
+            )
+            return
+
         todo_list, scope_value, use_all_server_channels = await self._resolve_list_target(
             interaction,
             list,
@@ -970,9 +995,32 @@ class TodoCog(commands.Cog):
             scope_value,
             visibility,
         )
-        status_value = status.value if status else "todo"
-        notify_enabled = (notify_assignee.value if notify_assignee else "yes") == "yes"
-        locale_code = str(getattr(interaction, "locale", "") or "").strip() or None
+        await self._start_item_add_flow(
+            interaction=interaction,
+            text=text,
+            description=description,
+            due=due,
+            todo_list=todo_list,
+            status_value=status_value,
+            assignee=assignee,
+            notify_enabled=notify_enabled,
+            ephemeral=ephemeral,
+            locale_code=locale_code,
+        )
+
+    async def _start_item_add_flow(
+        self,
+        interaction: discord.Interaction,
+        text: str,
+        description: Optional[str],
+        due: Optional[str],
+        todo_list: Dict[str, Any],
+        status_value: str,
+        assignee: Optional[str],
+        notify_enabled: bool,
+        ephemeral: bool,
+        locale_code: Optional[str],
+    ) -> None:
         timezone = None
         if (due or "").strip():
 
@@ -1138,11 +1186,17 @@ class TodoCog(commands.Cog):
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
-        return await self._build_list_target_autocomplete_options(
+        options = await self._build_list_target_autocomplete_options(
             interaction,
             current,
             include_all_server=False,
         )
+        create_option = app_commands.Choice(
+            name="Create new list",
+            value=_CREATE_NEW_LIST_VALUE,
+        )
+        options = [create_option, *options]
+        return options[:25]
 
     @todo_group.command(name="show", description="Show the text of an item")
     @app_commands.describe(
