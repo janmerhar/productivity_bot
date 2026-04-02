@@ -207,7 +207,8 @@ class TodoCog(commands.Cog):
             target_value = "channel" if interaction.guild_id is not None else "personal"
 
         if interaction.guild_id is None and (
-            target_value in {"channel", "all_server"} or target_value.startswith("channel:")
+            target_value in {"channel", "all_server"}
+            or target_value.startswith("channel:")
         ):
             target_value = "personal"
 
@@ -300,10 +301,15 @@ class TodoCog(commands.Cog):
         options: List[app_commands.Choice[str]] = []
 
         if not custom_only:
-            base_options = [
-                app_commands.Choice(name="This Channel", value="channel"),
-                app_commands.Choice(name="Personal", value="personal"),
-            ]
+            if interaction.guild is None:
+                base_options = [
+                    app_commands.Choice(name="Personal", value="personal"),
+                ]
+            else:
+                base_options = [
+                    app_commands.Choice(name="This Channel", value="channel"),
+                    app_commands.Choice(name="Personal", value="personal"),
+                ]
             if interaction.guild is not None and include_all_server:
                 base_options.insert(
                     1,
@@ -390,10 +396,12 @@ class TodoCog(commands.Cog):
         assignee: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        todo_list, scope_value, use_all_server_channels = await self._resolve_list_target(
-            interaction,
-            list_target,
-            allow_all_server=True,
+        todo_list, scope_value, use_all_server_channels = (
+            await self._resolve_list_target(
+                interaction,
+                list_target,
+                allow_all_server=True,
+            )
         )
 
         ephemeral = resolve_ephemeral_from_scope(
@@ -507,10 +515,12 @@ class TodoCog(commands.Cog):
         list_target: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        todo_list, scope_value, use_all_server_channels = await self._resolve_list_target(
-            interaction,
-            list_target,
-            allow_all_server=True,
+        todo_list, scope_value, use_all_server_channels = (
+            await self._resolve_list_target(
+                interaction,
+                list_target,
+                allow_all_server=True,
+            )
         )
 
         ephemeral = resolve_ephemeral_from_scope(
@@ -711,7 +721,9 @@ class TodoCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         selected_scope = (
-            scope.value if scope else ("server" if interaction.guild_id is not None else "personal")
+            scope.value
+            if scope
+            else ("server" if interaction.guild_id is not None else "personal")
         )
         scope_value = "personal" if selected_scope == "personal" else "channel"
         if interaction.guild_id is None:
@@ -744,10 +756,7 @@ class TodoCog(commands.Cog):
 
         result_view = TodoListDescriptionView(
             title="Todo List Created",
-            description=(
-                f"List: `{todo_list.get('name') or 'List'}`\n"
-                f"Items: `0`"
-            ),
+            description=(f"List: `{todo_list.get('name') or 'List'}`\n" f"Items: `0`"),
             color=discord.Colour.green(),
             todo_list=todo_list,
             user_id=interaction.user.id,
@@ -772,10 +781,12 @@ class TodoCog(commands.Cog):
         name: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        todo_list, scope_value, use_all_server_channels = await self._resolve_list_target(
-            interaction,
-            list_target,
-            allow_all_server=False,
+        todo_list, scope_value, use_all_server_channels = (
+            await self._resolve_list_target(
+                interaction,
+                list_target,
+                allow_all_server=False,
+            )
         )
         if use_all_server_channels or todo_list is None:
             raise ValidationError(
@@ -859,10 +870,12 @@ class TodoCog(commands.Cog):
         list_target: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        todo_list, scope_value, use_all_server_channels = await self._resolve_list_target(
-            interaction,
-            list_target,
-            allow_all_server=False,
+        todo_list, scope_value, use_all_server_channels = (
+            await self._resolve_list_target(
+                interaction,
+                list_target,
+                allow_all_server=False,
+            )
         )
         if use_all_server_channels or todo_list is None:
             raise ValidationError(
@@ -903,10 +916,7 @@ class TodoCog(commands.Cog):
 
         result_view = TodoListDescriptionView(
             title="Todo List Deleted",
-            description=(
-                f"List: `{list_name}`\n"
-                f"Removed items: `{deleted_count}`"
-            ),
+            description=(f"List: `{list_name}`\n" f"Removed items: `{deleted_count}`"),
             color=discord.Colour.red(),
             todo_list=None,
             user_id=interaction.user.id,
@@ -979,10 +989,12 @@ class TodoCog(commands.Cog):
             )
             return
 
-        todo_list, scope_value, use_all_server_channels = await self._resolve_list_target(
-            interaction,
-            list,
-            allow_all_server=False,
+        todo_list, scope_value, use_all_server_channels = (
+            await self._resolve_list_target(
+                interaction,
+                list,
+                allow_all_server=False,
+            )
         )
         if use_all_server_channels or todo_list is None:
             raise ValidationError(
@@ -1152,10 +1164,7 @@ class TodoCog(commands.Cog):
             try:
                 channel = None
                 target_channel_id = todo_list.get("channel_id")
-                if (
-                    target_channel_id is not None
-                    and interaction.guild is not None
-                ):
+                if target_channel_id is not None and interaction.guild is not None:
                     channel = interaction.guild.get_channel(target_channel_id)
                 if channel is None:
                     channel = interaction.channel
