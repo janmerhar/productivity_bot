@@ -1,4 +1,5 @@
 # https://www.youtube.com/watch?v=-D2CvmHTqbE
+import importlib
 import logging
 import discord
 import asyncio
@@ -13,6 +14,13 @@ alias_disabled = env.get("ALIAS_DISABLED") == "true"
 dev_mode = env.get("DEV_MODE") == "true"
 dev_guild_id = env.get("DEV_GUILD_ID")
 
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw_value = env.get(name)
+    if raw_value is None:
+        return default
+    return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
+
 setup_logging()
 
 intents = discord.Intents.default()
@@ -20,58 +28,101 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix=".", intents=intents)
 
 _sync_done = False
+_global_sync_task: asyncio.Task | None = None
+_import_prewarm_task: asyncio.Task | None = None
+
+
+async def _sync_global_commands() -> None:
+    try:
+        synced = await bot.tree.sync()
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Failed to sync global application commands"
+        )
+        return
+
+    if dev_mode:
+        logging.getLogger(__name__).info(
+            "Synced %d global application commands (DEV_MODE).",
+            len(synced),
+        )
+    else:
+        logging.getLogger(__name__).info(
+            "Synced %d global application commands.",
+            len(synced),
+        )
+
+
+def _start_global_command_sync() -> None:
+    global _global_sync_task
+    if _global_sync_task is None or _global_sync_task.done():
+        _global_sync_task = asyncio.create_task(_sync_global_commands())
+
+
+async def _prewarm_imports() -> None:
+    for module_name in ("yfinance", "openai"):
+        try:
+            await asyncio.to_thread(importlib.import_module, module_name)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Failed to prewarm import for %s",
+                module_name,
+            )
+
+
+def _start_import_prewarm() -> None:
+    global _import_prewarm_task
+    if _import_prewarm_task is None or _import_prewarm_task.done():
+        _import_prewarm_task = asyncio.create_task(_prewarm_imports())
 
 
 @bot.event
 async def on_ready():
     global _sync_done
     if not _sync_done:
-        did_sync = False
+        if not _env_flag("SYNC_COMMANDS_ON_START", default=True):
+            logging.getLogger(__name__).info(
+                "Skipping application command sync on startup."
+            )
+            _sync_done = True
+            print("Online")
+            _start_import_prewarm()
+            return
+
         try:
             if dev_mode:
                 if not dev_guild_id:
                     logging.getLogger(__name__).warning(
-                        "DEV_MODE is true but DEV_GUILD_ID is not set; syncing global only."
+                        "DEV_MODE is true but DEV_GUILD_ID is not set; syncing global in background only."
                     )
-                    synced = await bot.tree.sync()
-                    did_sync = True
-                    logging.getLogger(__name__).info(
-                        "Synced %d global application commands (DEV_MODE).",
-                        len(synced),
-                    )
+                    _start_global_command_sync()
                 else:
                     try:
                         guild_object = discord.Object(id=int(dev_guild_id))
                     except ValueError:
                         logging.getLogger(__name__).warning(
-                            "DEV_GUILD_ID must be an integer; skipping sync."
+                            "DEV_GUILD_ID must be an integer; syncing global in background only."
                         )
+                        _start_global_command_sync()
                     else:
-                        synced_global = await bot.tree.sync()
                         bot.tree.clear_commands(guild=guild_object)
                         bot.tree.copy_global_to(guild=guild_object)
                         synced_guild = await bot.tree.sync(guild=guild_object)
-                        did_sync = True
-                        logging.getLogger(__name__).info(
-                            "Synced %d global application commands (DEV_MODE).",
-                            len(synced_global),
-                        )
                         logging.getLogger(__name__).info(
                             "Synced %d dev guild application commands for guild %s.",
                             len(synced_guild),
                             dev_guild_id,
                         )
+                        _start_global_command_sync()
             else:
-                await bot.tree.sync()
-                did_sync = True
-                logging.getLogger(__name__).info("Synced global application commands.")
+                _start_global_command_sync()
         except Exception:
             logging.getLogger(__name__).exception("Failed to sync application commands")
         else:
-            if did_sync:
-                _sync_done = True
+            _sync_done = True
 
     print("Online")
+    _start_import_prewarm()
 
 
 @bot.tree.error
@@ -110,4 +161,9 @@ async def main():
     await bot.start(env["DISCORD_TOKEN"])
 
 
-asyncio.run(main())
+def run() -> None:
+    asyncio.run(main())
+
+
+if __name__ == "__main__":
+    run()
