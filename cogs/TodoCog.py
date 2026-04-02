@@ -940,7 +940,7 @@ class TodoCog(commands.Cog):
 
     @todo_group.command(name="add", description="Add an item to a list")
     @app_commands.describe(
-        text="Item text",
+        todo="Todo",
         description="Additional details (optional)",
         due="Due date/time (natural language, same as /reminder)",
         list="Where to add this item",
@@ -957,7 +957,7 @@ class TodoCog(commands.Cog):
     async def item_add(
         self,
         interaction: discord.Interaction,
-        text: str,
+        todo: str,
         description: Optional[str] = None,
         due: Optional[str] = None,
         list: Optional[str] = None,
@@ -976,7 +976,7 @@ class TodoCog(commands.Cog):
                 TodoCreateListForAddModal(
                     self,
                     user_id=interaction.user.id,
-                    text=text,
+                    todo=todo,
                     description=description,
                     due=due,
                     status_value=status_value,
@@ -1009,7 +1009,7 @@ class TodoCog(commands.Cog):
         )
         await self._start_item_add_flow(
             interaction=interaction,
-            text=text,
+            todo=todo,
             description=description,
             due=due,
             todo_list=todo_list,
@@ -1023,7 +1023,7 @@ class TodoCog(commands.Cog):
     async def _start_item_add_flow(
         self,
         interaction: discord.Interaction,
-        text: str,
+        todo: str,
         description: Optional[str],
         due: Optional[str],
         todo_list: Dict[str, Any],
@@ -1042,7 +1042,7 @@ class TodoCog(commands.Cog):
             ) -> None:
                 await self._run_item_add(
                     interaction=followup_interaction,
-                    text=text,
+                    todo=todo,
                     description=description,
                     due=due,
                     todo_list=todo_list,
@@ -1065,7 +1065,7 @@ class TodoCog(commands.Cog):
         await interaction.response.defer(ephemeral=ephemeral)
         await self._run_item_add(
             interaction=interaction,
-            text=text,
+            todo=todo,
             description=description,
             due=due,
             todo_list=todo_list,
@@ -1080,7 +1080,7 @@ class TodoCog(commands.Cog):
     async def _run_item_add(
         self,
         interaction: discord.Interaction,
-        text: str,
+        todo: str,
         description: Optional[str],
         due: Optional[str],
         todo_list: Dict[str, Any],
@@ -1100,9 +1100,9 @@ class TodoCog(commands.Cog):
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
 
         description_value = description.strip() if description else ""
-        item_text = text
+        item_text = todo
         if description_value:
-            item_text = f"{text}\n{description_value}"
+            item_text = f"{todo}\n{description_value}"
 
         try:
             current_list = await asyncio.to_thread(

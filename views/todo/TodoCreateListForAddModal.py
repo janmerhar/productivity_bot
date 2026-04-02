@@ -15,7 +15,7 @@ class TodoCreateListForAddModal(discord.ui.Modal, title="Create New List"):
         cog: Any,
         *,
         user_id: int,
-        text: str,
+        todo: str,
         description: Optional[str],
         due: Optional[str],
         status_value: str,
@@ -28,7 +28,7 @@ class TodoCreateListForAddModal(discord.ui.Modal, title="Create New List"):
         super().__init__()
         self._cog = cog
         self._user_id = int(user_id)
-        self._text = text
+        self._todo = todo
         self._description = description
         self._due = due
         self._status_value = status_value
@@ -70,7 +70,7 @@ class TodoCreateListForAddModal(discord.ui.Modal, title="Create New List"):
             )
             await self._cog._start_item_add_flow(
                 interaction=interaction,
-                text=self._text,
+                todo=self._todo,
                 description=self._description,
                 due=self._due,
                 todo_list=todo_list,
