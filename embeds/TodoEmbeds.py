@@ -1952,7 +1952,7 @@ class TodoItemActionsView(discord.ui.View):
             self.complete_todo.disabled = True
         self.edit_todo.disabled = not self.item_id
         self.delete_todo.disabled = not self.item_id
-        self.assign_to_me.disabled = not self.item_id
+        self.duplicate_todo.disabled = not self.item_id
         self.assign_to_user.disabled = (not self.item_id) or self.guild_id is None
 
     @staticmethod
@@ -2207,8 +2207,8 @@ class TodoItemActionsView(discord.ui.View):
             )
         )
 
-    @discord.ui.button(emoji="🙋", style=discord.ButtonStyle.primary, row=0)
-    async def assign_to_me(
+    @discord.ui.button(emoji="📄", style=discord.ButtonStyle.primary, row=0)
+    async def duplicate_todo(
         self,
         interaction: discord.Interaction,
         _: discord.ui.Button,
@@ -2217,7 +2217,7 @@ class TodoItemActionsView(discord.ui.View):
         if not self.item_id:
             await interaction.followup.send(
                 ephemeral=True,
-                content="That item could not be assigned.",
+                content="That item could not be duplicated.",
             )
             return
 
@@ -2229,25 +2229,46 @@ class TodoItemActionsView(discord.ui.View):
             )
             return
 
-        assignees = current_item.get("assignees") or []
-        target_assignee_id: Optional[int] = (
-            None if interaction.user.id in assignees else interaction.user.id
-        )
-
-        updated_item = await asyncio.to_thread(
-            TodoFunctions.set_item_assignee,
-            self.item_id,
-            target_assignee_id,
-        )
-        if not updated_item:
-            await interaction.followup.send(
-                ephemeral=True,
-                content="That item could not be assigned.",
+        try:
+            duplicated_item, _ = await asyncio.to_thread(
+                TodoFunctions.add_item_to_list,
+                current_list,
+                interaction.user.id,
+                TodoFunctions.item_text(current_item),
+                None,
+                "todo",
+                None,
+            )
+        except ValueError as exc:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(str(exc), ephemeral=True, cause=exc),
+            )
+            return
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while duplicating that item.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
             )
             return
 
-        updated_list = await self._resolve_list_for_item(updated_item)
-        await self._refresh_source_card(interaction, updated_list, updated_item)
+        if not duplicated_item:
+            await interaction.followup.send(
+                ephemeral=True,
+                content="That item could not be duplicated.",
+            )
+            return
+
+        payload = TodoEmbeds.item_details_embed(current_list, duplicated_item)
+        await interaction.followup.send(
+            ephemeral=True,
+            content="Duplicated todo.",
+            **payload,
+        )
 
     @discord.ui.button(emoji="👥", style=discord.ButtonStyle.secondary, row=0)
     async def assign_to_user(
