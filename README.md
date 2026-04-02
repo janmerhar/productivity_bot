@@ -74,11 +74,18 @@ POMODORO_AUDIO_VOLUME
 To start the bot run the following command:
 `python main.py`
 
+For fast local development with automatic restart on code changes, run:
+`python dev.py`
+
+`dev.py` watches `main.py`, `.env`, and the Python source directories, then restarts the bot when files change. If `watchfiles` is installed it uses native file system events for near-instant reloads; otherwise it falls back to a fast polling watcher.
+
 ### Commands
 
 Toggl commands:
 
 - `aboutme` Returns information about the Toggl user.
+- `tag add` Creates a new Toggl tag in the default workspace.
+- `tag show` Shows details for a Toggl tag.
 - `start` Starts a new Toggl timer with an optional project and description.
 - `timer` Returns information about the active Toggl timer.
 - `stop` Stops the active Toggl timer.

@@ -19,8 +19,18 @@
         "console": "integratedTerminal",
         "justMyCode": true,
         "cwd": "${workspaceFolder}",
-        "envFile": "${workspaceFolder}/.env"
-      }
-    ]
-  }
+        "envFile": "${workspaceFolder}/.env",
+      },
+      {
+        "name": "Python: Run Discord Bot (Autoreload)",
+        "type": "debugpy",
+        "request": "launch",
+        "program": "${workspaceFolder}/dev.py",
+        "console": "integratedTerminal",
+        "justMyCode": true,
+        "cwd": "${workspaceFolder}",
+        "envFile": "${workspaceFolder}/.env",
+      },
+    ],
+  },
 }
