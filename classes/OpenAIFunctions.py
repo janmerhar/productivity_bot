@@ -8,7 +8,7 @@ from openai import APIError, OpenAI
 from config.env import env
 
 
-DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_OPENAI_MODEL = "gpt-5.4-mini"
 
 
 class OpenAIFunctions:
