@@ -857,6 +857,84 @@ class TodoListItemsView(discord.ui.View):
             )
         self._apply_filters()
 
+    async def open_create_modal(
+        self,
+        interaction: discord.Interaction,
+        *,
+        source_message: Optional[discord.Message],
+    ) -> None:
+        global _MODAL_SELECTS_SUPPORTED
+
+        if self.view_scope != "list" or self.todo_list.get("_id") is None:
+            await interaction.response.send_message(
+                ephemeral=True,
+                content="Open a specific list to create a task from this view.",
+            )
+            return
+
+        modal_locale = str(getattr(interaction, "locale", "") or "").strip() or None
+        try:
+            modal_timezone = await asyncio.to_thread(
+                UserSettingsFunctions.get_timezone,
+                interaction.user.id,
+            )
+        except Exception:
+            modal_timezone = None
+
+        assignee_options = self._build_assignee_select_options(
+            interaction,
+            {"assignees": []},
+        )
+        scope_item = {
+            "scope": str(self.todo_list.get("scope") or "channel"),
+            "guild_id": self.todo_list.get("guild_id"),
+            "channel_id": self.todo_list.get("channel_id"),
+            "user_id": self.todo_list.get("user_id") or interaction.user.id,
+            "list_id": self.todo_list.get("_id"),
+            "list_name": str(self.todo_list.get("name") or "List"),
+        }
+        list_options: List[discord.SelectOption] = []
+        try:
+            list_docs = await asyncio.to_thread(
+                TodoFunctions.list_candidate_lists_for_item_scope,
+                scope_item,
+                interaction.user.id,
+                25,
+            )
+            list_options = self._build_list_select_options(scope_item, list_docs)
+        except Exception:
+            list_options = []
+
+        if _MODAL_SELECTS_SUPPORTED:
+            try:
+                await interaction.response.send_modal(
+                    TodoItemCreateModal(
+                        parent_view=self,
+                        todo_list=self.todo_list,
+                        source_message=source_message,
+                        assignee_options=assignee_options,
+                        list_options=list_options,
+                        locale_code=modal_locale,
+                        timezone=modal_timezone,
+                    )
+                )
+                return
+            except discord.HTTPException as exc:
+                if exc.code == 50035 and "must be one of (4,)" in str(exc):
+                    _MODAL_SELECTS_SUPPORTED = False
+                else:
+                    raise
+
+        await interaction.response.send_modal(
+            TodoItemCreateModal(
+                parent_view=self,
+                todo_list=self.todo_list,
+                source_message=source_message,
+                locale_code=modal_locale,
+                timezone=modal_timezone,
+            )
+        )
+
     def _apply_filters(self) -> None:
         filtered_items = list(self._all_items)
         if self.assignee_filter_unassigned:
@@ -1328,75 +1406,9 @@ class TodoListItemsView(discord.ui.View):
             await self._safe_refresh_message(interaction)
 
         async def _add_callback(interaction: discord.Interaction) -> None:
-            global _MODAL_SELECTS_SUPPORTED
-            if self.view_scope != "list" or self.todo_list.get("_id") is None:
-                await interaction.response.send_message(
-                    ephemeral=True,
-                    content="Open a specific list to create a task from this view.",
-                )
-                return
-
-            modal_locale = str(getattr(interaction, "locale", "") or "").strip() or None
-            try:
-                modal_timezone = await asyncio.to_thread(
-                    UserSettingsFunctions.get_timezone,
-                    interaction.user.id,
-                )
-            except Exception:
-                modal_timezone = None
-
-            assignee_options = self._build_assignee_select_options(
+            await self.open_create_modal(
                 interaction,
-                {"assignees": []},
-            )
-            scope_item = {
-                "scope": str(self.todo_list.get("scope") or "channel"),
-                "guild_id": self.todo_list.get("guild_id"),
-                "channel_id": self.todo_list.get("channel_id"),
-                "user_id": self.todo_list.get("user_id") or interaction.user.id,
-                "list_id": self.todo_list.get("_id"),
-                "list_name": str(self.todo_list.get("name") or "List"),
-            }
-            list_options: List[discord.SelectOption] = []
-            try:
-                list_docs = await asyncio.to_thread(
-                    TodoFunctions.list_candidate_lists_for_item_scope,
-                    scope_item,
-                    interaction.user.id,
-                    25,
-                )
-                list_options = self._build_list_select_options(scope_item, list_docs)
-            except Exception:
-                list_options = []
-
-            if _MODAL_SELECTS_SUPPORTED:
-                try:
-                    await interaction.response.send_modal(
-                        TodoItemCreateModal(
-                            parent_view=self,
-                            todo_list=self.todo_list,
-                            source_message=interaction.message,
-                            assignee_options=assignee_options,
-                            list_options=list_options,
-                            locale_code=modal_locale,
-                            timezone=modal_timezone,
-                        )
-                    )
-                    return
-                except discord.HTTPException as exc:
-                    if exc.code == 50035 and "must be one of (4,)" in str(exc):
-                        _MODAL_SELECTS_SUPPORTED = False
-                    else:
-                        raise
-
-            await interaction.response.send_modal(
-                TodoItemCreateModal(
-                    parent_view=self,
-                    todo_list=self.todo_list,
-                    source_message=interaction.message,
-                    locale_code=modal_locale,
-                    timezone=modal_timezone,
-                )
+                source_message=interaction.message,
             )
 
         async def _sort_toggle_callback(interaction: discord.Interaction) -> None:
@@ -1940,7 +1952,7 @@ class TodoItemActionsView(discord.ui.View):
             self.complete_todo.disabled = True
         self.edit_todo.disabled = not self.item_id
         self.delete_todo.disabled = not self.item_id
-        self.assign_to_me.disabled = not self.item_id
+        self.duplicate_todo.disabled = not self.item_id
         self.assign_to_user.disabled = (not self.item_id) or self.guild_id is None
 
     @staticmethod
@@ -2195,8 +2207,8 @@ class TodoItemActionsView(discord.ui.View):
             )
         )
 
-    @discord.ui.button(emoji="🙋", style=discord.ButtonStyle.primary, row=0)
-    async def assign_to_me(
+    @discord.ui.button(emoji="📄", style=discord.ButtonStyle.primary, row=0)
+    async def duplicate_todo(
         self,
         interaction: discord.Interaction,
         _: discord.ui.Button,
@@ -2205,7 +2217,7 @@ class TodoItemActionsView(discord.ui.View):
         if not self.item_id:
             await interaction.followup.send(
                 ephemeral=True,
-                content="That item could not be assigned.",
+                content="That item could not be duplicated.",
             )
             return
 
@@ -2217,25 +2229,46 @@ class TodoItemActionsView(discord.ui.View):
             )
             return
 
-        assignees = current_item.get("assignees") or []
-        target_assignee_id: Optional[int] = (
-            None if interaction.user.id in assignees else interaction.user.id
-        )
-
-        updated_item = await asyncio.to_thread(
-            TodoFunctions.set_item_assignee,
-            self.item_id,
-            target_assignee_id,
-        )
-        if not updated_item:
-            await interaction.followup.send(
-                ephemeral=True,
-                content="That item could not be assigned.",
+        try:
+            duplicated_item, _ = await asyncio.to_thread(
+                TodoFunctions.add_item_to_list,
+                current_list,
+                interaction.user.id,
+                TodoFunctions.item_text(current_item),
+                None,
+                "todo",
+                None,
+            )
+        except ValueError as exc:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(str(exc), ephemeral=True, cause=exc),
+            )
+            return
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while duplicating that item.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
             )
             return
 
-        updated_list = await self._resolve_list_for_item(updated_item)
-        await self._refresh_source_card(interaction, updated_list, updated_item)
+        if not duplicated_item:
+            await interaction.followup.send(
+                ephemeral=True,
+                content="That item could not be duplicated.",
+            )
+            return
+
+        payload = TodoEmbeds.item_details_embed(current_list, duplicated_item)
+        await interaction.followup.send(
+            ephemeral=True,
+            content="Duplicated todo.",
+            **payload,
+        )
 
     @discord.ui.button(emoji="👥", style=discord.ButtonStyle.secondary, row=0)
     async def assign_to_user(
@@ -2542,6 +2575,20 @@ class TodoEmbeds:
         return {"embed": embed}
 
     @staticmethod
+    def list_description_embed(
+        title: str,
+        description: Optional[str] = None,
+        color: Optional[discord.Colour] = None,
+    ) -> dict:
+        embed = discord.Embed(
+            title=(str(title or "").strip() or "Todo List")[:256],
+            description=(str(description or "").strip() or None),
+            color=color or discord.Colour.blurple(),
+        )
+
+        return {"embed": embed}
+
+    @staticmethod
     def list_items_embed(
         todo_list: Dict[str, Any],
         items: List[Dict[str, Any]],
@@ -2673,6 +2720,58 @@ class TodoEmbeds:
                 f"Sort: {sort} | Status: {status_label} | {mine_filter}"
             )
         )
+        return {"embed": embed}
+
+    @staticmethod
+    def list_directory_embed(
+        server_lists: List[Dict[str, Any]],
+        personal_lists: List[Dict[str, Any]],
+    ) -> dict:
+        embed = discord.Embed(
+            title="Available Todo Lists",
+            color=discord.Colour.blurple(),
+        )
+
+        if not server_lists and not personal_lists:
+            embed.description = "No todo lists available."
+            return {"embed": embed}
+
+        if server_lists:
+            server_lines = []
+            for entry in server_lists:
+                name = str(entry.get("name") or "Unnamed")
+                count = int(entry.get("item_count") or 0)
+                label = str(entry.get("label") or "").strip()
+                if label:
+                    server_lines.append(f"• {label}: `{name}` ({count})")
+                else:
+                    server_lines.append(f"• `{name}` ({count})")
+            embed.add_field(
+                name="Server",
+                value="\n".join(server_lines),
+                inline=False,
+            )
+
+        if personal_lists:
+            personal_lines = []
+            for entry in personal_lists:
+                name = str(entry.get("name") or "Unnamed")
+                count = int(entry.get("item_count") or 0)
+                label = str(entry.get("label") or "").strip()
+                if label:
+                    personal_lines.append(f"• {label}: `{name}` ({count})")
+                else:
+                    personal_lines.append(f"• `{name}` ({count})")
+            embed.add_field(
+                name="Personal",
+                value="\n".join(personal_lines),
+                inline=False,
+            )
+
+        total_lists = len(server_lists) + len(personal_lists)
+        total_items = sum(int(entry.get("item_count") or 0) for entry in server_lists)
+        total_items += sum(int(entry.get("item_count") or 0) for entry in personal_lists)
+        embed.set_footer(text=f"Lists: {total_lists} | Items: {total_items}")
         return {"embed": embed}
 
     @staticmethod

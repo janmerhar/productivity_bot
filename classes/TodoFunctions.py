@@ -15,6 +15,8 @@ class TodoFunctions:
     _MAX_ITEM_TEXT_LEN = 800
     _MAX_TITLE_LEN = 100
     _ALLOWED_ITEM_STATUSES = {"todo", "in_progress", "done"}
+    _DEFAULT_LIST_TYPE = "default"
+    _CUSTOM_LIST_TYPE = "custom"
 
     @staticmethod
     def _normalize_scope(scope: str) -> str:
@@ -30,6 +32,19 @@ class TodoFunctions:
                 f"List name must be at most {TodoFunctions._MAX_LIST_NAME_LEN} characters."
             )
         return cleaned
+
+    @staticmethod
+    def list_type(todo_list: Optional[Dict[str, Any]]) -> str:
+        if not todo_list:
+            return TodoFunctions._CUSTOM_LIST_TYPE
+
+        explicit = str(todo_list.get("list_type") or "").strip().lower()
+        if explicit in {
+            TodoFunctions._DEFAULT_LIST_TYPE,
+            TodoFunctions._CUSTOM_LIST_TYPE,
+        }:
+            return explicit
+        return TodoFunctions._CUSTOM_LIST_TYPE
 
     @staticmethod
     def _clean_item_text(text: str) -> str:
@@ -307,6 +322,7 @@ class TodoFunctions:
             "scope": scope_value,
             "guild_id": guild_id,
             "channel_id": channel_id,
+            "name_key": name_key,
         }
         existing = mongo_db["todo_lists"].find_one(query)
         if existing:
@@ -315,6 +331,8 @@ class TodoFunctions:
                 updates["name"] = list_name
             if existing.get("name_key") != name_key:
                 updates["name_key"] = name_key
+            if existing.get("list_type") != TodoFunctions._DEFAULT_LIST_TYPE:
+                updates["list_type"] = TodoFunctions._DEFAULT_LIST_TYPE
             if updates:
                 mongo_db["todo_lists"].update_one(
                     {"_id": existing["_id"]},
@@ -330,6 +348,7 @@ class TodoFunctions:
             "guild_id": guild_id,
             "channel_id": channel_id,
             "user_id": user_id,
+            "list_type": TodoFunctions._DEFAULT_LIST_TYPE,
             "created_at": datetime.datetime.utcnow().isoformat(),
         }
 
@@ -354,6 +373,19 @@ class TodoFunctions:
         }
         existing = mongo_db["todo_lists"].find_one(query)
         if existing:
+            updates: Dict[str, Any] = {}
+            if existing.get("name") != list_name:
+                updates["name"] = list_name
+            if existing.get("name_key") != list_name.lower():
+                updates["name_key"] = list_name.lower()
+            if existing.get("list_type") != TodoFunctions._DEFAULT_LIST_TYPE:
+                updates["list_type"] = TodoFunctions._DEFAULT_LIST_TYPE
+            if updates:
+                mongo_db["todo_lists"].update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": updates},
+                )
+                existing.update(updates)
             return existing
 
         document: Dict[str, Any] = {
@@ -363,6 +395,7 @@ class TodoFunctions:
             "guild_id": guild_id,
             "channel_id": None,
             "user_id": user_id,
+            "list_type": TodoFunctions._DEFAULT_LIST_TYPE,
             "created_at": datetime.datetime.utcnow().isoformat(),
         }
         result = mongo_db["todo_lists"].insert_one(document)
@@ -399,9 +432,23 @@ class TodoFunctions:
             "user_id": user_id,
             "channel_id": None,
             "guild_id": None,
+            "name_key": "personal",
         }
         existing = mongo_db["todo_lists"].find_one(query)
         if existing:
+            updates: Dict[str, Any] = {}
+            if existing.get("name") != "Personal":
+                updates["name"] = "Personal"
+            if existing.get("name_key") != "personal":
+                updates["name_key"] = "personal"
+            if existing.get("list_type") != TodoFunctions._DEFAULT_LIST_TYPE:
+                updates["list_type"] = TodoFunctions._DEFAULT_LIST_TYPE
+            if updates:
+                mongo_db["todo_lists"].update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": updates},
+                )
+                existing.update(updates)
             return existing
 
         document: Dict[str, Any] = {
@@ -411,6 +458,7 @@ class TodoFunctions:
             "guild_id": None,
             "channel_id": None,
             "user_id": user_id,
+            "list_type": TodoFunctions._DEFAULT_LIST_TYPE,
             "created_at": datetime.datetime.utcnow().isoformat(),
         }
         result = mongo_db["todo_lists"].insert_one(document)
@@ -619,10 +667,10 @@ class TodoFunctions:
         scope_value = TodoFunctions._normalize_scope(scope)
 
         if scope_value == "channel" and guild_id is None:
-            raise ValueError("Channel lists can only be created in servers.")
+            raise ValueError("Server lists can only be created in servers.")
 
         stored_guild_id = None if scope_value == "personal" else guild_id
-        stored_channel_id = None if scope_value == "personal" else channel_id
+        stored_channel_id = None
         query = TodoFunctions._build_list_query(
             stored_guild_id,
             user_id,
@@ -642,6 +690,7 @@ class TodoFunctions:
             "guild_id": stored_guild_id,
             "channel_id": stored_channel_id,
             "user_id": user_id,
+            "list_type": TodoFunctions._CUSTOM_LIST_TYPE,
             "created_at": datetime.datetime.utcnow().isoformat(),
         }
 
@@ -676,6 +725,117 @@ class TodoFunctions:
         if object_id is None:
             return None
         return mongo_db["todo_lists"].find_one({"_id": object_id})
+
+    @staticmethod
+    def list_custom_lists_for_context(
+        guild_id: Optional[int],
+        user_id: int,
+        channel_id: Optional[int],
+        limit: int = 25,
+    ) -> List[Dict[str, Any]]:
+        capped_limit = max(1, min(limit, 100))
+        queries: List[Dict[str, Any]] = [
+            {
+                "scope": "personal",
+                "user_id": user_id,
+                "list_type": TodoFunctions._CUSTOM_LIST_TYPE,
+            }
+        ]
+        if guild_id is not None:
+            queries.append(
+                {
+                    "scope": "channel",
+                    "guild_id": guild_id,
+                    "channel_id": None,
+                    "list_type": TodoFunctions._CUSTOM_LIST_TYPE,
+                }
+            )
+
+        query: Dict[str, Any]
+        if len(queries) == 1:
+            query = queries[0]
+        else:
+            query = {"$or": queries}
+
+        cursor = (
+            mongo_db["todo_lists"]
+            .find(query, {"name": 1, "scope": 1, "channel_id": 1, "list_type": 1})
+            .sort([("scope", 1), ("name", 1)])
+            .limit(capped_limit)
+        )
+        return list(cursor)
+
+    @staticmethod
+    def list_custom_lists_for_scope(
+        guild_id: Optional[int],
+        user_id: int,
+        channel_id: Optional[int],
+        scope: str,
+        limit: int = 25,
+    ) -> List[Dict[str, Any]]:
+        scope_value = TodoFunctions._normalize_scope(scope)
+        capped_limit = max(1, min(limit, 100))
+        if scope_value == "personal":
+            query: Dict[str, Any] = {
+                "scope": "personal",
+                "user_id": user_id,
+                "list_type": TodoFunctions._CUSTOM_LIST_TYPE,
+            }
+        else:
+            query = {
+                "scope": "channel",
+                "guild_id": guild_id,
+                "channel_id": None,
+                "list_type": TodoFunctions._CUSTOM_LIST_TYPE,
+            }
+
+        cursor = (
+            mongo_db["todo_lists"]
+            .find(query, {"name": 1, "scope": 1, "channel_id": 1, "list_type": 1})
+            .sort("name", 1)
+            .limit(capped_limit)
+        )
+        return list(cursor)
+
+    @staticmethod
+    def rename_todo_list(
+        list_id: Any,
+        new_name: str,
+    ) -> Optional[Dict[str, Any]]:
+        object_id = TodoFunctions._coerce_object_id(list_id)
+        if object_id is None:
+            return None
+
+        current = mongo_db["todo_lists"].find_one({"_id": object_id})
+        if not current:
+            return None
+        if TodoFunctions.list_type(current) != TodoFunctions._CUSTOM_LIST_TYPE:
+            raise ValueError("Only custom lists can be renamed.")
+
+        cleaned_name = TodoFunctions._clean_list_name(new_name)
+        duplicate_query = TodoFunctions._build_list_query(
+            current.get("guild_id"),
+            int(current.get("user_id") or 0),
+            current.get("channel_id"),
+            cleaned_name,
+            str(current.get("scope") or "channel"),
+        )
+        duplicate = mongo_db["todo_lists"].find_one(duplicate_query)
+        if duplicate and duplicate.get("_id") != object_id:
+            raise ValueError("A list with that name already exists in this scope.")
+
+        updated = mongo_db["todo_lists"].find_one_and_update(
+            {"_id": object_id},
+            {
+                "$set": {
+                    "name": cleaned_name,
+                    "name_key": cleaned_name.lower(),
+                    "list_type": TodoFunctions._CUSTOM_LIST_TYPE,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        return updated
 
     @staticmethod
     def list_candidate_lists_for_item_scope(
@@ -863,6 +1023,13 @@ class TodoFunctions:
             }
         )
         return deleted.deleted_count
+
+    @staticmethod
+    def count_items_on_list(list_id: Any) -> int:
+        object_id = TodoFunctions._coerce_object_id(list_id)
+        if object_id is None:
+            return 0
+        return mongo_db["todos"].count_documents({"list_id": object_id})
 
     @staticmethod
     def _next_item_number(list_id: ObjectId) -> int:
