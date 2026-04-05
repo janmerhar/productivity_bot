@@ -226,10 +226,6 @@ class TodoListDirectoryView(discord.ui.View):
                     "_id": inbox_list.get("_id"),
                     "label": "Built-in",
                     "name": TodoFunctions.display_list_name(inbox_list, "Inbox"),
-                    "item_count": await asyncio.to_thread(
-                        TodoFunctions.count_items_on_list,
-                        inbox_list.get("_id"),
-                    ),
                 }
             )
 
@@ -246,10 +242,6 @@ class TodoListDirectoryView(discord.ui.View):
                     "_id": channel_list.get("_id"),
                     "label": "Built-in",
                     "name": TodoFunctions.display_list_name(channel_list, "This Channel"),
-                    "item_count": await asyncio.to_thread(
-                        TodoFunctions.count_items_on_list,
-                        channel_list.get("_id"),
-                    ),
                 }
             )
 
@@ -267,10 +259,6 @@ class TodoListDirectoryView(discord.ui.View):
                         "_id": todo_list.get("_id"),
                         "label": "Custom",
                         "name": TodoFunctions.display_list_name(todo_list, "Unnamed"),
-                        "item_count": await asyncio.to_thread(
-                            TodoFunctions.count_items_on_list,
-                            todo_list.get("_id"),
-                        ),
                     }
                 )
 
@@ -288,10 +276,6 @@ class TodoListDirectoryView(discord.ui.View):
                     "_id": personal_list.get("_id"),
                     "label": "Built-in",
                     "name": TodoFunctions.display_list_name(personal_list, "Personal"),
-                    "item_count": await asyncio.to_thread(
-                        TodoFunctions.count_items_on_list,
-                        personal_list.get("_id"),
-                    ),
                 }
             )
 
@@ -309,12 +293,16 @@ class TodoListDirectoryView(discord.ui.View):
                         "_id": todo_list.get("_id"),
                         "label": "Custom",
                         "name": TodoFunctions.display_list_name(todo_list, "Unnamed"),
-                        "item_count": await asyncio.to_thread(
-                            TodoFunctions.count_items_on_list,
-                            todo_list.get("_id"),
-                        ),
                     }
                 )
+
+        all_lists = [*server_lists, *personal_lists]
+        item_counts = await asyncio.to_thread(
+            TodoFunctions.count_items_for_lists,
+            [entry.get("_id") for entry in all_lists],
+        )
+        for entry in all_lists:
+            entry["item_count"] = item_counts.get(str(entry.get("_id") or ""), 0)
 
         self.entries = [
             *[self._normalize_entry("Server", entry) for entry in server_lists],

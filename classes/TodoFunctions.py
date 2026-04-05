@@ -1076,6 +1076,32 @@ class TodoFunctions:
         return mongo_db["todos"].count_documents({"list_id": object_id})
 
     @staticmethod
+    def count_items_for_lists(list_ids: List[Any]) -> Dict[str, int]:
+        object_ids: List[ObjectId] = []
+        seen_ids: set[ObjectId] = set()
+        for value in list_ids:
+            object_id = TodoFunctions._coerce_object_id(value)
+            if object_id is None or object_id in seen_ids:
+                continue
+            object_ids.append(object_id)
+            seen_ids.add(object_id)
+
+        if not object_ids:
+            return {}
+
+        pipeline = [
+            {"$match": {"list_id": {"$in": object_ids}}},
+            {"$group": {"_id": "$list_id", "count": {"$sum": 1}}},
+        ]
+        counts: Dict[str, int] = {}
+        for row in mongo_db["todos"].aggregate(pipeline):
+            list_id = row.get("_id")
+            if list_id is None:
+                continue
+            counts[str(list_id)] = int(row.get("count") or 0)
+        return counts
+
+    @staticmethod
     def _next_item_number(list_id: ObjectId) -> int:
         latest = (
             mongo_db["todos"]
