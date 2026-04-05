@@ -17,6 +17,7 @@ class TodoFunctions:
     _ALLOWED_ITEM_STATUSES = {"todo", "in_progress", "done"}
     _DEFAULT_LIST_TYPE = "default"
     _CUSTOM_LIST_TYPE = "custom"
+    _SERVER_INBOX_DISPLAY_NAME = "Server Inbox"
 
     @staticmethod
     def _normalize_scope(scope: str) -> str:
@@ -45,6 +46,26 @@ class TodoFunctions:
         }:
             return explicit
         return TodoFunctions._CUSTOM_LIST_TYPE
+
+    @staticmethod
+    def is_server_inbox_list(todo_list: Optional[Dict[str, Any]]) -> bool:
+        if not todo_list:
+            return False
+        return (
+            TodoFunctions._normalize_scope(str(todo_list.get("scope") or "")) == "channel"
+            and todo_list.get("guild_id") is not None
+            and todo_list.get("channel_id") is None
+            and TodoFunctions.list_type(todo_list) == TodoFunctions._DEFAULT_LIST_TYPE
+        )
+
+    @staticmethod
+    def display_list_name(
+        todo_list: Optional[Dict[str, Any]],
+        fallback: str = "List",
+    ) -> str:
+        if TodoFunctions.is_server_inbox_list(todo_list):
+            return TodoFunctions._SERVER_INBOX_DISPLAY_NAME
+        return str((todo_list or {}).get("name") or fallback)
 
     @staticmethod
     def _clean_item_text(text: str) -> str:
@@ -369,9 +390,19 @@ class TodoFunctions:
             "scope": "channel",
             "guild_id": guild_id,
             "channel_id": None,
-            "name_key": list_name.lower(),
+            "list_type": TodoFunctions._DEFAULT_LIST_TYPE,
         }
         existing = mongo_db["todo_lists"].find_one(query)
+        if not existing:
+            existing = mongo_db["todo_lists"].find_one(
+                {
+                    "scope": "channel",
+                    "guild_id": guild_id,
+                    "channel_id": None,
+                    "name_key": list_name.lower(),
+                    "list_type": {"$ne": TodoFunctions._CUSTOM_LIST_TYPE},
+                }
+            )
         if existing:
             updates: Dict[str, Any] = {}
             if existing.get("name") != list_name:
@@ -864,7 +895,7 @@ class TodoFunctions:
         capped_limit = max(1, min(limit, 25))
         cursor = (
             mongo_db["todo_lists"]
-            .find(query, {"name": 1, "channel_id": 1, "scope": 1})
+            .find(query, {"name": 1, "channel_id": 1, "scope": 1, "list_type": 1, "guild_id": 1})
             .sort("name", 1)
             .limit(capped_limit)
         )
@@ -1133,10 +1164,10 @@ class TodoFunctions:
         sort_direction = 1 if sort == "ascending" else -1
         list_docs = mongo_db["todo_lists"].find(
             {"guild_id": guild_id, "scope": "channel"},
-            {"_id": 1, "name": 1},
+            {"_id": 1, "name": 1, "channel_id": 1, "scope": 1, "list_type": 1, "guild_id": 1},
         )
         list_name_map: Dict[ObjectId, str] = {
-            doc["_id"]: str(doc.get("name") or "Unnamed")
+            doc["_id"]: TodoFunctions.display_list_name(doc, "Unnamed")
             for doc in list_docs
             if isinstance(doc.get("_id"), ObjectId)
         }

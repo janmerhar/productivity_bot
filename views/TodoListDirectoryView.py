@@ -216,6 +216,23 @@ class TodoListDirectoryView(discord.ui.View):
         personal_lists: List[Dict[str, Any]] = []
 
         if self.current_scope == "server" and self.guild_id is not None:
+            server_inbox = await asyncio.to_thread(
+                TodoFunctions.get_or_create_server_global_list,
+                self.guild_id,
+                self.user_id,
+            )
+            server_lists.append(
+                {
+                    "_id": server_inbox.get("_id"),
+                    "label": "Built-in",
+                    "name": TodoFunctions.display_list_name(server_inbox, "Server Inbox"),
+                    "item_count": await asyncio.to_thread(
+                        TodoFunctions.count_items_on_list,
+                        server_inbox.get("_id"),
+                    ),
+                }
+            )
+
             channel_list = await asyncio.to_thread(
                 TodoFunctions.get_or_create_implicit_list,
                 self.guild_id,
@@ -228,7 +245,7 @@ class TodoListDirectoryView(discord.ui.View):
                 {
                     "_id": channel_list.get("_id"),
                     "label": "Built-in",
-                    "name": str(channel_list.get("name") or "This Channel"),
+                    "name": TodoFunctions.display_list_name(channel_list, "This Channel"),
                     "item_count": await asyncio.to_thread(
                         TodoFunctions.count_items_on_list,
                         channel_list.get("_id"),
@@ -249,7 +266,7 @@ class TodoListDirectoryView(discord.ui.View):
                     {
                         "_id": todo_list.get("_id"),
                         "label": "Custom",
-                        "name": str(todo_list.get("name") or "Unnamed"),
+                        "name": TodoFunctions.display_list_name(todo_list, "Unnamed"),
                         "item_count": await asyncio.to_thread(
                             TodoFunctions.count_items_on_list,
                             todo_list.get("_id"),
@@ -270,7 +287,7 @@ class TodoListDirectoryView(discord.ui.View):
                 {
                     "_id": personal_list.get("_id"),
                     "label": "Built-in",
-                    "name": str(personal_list.get("name") or "Personal"),
+                    "name": TodoFunctions.display_list_name(personal_list, "Personal"),
                     "item_count": await asyncio.to_thread(
                         TodoFunctions.count_items_on_list,
                         personal_list.get("_id"),
@@ -291,7 +308,7 @@ class TodoListDirectoryView(discord.ui.View):
                     {
                         "_id": todo_list.get("_id"),
                         "label": "Custom",
-                        "name": str(todo_list.get("name") or "Unnamed"),
+                        "name": TodoFunctions.display_list_name(todo_list, "Unnamed"),
                         "item_count": await asyncio.to_thread(
                             TodoFunctions.count_items_on_list,
                             todo_list.get("_id"),
@@ -350,7 +367,7 @@ class TodoListDirectoryView(discord.ui.View):
         result_view = TodoListDescriptionView(
             title="Todo List",
             description=(
-                f"List: `{todo_list.get('name') or 'List'}`\n"
+                f"List: `{TodoFunctions.display_list_name(todo_list, 'List')}`\n"
                 f"Items: `{item_count}`"
             ),
             color=discord.Colour.blurple(),

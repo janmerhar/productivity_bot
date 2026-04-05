@@ -160,7 +160,7 @@ class TodoCog(commands.Cog):
 
     @staticmethod
     def _custom_list_option_label(todo_list: Dict[str, Any]) -> str:
-        name = str(todo_list.get("name") or "Unnamed").strip() or "Unnamed"
+        name = TodoFunctions.display_list_name(todo_list, "Unnamed").strip() or "Unnamed"
         scope_value = TodoFunctions._normalize_scope(str(todo_list.get("scope") or ""))
         if scope_value == "personal":
             return f"Personal / {name}"[:100]
@@ -225,6 +225,19 @@ class TodoCog(commands.Cog):
                     ephemeral=True,
                 )
             return None, "channel", True
+
+        if target_value == "__server_global__":
+            if interaction.guild_id is None:
+                raise ValidationError(
+                    "Server Inbox is only available in servers.",
+                    ephemeral=True,
+                )
+            todo_list = await asyncio.to_thread(
+                TodoFunctions.get_or_create_server_global_list,
+                interaction.guild_id,
+                interaction.user.id,
+            )
+            return todo_list, "channel", False
 
         if target_value == "personal":
             todo_list = await asyncio.to_thread(
@@ -312,17 +325,19 @@ class TodoCog(commands.Cog):
                     app_commands.Choice(name="Personal", value="personal"),
                 ]
             else:
-                base_options = [
-                    app_commands.Choice(name="This Channel", value="channel"),
-                    app_commands.Choice(name="Personal", value="personal"),
-                ]
-            if interaction.guild is not None and include_all_server:
-                base_options.insert(
-                    1,
-                    app_commands.Choice(
-                        name="All Server Channels",
-                        value="all_server",
-                    ),
+                base_options = [app_commands.Choice(name="This Channel", value="channel")]
+                if include_all_server:
+                    base_options.append(
+                        app_commands.Choice(
+                            name="All Server Channels",
+                            value="all_server",
+                        )
+                    )
+                base_options.extend(
+                    [
+                        app_commands.Choice(name="Server Inbox", value="__server_global__"),
+                        app_commands.Choice(name="Personal", value="personal"),
+                    ]
                 )
 
             options.extend(
@@ -435,7 +450,7 @@ class TodoCog(commands.Cog):
                 result_view = TodoListDescriptionView(
                     title="Todo List Cleared",
                     description=(
-                        f"List: `{refreshed_list.get('name') or 'List'}`\n"
+                        f"List: `{TodoFunctions.display_list_name(refreshed_list, 'List')}`\n"
                         f"Removed items: `{deleted_count}`"
                     ),
                     color=discord.Colour.orange(),
@@ -488,7 +503,7 @@ class TodoCog(commands.Cog):
                     ephemeral=ephemeral,
                 )
 
-            list_name = str(refreshed_list.get("name") or "List")
+            list_name = TodoFunctions.display_list_name(refreshed_list, "List")
             deleted, deleted_count = await asyncio.to_thread(
                 TodoFunctions.delete_todo_list,
                 refreshed_list.get("_id"),
@@ -603,16 +618,6 @@ class TodoCog(commands.Cog):
                 cause=exc,
             )
 
-        if not items:
-            payload = TodoEmbeds.list_items_embed(
-                todo_list,
-                items,
-                sort_value,
-                status_value,
-            )
-            await interaction.followup.send(ephemeral=ephemeral, **payload)
-            return
-
         view = TodoListItemsView(
             todo_list=todo_list,
             items=items,
@@ -686,7 +691,7 @@ class TodoCog(commands.Cog):
             else:
                 if todo_list is None:
                     raise ValueError("That list was not found.")
-                list_name = str(todo_list.get("name") or "List")
+                list_name = TodoFunctions.display_list_name(todo_list, "List")
                 item_count = await asyncio.to_thread(
                     TodoFunctions.count_items_on_list,
                     todo_list["_id"],
@@ -772,6 +777,23 @@ class TodoCog(commands.Cog):
 
         try:
             if interaction.guild_id is not None and scope_value == "server":
+                server_inbox = await asyncio.to_thread(
+                    TodoFunctions.get_or_create_server_global_list,
+                    interaction.guild_id,
+                    interaction.user.id,
+                )
+                server_lists.append(
+                    {
+                        "_id": server_inbox.get("_id"),
+                        "label": "Built-in",
+                        "name": TodoFunctions.display_list_name(server_inbox, "Server Inbox"),
+                        "item_count": await asyncio.to_thread(
+                            TodoFunctions.count_items_on_list,
+                            server_inbox.get("_id"),
+                        ),
+                    }
+                )
+
                 channel_list = await asyncio.to_thread(
                     TodoFunctions.get_or_create_implicit_list,
                     interaction.guild_id,
@@ -784,7 +806,7 @@ class TodoCog(commands.Cog):
                     {
                         "_id": channel_list.get("_id"),
                         "label": "Built-in",
-                        "name": str(channel_list.get("name") or "This Channel"),
+                        "name": TodoFunctions.display_list_name(channel_list, "This Channel"),
                         "item_count": await asyncio.to_thread(
                             TodoFunctions.count_items_on_list,
                             channel_list.get("_id"),
@@ -805,7 +827,7 @@ class TodoCog(commands.Cog):
                         {
                             "_id": todo_list.get("_id"),
                             "label": "Custom",
-                            "name": str(todo_list.get("name") or "Unnamed"),
+                            "name": TodoFunctions.display_list_name(todo_list, "Unnamed"),
                             "item_count": await asyncio.to_thread(
                                 TodoFunctions.count_items_on_list,
                                 todo_list.get("_id"),
@@ -826,7 +848,7 @@ class TodoCog(commands.Cog):
                     {
                         "_id": personal_list.get("_id"),
                         "label": "Built-in",
-                        "name": str(personal_list.get("name") or "Personal"),
+                        "name": TodoFunctions.display_list_name(personal_list, "Personal"),
                         "item_count": await asyncio.to_thread(
                             TodoFunctions.count_items_on_list,
                             personal_list.get("_id"),
@@ -847,7 +869,7 @@ class TodoCog(commands.Cog):
                         {
                             "_id": todo_list.get("_id"),
                             "label": "Custom",
-                            "name": str(todo_list.get("name") or "Unnamed"),
+                            "name": TodoFunctions.display_list_name(todo_list, "Unnamed"),
                             "item_count": await asyncio.to_thread(
                                 TodoFunctions.count_items_on_list,
                                 todo_list.get("_id"),
@@ -1076,7 +1098,7 @@ class TodoCog(commands.Cog):
             visibility,
         )
         try:
-            list_name = str(todo_list.get("name") or "List")
+            list_name = TodoFunctions.display_list_name(todo_list, "List")
             item_count = await asyncio.to_thread(
                 TodoFunctions.count_items_on_list,
                 todo_list.get("_id"),

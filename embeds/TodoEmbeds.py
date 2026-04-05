@@ -192,7 +192,9 @@ class TodoItemEditModal(discord.ui.Modal):
         self.current_status = current_status
         self.current_list_id = str(item.get("list_id") or "")
         self.current_list_name = str(
-            item.get("list_name") or parent_view.todo_list.get("name") or ""
+            item.get("list_name")
+            or TodoFunctions.display_list_name(parent_view.todo_list, "")
+            or ""
         ).strip()
         assignees = item.get("assignees") or []
         current_assignee = f"<@{assignees[0]}>" if assignees else "none"
@@ -539,7 +541,7 @@ class TodoItemCreateModal(discord.ui.Modal):
         locale_code: Optional[str] = None,
         timezone: Optional[str] = None,
     ) -> None:
-        modal_title = f"Add to {str(todo_list.get('name') or 'List')}"
+        modal_title = f"Add to {TodoFunctions.display_list_name(todo_list, 'List')}"
         if len(modal_title) > 45:
             modal_title = modal_title[:42].rstrip() + "..."
         super().__init__(title=modal_title)
@@ -549,7 +551,9 @@ class TodoItemCreateModal(discord.ui.Modal):
         self.locale_code = DueDateService.normalize_locale_code(locale_code)
         self.timezone = timezone
         self.current_list_id = str(todo_list.get("_id") or "")
-        self.current_list_name = str(todo_list.get("name") or "List").strip() or "List"
+        self.current_list_name = (
+            TodoFunctions.display_list_name(todo_list, "List").strip() or "List"
+        )
         self.scope_item: Dict[str, Any] = {
             "scope": str(todo_list.get("scope") or "channel"),
             "guild_id": todo_list.get("guild_id"),
@@ -785,7 +789,10 @@ class TodoListOptionsModal(discord.ui.Modal):
         parent_view: "TodoListItemsView",
         source_message: Optional[discord.Message],
     ) -> None:
-        list_name = str(parent_view.todo_list.get("name") or "List").strip() or "List"
+        list_name = (
+            TodoFunctions.display_list_name(parent_view.todo_list, "List").strip()
+            or "List"
+        )
         modal_title = f"View Options • {list_name}"
         if len(modal_title) > 45:
             modal_title = modal_title[:42].rstrip() + "..."
@@ -1154,7 +1161,7 @@ class TodoListItemsView(discord.ui.View):
             "channel_id": self.todo_list.get("channel_id"),
             "user_id": self.todo_list.get("user_id") or interaction.user.id,
             "list_id": self.todo_list.get("_id"),
-            "list_name": str(self.todo_list.get("name") or "List"),
+            "list_name": TodoFunctions.display_list_name(self.todo_list, "List"),
         }
         list_options: List[discord.SelectOption] = []
         try:
@@ -1337,7 +1344,9 @@ class TodoListItemsView(discord.ui.View):
     ) -> List[discord.SelectOption]:
         current_list_id = str(item.get("list_id") or "")
         current_list_name = str(
-            item.get("list_name") or self.todo_list.get("name") or "Current list"
+            item.get("list_name")
+            or TodoFunctions.display_list_name(self.todo_list, "Current list")
+            or "Current list"
         )
         current_scope = TodoFunctions._normalize_scope(
             str(item.get("scope") or "channel")
@@ -1363,18 +1372,17 @@ class TodoListItemsView(discord.ui.View):
             if list_id in seen_ids:
                 continue
 
-            name = str(list_doc.get("name") or "Unnamed")
+            name = TodoFunctions.display_list_name(list_doc, "Unnamed")
             scope = str(list_doc.get("scope") or "")
             channel_id = list_doc.get("channel_id")
             if scope == "channel" and channel_id is not None:
                 label = name if name.startswith("#") else f"#{name}"
             elif scope == "channel":
-                has_server_global_entry = True
-                label = (
-                    "Server (global)"
-                    if name.strip().lower() == "server"
-                    else f"Server (global) - {name}"
-                )
+                if TodoFunctions.is_server_inbox_list(list_doc):
+                    has_server_global_entry = True
+                    label = TodoFunctions._SERVER_INBOX_DISPLAY_NAME
+                else:
+                    label = f"Server - {name}"
             elif scope == "personal":
                 label = (
                     "Personal"
@@ -1406,6 +1414,8 @@ class TodoListItemsView(discord.ui.View):
                     if current_list_name.startswith("#")
                     else f"#{current_list_name}"
                 )
+            elif current_scope == "channel":
+                fallback_label = TodoFunctions._SERVER_INBOX_DISPLAY_NAME
             elif current_scope == "personal":
                 fallback_label = (
                     "Personal"
@@ -1433,7 +1443,7 @@ class TodoListItemsView(discord.ui.View):
             if not has_server_global_entry:
                 top_options.append(
                     discord.SelectOption(
-                        label="Global",
+                        label=TodoFunctions._SERVER_INBOX_DISPLAY_NAME,
                         value="__server_global__",
                         default=(current_channel_id is None and not has_default),
                     )
@@ -2439,7 +2449,7 @@ class TodoItemActionsView(discord.ui.View):
             TodoDeleteConfirmModal(
                 item_id=self.item_id,
                 item_name=self.item_name,
-                list_name=str(self.todo_list.get("name") or "List"),
+                list_name=TodoFunctions.display_list_name(self.todo_list, "List"),
                 source_message=interaction.message,
             )
         )
@@ -2711,7 +2721,7 @@ class TodoEmbeds:
 
     @staticmethod
     def _list_title(todo_list: Dict[str, Any]) -> str:
-        list_name = str(todo_list.get("name") or "Unnamed")
+        list_name = TodoFunctions.display_list_name(todo_list, "Unnamed")
         return f"Tasks • {list_name}"
 
     @staticmethod
@@ -3082,7 +3092,7 @@ class TodoEmbeds:
         mentions = " ".join(f"<@{uid}>" for uid in assignees) if assignees else "None"
 
         embed = discord.Embed(
-            title=f"{todo_list.get('name') or 'List'} | {task_name}",
+            title=f"{TodoFunctions.display_list_name(todo_list, 'List')} | {task_name}",
             color=discord.Colour.blurple(),
             description=text if len(text) <= 3500 else text[:3497] + "...",
         )

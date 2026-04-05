@@ -122,7 +122,7 @@ class TodoListDescriptionView(discord.ui.View):
     def list_name(self) -> str:
         if not self.todo_list:
             return "List"
-        return str(self.todo_list.get("name") or "List")
+        return TodoFunctions.display_list_name(self.todo_list, "List")
 
     def sync_button_state(self) -> None:
         has_list = bool(self.todo_list and self.todo_list.get("_id"))
@@ -235,19 +235,11 @@ class TodoListDescriptionView(discord.ui.View):
 
         self.embed_title = "Todo List Cleared"
         self.embed_description = (
-            f"List: `{todo_list.get('name') or 'List'}`\n"
+            f"List: `{TodoFunctions.display_list_name(todo_list, 'List')}`\n"
             f"Removed items: `{deleted_count}`"
         )
         self.color = discord.Colour.orange()
         await self.refresh_message(interaction)
-        await interaction.followup.send(
-            ephemeral=True,
-            **TodoEmbeds.list_description_embed(
-                title="Done",
-                description="List cleared.",
-                color=discord.Colour.orange(),
-            ),
-        )
 
     async def _run_delete_list(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
@@ -259,7 +251,7 @@ class TodoListDescriptionView(discord.ui.View):
             )
             return
 
-        list_name = str(todo_list.get("name") or "List")
+        list_name = TodoFunctions.display_list_name(todo_list, "List")
         try:
             deleted, deleted_count = await asyncio.to_thread(
                 TodoFunctions.delete_todo_list,
@@ -293,14 +285,6 @@ class TodoListDescriptionView(discord.ui.View):
         self.sync_button_state()
         self.stop()
         await self.refresh_message(interaction)
-        await interaction.followup.send(
-            ephemeral=True,
-            **TodoEmbeds.list_description_embed(
-                title="Done",
-                description="List deleted.",
-                color=discord.Colour.red(),
-            ),
-        )
 
     @discord.ui.button(emoji="📋", style=discord.ButtonStyle.secondary, row=0)
     async def show_list(
@@ -332,11 +316,6 @@ class TodoListDescriptionView(discord.ui.View):
                     cause=exc,
                 ),
             )
-            return
-
-        if not items:
-            payload = TodoEmbeds.list_items_embed(todo_list, items, "ascending", "all")
-            await interaction.response.send_message(ephemeral=True, **payload)
             return
 
         view = TodoListItemsView(
@@ -433,7 +412,7 @@ class TodoListDescriptionView(discord.ui.View):
 
         description = self._format_confirmation_description(
             action_text="This will remove every item from this list.",
-            list_name=str(todo_list.get("name") or "List"),
+            list_name=TodoFunctions.display_list_name(todo_list, "List"),
             item_count=item_count,
         )
         await interaction.response.send_modal(
@@ -459,7 +438,7 @@ class TodoListDescriptionView(discord.ui.View):
             )
             return
 
-        list_name = str(todo_list.get("name") or "List")
+        list_name = TodoFunctions.display_list_name(todo_list, "List")
         try:
             item_count = await asyncio.to_thread(
                 TodoFunctions.count_items_on_list,
