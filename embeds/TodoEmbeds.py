@@ -3019,6 +3019,56 @@ class TodoEmbeds:
         return {"embed": embed}
 
     @staticmethod
+    def list_directory_page_embed(
+        entries: List[Dict[str, Any]],
+        *,
+        page: int,
+        total_pages: int,
+        total_lists: int,
+        total_items: int,
+        sort_direction: str = "ascending",
+    ) -> dict:
+        embed = discord.Embed(
+            title="Available Todo Lists",
+            color=discord.Colour.blurple(),
+        )
+
+        if not entries:
+            embed.description = "No todo lists available."
+            embed.set_footer(
+                text=(
+                    f"Page {page}/{total_pages} | Lists: {total_lists} | "
+                    f"Items: {total_items} | Sort: {sort_direction}"
+                )
+            )
+            return {"embed": embed}
+
+        for display_index, entry in enumerate(entries, start=1):
+            number_emoji = TodoEmbeds._number_emoji(display_index)
+            name = str(entry.get("name") or "Unnamed").strip() or "Unnamed"
+            scope = str(entry.get("scope") or "List").strip() or "List"
+            label = str(entry.get("label") or "").strip()
+            count = int(entry.get("item_count") or 0)
+
+            title_parts = [f"{number_emoji} {name}", f"[{scope}]"]
+            if label:
+                title_parts.append(f"| {label}")
+
+            embed.add_field(
+                name=" ".join(title_parts),
+                value=f"Items: {count}",
+                inline=False,
+            )
+
+        embed.set_footer(
+            text=(
+                f"Page {page}/{total_pages} | Lists: {total_lists} | "
+                f"Items: {total_items} | Sort: {sort_direction}"
+            )
+        )
+        return {"embed": embed}
+
+    @staticmethod
     def item_details_embed(
         todo_list: Dict[str, Any],
         item: Dict[str, Any],

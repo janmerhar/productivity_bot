@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Optional, List, Dict, Any
 
 import discord
@@ -13,6 +14,7 @@ from services.discord_helpers import resolve_ephemeral_from_scope
 from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC
+from views.TodoListDirectoryView import TodoListDirectoryView
 from views.TodoListDescriptionView import TodoListDescriptionView
 from views.todo.TodoCreateListForAddModal import TodoCreateListForAddModal
 
@@ -625,6 +627,7 @@ class TodoCog(commands.Cog):
                 )
                 server_lists.append(
                     {
+                        "_id": channel_list.get("_id"),
                         "label": "Built-in",
                         "name": str(channel_list.get("name") or "This Channel"),
                         "item_count": await asyncio.to_thread(
@@ -645,6 +648,7 @@ class TodoCog(commands.Cog):
                 for todo_list in custom_server_lists:
                     server_lists.append(
                         {
+                            "_id": todo_list.get("_id"),
                             "label": "Custom",
                             "name": str(todo_list.get("name") or "Unnamed"),
                             "item_count": await asyncio.to_thread(
@@ -665,6 +669,7 @@ class TodoCog(commands.Cog):
                 )
                 personal_lists.append(
                     {
+                        "_id": personal_list.get("_id"),
                         "label": "Built-in",
                         "name": str(personal_list.get("name") or "Personal"),
                         "item_count": await asyncio.to_thread(
@@ -685,6 +690,7 @@ class TodoCog(commands.Cog):
                 for todo_list in custom_personal_lists:
                     personal_lists.append(
                         {
+                            "_id": todo_list.get("_id"),
                             "label": "Custom",
                             "name": str(todo_list.get("name") or "Unnamed"),
                             "item_count": await asyncio.to_thread(
@@ -700,8 +706,29 @@ class TodoCog(commands.Cog):
                 cause=exc,
             )
 
-        payload = TodoEmbeds.list_directory_embed(server_lists, personal_lists)
-        await interaction.followup.send(ephemeral=ephemeral, **payload)
+        directory_view = TodoListDirectoryView(
+            server_lists=server_lists,
+            personal_lists=personal_lists,
+            current_scope=scope_value,
+            guild_id=interaction.guild_id,
+            channel_id=interaction.channel_id,
+            channel_name=getattr(interaction.channel, "name", None),
+            user_id=interaction.user.id,
+        )
+        try:
+            await interaction.edit_original_response(
+                view=directory_view,
+                **directory_view.payload(),
+            )
+        except discord.HTTPException as exc:
+            logging.getLogger(__name__).exception(
+                "Failed to render todo list directory."
+            )
+            raise UserVisibleError(
+                "The todo list directory could not be rendered.",
+                ephemeral=ephemeral,
+                cause=exc,
+            ) from exc
 
     @list_group.command(name="create", description="Create a new custom todo list")
     @app_commands.describe(
