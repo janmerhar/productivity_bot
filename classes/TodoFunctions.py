@@ -1025,6 +1025,19 @@ class TodoFunctions:
         return deleted.deleted_count
 
     @staticmethod
+    def count_items_on_guild(guild_id: Optional[int]) -> int:
+        if guild_id is None:
+            return 0
+
+        return mongo_db["todos"].count_documents(
+            {
+                "guild_id": guild_id,
+                "scope": {"$ne": "personal"},
+                "list_id": {"$exists": True},
+            }
+        )
+
+    @staticmethod
     def count_items_on_list(list_id: Any) -> int:
         object_id = TodoFunctions._coerce_object_id(list_id)
         if object_id is None:

@@ -11,11 +11,15 @@ from classes.UserSettingsFunctions import UserSettingsFunctions
 from embeds.TodoEmbeds import TodoEmbeds, TodoListItemsView, TodoItemEditModal
 from services.due_datetime import DueDateService
 from services.discord_helpers import resolve_ephemeral_from_scope
-from services.error_reporting import UserVisibleError, ValidationError
+from services.error_reporting import (
+    UserVisibleError,
+    ValidationError,
+    handle_interaction_error,
+)
 from services.timezone_gate import ensure_user_timezone
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC
 from views.TodoListDirectoryView import TodoListDirectoryView
-from views.TodoListDescriptionView import TodoListDescriptionView
+from views.TodoListDescriptionView import TodoListConfirmModal, TodoListDescriptionView
 from views.todo.TodoCreateListForAddModal import TodoCreateListForAddModal
 
 
@@ -375,6 +379,148 @@ class TodoCog(commands.Cog):
 
         return options[:25]
 
+    @staticmethod
+    def _format_list_confirmation_prompt(
+        *,
+        action_text: str,
+        list_name: str,
+        item_count: int,
+    ) -> str:
+        return (
+            f"{action_text}\n"
+            f"List: `{list_name}`\n"
+            f"Current items: `{item_count}`"
+        )
+
+    async def _run_list_clear_action(
+        self,
+        interaction: discord.Interaction,
+        *,
+        todo_list: Optional[Dict[str, Any]],
+        use_all_server_channels: bool,
+        ephemeral: bool,
+    ) -> None:
+        await interaction.response.defer(ephemeral=ephemeral)
+        try:
+            if use_all_server_channels:
+                deleted_count = await asyncio.to_thread(
+                    TodoFunctions.clear_items_on_guild,
+                    interaction.guild_id,
+                )
+                result_view = TodoListDescriptionView(
+                    title="Todo List Cleared",
+                    description=(
+                        f"List: `All Server Channels`\nRemoved items: `{deleted_count}`"
+                    ),
+                    color=discord.Colour.orange(),
+                    todo_list=None,
+                    user_id=interaction.user.id,
+                )
+            else:
+                if todo_list is None:
+                    raise ValueError("That list was not found.")
+                refreshed_list = await asyncio.to_thread(
+                    TodoFunctions.fetch_todo_list_by_id,
+                    todo_list.get("_id"),
+                )
+                if refreshed_list is None:
+                    raise ValidationError(
+                        "That list is no longer available.",
+                        ephemeral=ephemeral,
+                    )
+                deleted_count = await asyncio.to_thread(
+                    TodoFunctions.clear_todo_list_items,
+                    refreshed_list.get("_id"),
+                )
+                result_view = TodoListDescriptionView(
+                    title="Todo List Cleared",
+                    description=(
+                        f"List: `{refreshed_list.get('name') or 'List'}`\n"
+                        f"Removed items: `{deleted_count}`"
+                    ),
+                    color=discord.Colour.orange(),
+                    todo_list=refreshed_list,
+                    user_id=interaction.user.id,
+                )
+        except UserVisibleError as exc:
+            await handle_interaction_error(interaction, exc)
+            return
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while clearing that list.",
+                    ephemeral=ephemeral,
+                    cause=exc,
+                ),
+            )
+            return
+
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            **result_view.response_payload(),
+        )
+
+    async def _run_list_delete_action(
+        self,
+        interaction: discord.Interaction,
+        *,
+        todo_list: Dict[str, Any],
+        ephemeral: bool,
+    ) -> None:
+        await interaction.response.defer(ephemeral=ephemeral)
+        try:
+            refreshed_list = await asyncio.to_thread(
+                TodoFunctions.fetch_todo_list_by_id,
+                todo_list.get("_id"),
+            )
+            if refreshed_list is None:
+                raise ValidationError(
+                    "That list is no longer available.",
+                    ephemeral=ephemeral,
+                )
+            if (
+                TodoFunctions.list_type(refreshed_list)
+                != TodoFunctions._CUSTOM_LIST_TYPE
+            ):
+                raise ValidationError(
+                    "Only custom lists can be deleted.",
+                    ephemeral=ephemeral,
+                )
+
+            list_name = str(refreshed_list.get("name") or "List")
+            deleted, deleted_count = await asyncio.to_thread(
+                TodoFunctions.delete_todo_list,
+                refreshed_list.get("_id"),
+            )
+            if not deleted:
+                raise UserVisibleError("That list could not be deleted.", ephemeral=ephemeral)
+        except UserVisibleError as exc:
+            await handle_interaction_error(interaction, exc)
+            return
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while deleting that list.",
+                    ephemeral=ephemeral,
+                    cause=exc,
+                ),
+            )
+            return
+
+        result_view = TodoListDescriptionView(
+            title="Todo List Deleted",
+            description=(f"List: `{list_name}`\n" f"Removed items: `{deleted_count}`"),
+            color=discord.Colour.red(),
+            todo_list=None,
+            user_id=interaction.user.id,
+        )
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            **result_view.response_payload(),
+        )
+
     @list_group.command(name="show", description="Show all items on a list")
     @app_commands.rename(list_target="list")
     @app_commands.describe(
@@ -530,44 +676,53 @@ class TodoCog(commands.Cog):
             scope_value,
             visibility,
         )
-        await interaction.response.defer(ephemeral=ephemeral)
-
         try:
             if use_all_server_channels:
                 list_name = "All Server Channels"
-                deleted_count = await asyncio.to_thread(
-                    TodoFunctions.clear_items_on_guild,
+                item_count = await asyncio.to_thread(
+                    TodoFunctions.count_items_on_guild,
                     interaction.guild_id,
                 )
             else:
                 if todo_list is None:
                     raise ValueError("That list was not found.")
                 list_name = str(todo_list.get("name") or "List")
-                deleted_count = await asyncio.to_thread(
-                    TodoFunctions.clear_todo_list_items,
+                item_count = await asyncio.to_thread(
+                    TodoFunctions.count_items_on_list,
                     todo_list["_id"],
                 )
         except Exception as exc:
             raise UserVisibleError(
-                "Something went wrong while clearing that list.",
+                "Something went wrong while preparing that confirmation.",
                 ephemeral=ephemeral,
                 cause=exc,
             )
 
-        result_view = TodoListDescriptionView(
-            title="Todo List Cleared",
-            description=(
-                f"List: `{list_name}`\nRemoved items: `{deleted_count}`"
-                if not use_all_server_channels
-                else f"List: `All Server Channels`\nRemoved items: `{deleted_count}`"
-            ),
-            color=discord.Colour.orange(),
-            todo_list=None if use_all_server_channels else todo_list,
-            user_id=interaction.user.id,
+        action_text = (
+            "This will remove all todo list items in this server."
+            if use_all_server_channels
+            else "This will remove every item from this list."
         )
-        await interaction.followup.send(
-            ephemeral=ephemeral,
-            **result_view.response_payload(),
+        prompt = self._format_list_confirmation_prompt(
+            action_text=action_text,
+            list_name=list_name,
+            item_count=item_count,
+        )
+        await interaction.response.send_modal(
+            TodoListConfirmModal(
+                title=(
+                    "Confirm Server Clear"
+                    if use_all_server_channels
+                    else "Clear Todo List"
+                ),
+                description=prompt,
+                on_confirm=lambda confirm_interaction: self._run_list_clear_action(
+                    confirm_interaction,
+                    todo_list=todo_list,
+                    use_all_server_channels=use_all_server_channels,
+                    ephemeral=ephemeral,
+                ),
+            )
         )
 
     @list_clear.autocomplete("list_target")
@@ -920,37 +1075,34 @@ class TodoCog(commands.Cog):
             scope_value,
             visibility,
         )
-        await interaction.response.defer(ephemeral=ephemeral)
-
-        list_name = str(todo_list.get("name") or "List")
         try:
-            deleted, deleted_count = await asyncio.to_thread(
-                TodoFunctions.delete_todo_list,
+            list_name = str(todo_list.get("name") or "List")
+            item_count = await asyncio.to_thread(
+                TodoFunctions.count_items_on_list,
                 todo_list.get("_id"),
             )
         except Exception as exc:
             raise UserVisibleError(
-                "Something went wrong while deleting that list.",
+                "Something went wrong while preparing that confirmation.",
                 ephemeral=ephemeral,
                 cause=exc,
             )
 
-        if not deleted:
-            raise UserVisibleError(
-                "That list could not be deleted.",
-                ephemeral=ephemeral,
-            )
-
-        result_view = TodoListDescriptionView(
-            title="Todo List Deleted",
-            description=(f"List: `{list_name}`\n" f"Removed items: `{deleted_count}`"),
-            color=discord.Colour.red(),
-            todo_list=None,
-            user_id=interaction.user.id,
+        prompt = self._format_list_confirmation_prompt(
+            action_text="This will permanently delete this custom list.",
+            list_name=list_name,
+            item_count=item_count,
         )
-        await interaction.followup.send(
-            ephemeral=ephemeral,
-            **result_view.response_payload(),
+        await interaction.response.send_modal(
+            TodoListConfirmModal(
+                title="Delete Todo List",
+                description=prompt,
+                on_confirm=lambda confirm_interaction: self._run_list_delete_action(
+                    confirm_interaction,
+                    todo_list=todo_list,
+                    ephemeral=ephemeral,
+                ),
+            )
         )
 
     @list_delete.autocomplete("list_target")
