@@ -23,5 +23,5 @@ RUN pip install --no-cache-dir -r packages.pip
 # Copy the rest of the application code.
 COPY . .
 
-# Run the bot.
-CMD ["python", "main.py"]
+# Run command cleanup before starting the bot.
+CMD ["sh", "-c", "python scripts/cleanup_app_commands.py --apply && exec python main.py"]
