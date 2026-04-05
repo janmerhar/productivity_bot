@@ -3,6 +3,7 @@ import importlib
 import logging
 import discord
 import asyncio
+from datetime import datetime
 from discord.ext import commands
 
 from config.env import env
@@ -121,7 +122,7 @@ async def on_ready():
         else:
             _sync_done = True
 
-    print("Online")
+    print(f"[{datetime.now().strftime('%H:%M')}] Online")
     _start_import_prewarm()
 
 
