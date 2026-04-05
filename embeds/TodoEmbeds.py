@@ -779,6 +779,232 @@ class TodoItemCreateModal(discord.ui.Modal):
             )
 
 
+class TodoListOptionsModal(discord.ui.Modal):
+    def __init__(
+        self,
+        parent_view: "TodoListItemsView",
+        source_message: Optional[discord.Message],
+    ) -> None:
+        list_name = str(parent_view.todo_list.get("name") or "List").strip() or "List"
+        modal_title = f"View Options • {list_name}"
+        if len(modal_title) > 45:
+            modal_title = modal_title[:42].rstrip() + "..."
+        super().__init__(title=modal_title)
+        self.parent_view = parent_view
+        self.source_message = source_message
+
+        current_assignee_mode = parent_view._assignee_filter_mode()
+        current_user_filter_id = (
+            parent_view.assignee_filter_id
+            if current_assignee_mode == "user"
+            else None
+        )
+        default_users = (
+            [discord.Object(id=current_user_filter_id)]
+            if current_user_filter_id is not None
+            else []
+        )
+
+        self.sort_group = discord.ui.RadioGroup(
+            custom_id="todo_list_options_sort",
+            options=[
+                discord.RadioGroupOption(
+                    label="Ascending",
+                    value="ascending",
+                    default=parent_view.sort == "ascending",
+                ),
+                discord.RadioGroupOption(
+                    label="Descending",
+                    value="descending",
+                    default=parent_view.sort == "descending",
+                ),
+            ],
+        )
+        self.status_group = discord.ui.RadioGroup(
+            custom_id="todo_list_options_status",
+            options=[
+                discord.RadioGroupOption(
+                    label="All",
+                    value="all",
+                    default=parent_view.status_filter == "all",
+                ),
+                discord.RadioGroupOption(
+                    label="To Do",
+                    value="todo",
+                    default=parent_view.status_filter == "todo",
+                ),
+                discord.RadioGroupOption(
+                    label="In Progress",
+                    value="in_progress",
+                    default=parent_view.status_filter == "in_progress",
+                ),
+                discord.RadioGroupOption(
+                    label="Done",
+                    value="done",
+                    default=parent_view.status_filter == "done",
+                ),
+            ],
+        )
+        self.assignee_group = discord.ui.RadioGroup(
+            custom_id="todo_list_options_assignee",
+            options=[
+                discord.RadioGroupOption(
+                    label="All tasks",
+                    value="all",
+                    default=current_assignee_mode == "all",
+                ),
+                discord.RadioGroupOption(
+                    label="Assigned to me",
+                    value="me",
+                    default=current_assignee_mode == "me",
+                ),
+                discord.RadioGroupOption(
+                    label="Unassigned",
+                    value="unassigned",
+                    default=current_assignee_mode == "unassigned",
+                ),
+                discord.RadioGroupOption(
+                    label="Specific user",
+                    value="user",
+                    default=current_assignee_mode == "user",
+                ),
+            ],
+        )
+        self.assignee_user_select = discord.ui.UserSelect(
+            custom_id="todo_list_options_user",
+            placeholder="Only used for 'Specific user'",
+            min_values=0,
+            max_values=1,
+            required=False,
+            default_values=default_users,
+        )
+
+        self.add_item(
+            discord.ui.Label(
+                text="Sort",
+                component=self.sort_group,
+            )
+        )
+        self.add_item(
+            discord.ui.Label(
+                text="Status",
+                component=self.status_group,
+            )
+        )
+        self.add_item(
+            discord.ui.Label(
+                text="Assignee Filter",
+                description="Choose 'Specific user' to use the picker below.",
+                component=self.assignee_group,
+            )
+        )
+        self.add_item(
+            discord.ui.Label(
+                text="User",
+                description="Optional unless 'Specific user' is selected.",
+                component=self.assignee_user_select,
+            )
+        )
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        sort_value = str(self.sort_group.value or "ascending")
+        status_value = str(self.status_group.value or "all")
+        assignee_mode = str(self.assignee_group.value or "all")
+
+        if sort_value not in {"ascending", "descending"}:
+            sort_value = "ascending"
+        if status_value not in {"all", "todo", "in_progress", "done"}:
+            status_value = "all"
+
+        assignee_filter_id: Optional[int] = None
+        assignee_filter_unassigned = False
+        assignee_filter_label = "All"
+
+        if assignee_mode == "me":
+            assignee_filter_id = self.parent_view.user_id or interaction.user.id
+            assignee_filter_label = "Me"
+        elif assignee_mode == "unassigned":
+            assignee_filter_unassigned = True
+            assignee_filter_label = "Unassigned"
+        elif assignee_mode == "user":
+            selected_users = list(self.assignee_user_select.values)
+            if not selected_users:
+                await handle_interaction_error(
+                    interaction,
+                    ValidationError(
+                        "Pick a user or choose a different assignee filter.",
+                        ephemeral=True,
+                    ),
+                )
+                return
+            selected_user = selected_users[0]
+            selected_user_id = getattr(selected_user, "id", None)
+            if selected_user_id is None:
+                await handle_interaction_error(
+                    interaction,
+                    ValidationError(
+                        "That user selection could not be resolved.",
+                        ephemeral=True,
+                    ),
+                )
+                return
+            assignee_filter_id = int(selected_user_id)
+            assignee_filter_label = str(
+                getattr(selected_user, "display_name", "")
+                or getattr(selected_user, "name", "")
+                or f"User {assignee_filter_id}"
+            ).strip()[:100]
+
+        self.parent_view.sort = sort_value
+        self.parent_view.status_filter = status_value
+        self.parent_view.assignee_filter_unassigned = assignee_filter_unassigned
+        self.parent_view.assignee_filter_id = (
+            None if assignee_filter_unassigned else assignee_filter_id
+        )
+        self.parent_view.assignee_filter_label = assignee_filter_label
+        self.parent_view.page = 1
+
+        try:
+            await self.parent_view._reload_items()
+            self.parent_view._build()
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while updating the list options.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
+
+        if self.source_message is None:
+            await interaction.followup.send(
+                ephemeral=True,
+                view=self.parent_view,
+                **self.parent_view.payload(),
+            )
+            return
+
+        try:
+            await self.source_message.edit(view=self.parent_view, **self.parent_view.payload())
+        except discord.NotFound:
+            await self.parent_view._notify_missing_message(interaction)
+            return
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Options updated, but refreshing the list failed.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
+
+
 class TodoListItemsView(discord.ui.View):
     def __init__(
         self,
@@ -817,7 +1043,14 @@ class TodoListItemsView(discord.ui.View):
         self.user_id = user_id
         self.view_scope = view_scope
         self.guild_id = guild_id
-        self.only_assigned_to_me = False
+        self.assignee_filter_label = "All"
+        if self.assignee_filter_unassigned:
+            self.assignee_filter_label = "Unassigned"
+        elif self.assignee_filter_id is not None:
+            if self.user_id is not None and self.assignee_filter_id == self.user_id:
+                self.assignee_filter_label = "Me"
+            else:
+                self.assignee_filter_label = "Specific user"
         self.page_size = max(1, min(page_size, 5))
         self.total_pages = 1
         self.page = max(1, page)
@@ -838,8 +1071,8 @@ class TodoListItemsView(discord.ui.View):
             total_pages=self.total_pages,
             total_items=len(self.items),
             status_counts=TodoEmbeds._status_counts(self.items),
-            mine_only=self.only_assigned_to_me,
             status_filter=self.status_filter,
+            assignee_filter_label=self.assignee_filter_label,
         )
 
     async def _reload_items(self) -> None:
@@ -856,6 +1089,36 @@ class TodoListItemsView(discord.ui.View):
                 self.sort,
             )
         self._apply_filters()
+
+    def _assignee_filter_mode(self) -> str:
+        if self.assignee_filter_unassigned:
+            return "unassigned"
+        if self.assignee_filter_id is None:
+            return "all"
+        if self.user_id is not None and self.assignee_filter_id == self.user_id:
+            return "me"
+        return "user"
+
+    def _has_active_list_options(self) -> bool:
+        return (
+            self.sort != "ascending"
+            or self.status_filter != "all"
+            or self.assignee_filter_unassigned
+            or self.assignee_filter_id is not None
+        )
+
+    async def open_options_modal(
+        self,
+        interaction: discord.Interaction,
+        *,
+        source_message: Optional[discord.Message],
+    ) -> None:
+        await interaction.response.send_modal(
+            TodoListOptionsModal(
+                parent_view=self,
+                source_message=source_message,
+            )
+        )
 
     async def open_create_modal(
         self,
@@ -946,12 +1209,6 @@ class TodoListItemsView(discord.ui.View):
                 item
                 for item in filtered_items
                 if self.assignee_filter_id in (item.get("assignees") or [])
-            ]
-        if self.only_assigned_to_me and self.user_id is not None:
-            filtered_items = [
-                item
-                for item in filtered_items
-                if self.user_id in (item.get("assignees") or [])
             ]
         if self.status_filter != "all":
             filtered_items = [
@@ -1373,20 +1630,14 @@ class TodoListItemsView(discord.ui.View):
             disabled=self.page >= self.total_pages,
             row=2,
         )
-        sort_button = discord.ui.Button(
-            style=discord.ButtonStyle.secondary,
-            emoji="↕️",
-            row=2,
-        )
-        filter_button = discord.ui.Button(
+        options_button = discord.ui.Button(
             style=(
                 discord.ButtonStyle.success
-                if self.only_assigned_to_me
+                if self._has_active_list_options()
                 else discord.ButtonStyle.secondary
             ),
-            emoji="👤",
+            emoji="🔎",
             row=2,
-            disabled=self.user_id is None,
         )
 
         async def _prev_callback(interaction: discord.Interaction) -> None:
@@ -1411,35 +1662,21 @@ class TodoListItemsView(discord.ui.View):
                 source_message=interaction.message,
             )
 
-        async def _sort_toggle_callback(interaction: discord.Interaction) -> None:
-            await interaction.response.defer()
-            self.sort = "descending" if self.sort == "ascending" else "ascending"
-            await self._reload_items()
-            self._build()
-            await self._safe_refresh_message(interaction)
-
-        async def _mine_toggle_callback(interaction: discord.Interaction) -> None:
-            if self.user_id is None:
-                await interaction.response.defer(ephemeral=True)
-                return
-            await interaction.response.defer()
-            self.only_assigned_to_me = not self.only_assigned_to_me
-            await self._reload_items()
-            self.page = 1
-            self._build()
-            await self._safe_refresh_message(interaction)
+        async def _options_callback(interaction: discord.Interaction) -> None:
+            await self.open_options_modal(
+                interaction,
+                source_message=interaction.message,
+            )
 
         prev_button.callback = _prev_callback
         next_button.callback = _next_callback
         add_button.callback = _add_callback
-        sort_button.callback = _sort_toggle_callback
-        filter_button.callback = _mine_toggle_callback
+        options_button.callback = _options_callback
 
         self.add_item(prev_button)
         self.add_item(next_button)
         self.add_item(add_button)
-        self.add_item(sort_button)
-        self.add_item(filter_button)
+        self.add_item(options_button)
 
 
 class TodoDeleteConfirmModal(discord.ui.Modal):
@@ -2396,11 +2633,18 @@ class TodoEmbeds:
         )
 
     @staticmethod
-    def _meta_line(sort: str, status_filter: str, mine_only: bool) -> str:
+    def _meta_line(
+        sort: str,
+        status_filter: str,
+        assignee_filter_label: str = "All",
+    ) -> str:
         sort_label = "Ascending" if sort == "ascending" else "Descending"
         status_label = TodoEmbeds._status_filter_label(status_filter)
-        mine_label = "On" if mine_only else "Off"
-        return f"Sort: {sort_label} | Status: {status_label} | Mine only: {mine_label}"
+        assignee_label = str(assignee_filter_label or "All").strip() or "All"
+        return (
+            f"Sort: {sort_label} | Status: {status_label} | "
+            f"Assignee: {assignee_label}"
+        )
 
     @staticmethod
     def _parse_due_dt(
@@ -2662,8 +2906,8 @@ class TodoEmbeds:
         total_pages: int,
         total_items: int,
         status_counts: Optional[Dict[str, int]] = None,
-        mine_only: bool = False,
         status_filter: str = "all",
+        assignee_filter_label: str = "All",
     ) -> dict:
         embed = discord.Embed(
             title=TodoEmbeds._list_title(todo_list),
@@ -2672,12 +2916,12 @@ class TodoEmbeds:
 
         if not items:
             embed.description = "No items in this list."
-            mine_filter = "Mine only: On" if mine_only else "Mine only: Off"
             status_label = TodoEmbeds._status_filter_label(status_filter)
             embed.set_footer(
                 text=(
                     f"Page {page}/{total_pages} | Items: {total_items} | "
-                    f"Sort: {sort} | Status: {status_label} | {mine_filter}"
+                    f"Sort: {sort} | Status: {status_label} | "
+                    f"Assignee: {assignee_filter_label}"
                 )
             )
             return {"embed": embed}
@@ -2712,12 +2956,12 @@ class TodoEmbeds:
                 inline=False,
             )
 
-        mine_filter = "Mine only: On" if mine_only else "Mine only: Off"
         status_label = TodoEmbeds._status_filter_label(status_filter)
         embed.set_footer(
             text=(
                 f"Page {page}/{total_pages} | Items: {total_items} | "
-                f"Sort: {sort} | Status: {status_label} | {mine_filter}"
+                f"Sort: {sort} | Status: {status_label} | "
+                f"Assignee: {assignee_filter_label}"
             )
         )
         return {"embed": embed}

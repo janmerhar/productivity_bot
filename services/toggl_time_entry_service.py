@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from classes.OpenAIFunctions import OpenAIFunctions
+from classes.OpenAIFunctions import DEFAULT_OPENAI_MODEL, OpenAIFunctions
 from config.env import env
 from services.due_datetime import DueDateService
 
@@ -143,7 +143,7 @@ class TogglTimeEntryService:
         text: str,
         *,
         timezone: Optional[str] = None,
-        model: str = "gpt-4o-mini",
+        model: str = DEFAULT_OPENAI_MODEL,
     ) -> Optional[datetime.datetime]:
         api_key = env.get("OPENAI_API_KEY")
         if not api_key:

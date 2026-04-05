@@ -1,5 +1,6 @@
 import datetime
 import json
+import threading
 from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -8,10 +9,13 @@ from openai import APIError, OpenAI
 from config.env import env
 
 
-DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_OPENAI_MODEL = "gpt-5.4-mini"
 
 
 class OpenAIFunctions:
+    _client: Optional[OpenAI] = None
+    _client_lock = threading.RLock()
+
     @staticmethod
     def _get_api_key(api_key: Optional[str]) -> Optional[str]:
         return api_key or env.get("OPENAI_API_KEY")
@@ -19,7 +23,10 @@ class OpenAIFunctions:
     @staticmethod
     def _get_client(api_key: Optional[str]) -> OpenAI:
         key = OpenAIFunctions._get_api_key(api_key)
-        return OpenAI(api_key=key)
+        with OpenAIFunctions._client_lock:
+            if OpenAIFunctions._client is None:
+                OpenAIFunctions._client = OpenAI(api_key=key)
+            return OpenAIFunctions._client
 
     @staticmethod
     def _chat_json_safe(

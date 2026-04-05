@@ -1675,6 +1675,63 @@ class TodoCog(commands.Cog):
     ) -> List[app_commands.Choice[int]]:
         return await self.todo_item_number_autocomplete(interaction, current)
 
+    @todo_group.command(name="complete", description="Mark an item as done")
+    @app_commands.describe(
+        todo="Todo from autocomplete",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def item_complete(
+        self,
+        interaction: discord.Interaction,
+        todo: int,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        ephemeral = resolve_ephemeral_from_scope(
+            interaction.guild_id,
+            scope_value,
+            visibility,
+        )
+        await interaction.response.defer(ephemeral=ephemeral)
+
+        try:
+            todo_list = await asyncio.to_thread(
+                TodoFunctions.get_or_create_implicit_list,
+                interaction.guild_id,
+                interaction.channel_id,
+                interaction.user.id,
+                getattr(interaction.channel, "name", None),
+                scope_value,
+            )
+            item = await asyncio.to_thread(
+                TodoFunctions.fetch_item_on_list_or_error,
+                todo_list["_id"],
+                todo,
+            )
+            updated_item = await asyncio.to_thread(
+                TodoFunctions.set_item_status,
+                item["_id"],
+                "done",
+            )
+        except ValueError as exc:
+            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while completing that item.",
+                ephemeral=ephemeral,
+                cause=exc,
+            )
+
+        if not updated_item:
+            raise UserVisibleError(
+                "That item could not be completed.",
+                ephemeral=ephemeral,
+            )
+
+        payload = TodoEmbeds.item_details_embed(todo_list, updated_item)
+        await interaction.followup.send(ephemeral=ephemeral, **payload)
+
     @item_delete.autocomplete("todo")
     async def todo_item_delete_number_autocomplete(
         self,
@@ -1685,6 +1742,14 @@ class TodoCog(commands.Cog):
 
     @todo_assign.autocomplete("todo")
     async def todo_item_assign_number_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[int]]:
+        return await self.todo_item_number_autocomplete(interaction, current)
+
+    @item_complete.autocomplete("todo")
+    async def todo_item_complete_number_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,

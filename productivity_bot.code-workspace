@@ -17,10 +17,33 @@
         "request": "launch",
         "program": "${workspaceFolder}/main.py",
         "console": "integratedTerminal",
-        "justMyCode": false,
+        "justMyCode": true,
         "cwd": "${workspaceFolder}",
-        "envFile": "${workspaceFolder}/.env"
-      }
-    ]
-  }
+        "envFile": "${workspaceFolder}/.env",
+      },
+      {
+        "name": "Python: Run Discord Bot (Autoreload)",
+        "type": "debugpy",
+        "request": "launch",
+        "program": "${workspaceFolder}/dev.py",
+        "console": "integratedTerminal",
+        "justMyCode": true,
+        "cwd": "${workspaceFolder}",
+        "envFile": "${workspaceFolder}/.env",
+      },
+      {
+        "name": "Python: Run Discord Bot (Debug + AutoReload)",
+        "type": "debugpy",
+        "request": "launch",
+        "program": "${workspaceFolder}/main.py",
+        "console": "integratedTerminal",
+        "justMyCode": true,
+        "cwd": "${workspaceFolder}",
+        "envFile": "${workspaceFolder}/.env",
+        "autoReload": {
+          "enable": true,
+        },
+      },
+    ],
+  },
 }

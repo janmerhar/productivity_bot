@@ -5,7 +5,6 @@ from croniter import CroniterBadCronError, croniter
 from openai import OpenAI
 
 from classes.OpenAIFunctions import OpenAIFunctions, DEFAULT_OPENAI_MODEL
-from config.env import env
 
 
 class CronConversionError(Exception):
@@ -67,9 +66,7 @@ class CronScheduleResolver:
         if self._client is not None:
             return self._client
 
-        api_key = self._api_key or env.get("OPENAI_API_KEY")
-
-        self._client = OpenAI(api_key=api_key)
+        self._client = OpenAIFunctions._get_client(api_key=self._api_key)
         return self._client
 
 

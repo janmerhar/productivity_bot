@@ -1,4 +1,4 @@
-discord.py[voice]
+discord.py[voice]==2.7.1
 aiohttp
 google-api-python-client
 google-auth-httplib2
@@ -15,3 +15,4 @@ dateparser
 yfinance==0.2.66
 croniter
 cachetools
+watchfiles>=1.1.1
