@@ -216,19 +216,19 @@ class TodoListDirectoryView(discord.ui.View):
         personal_lists: List[Dict[str, Any]] = []
 
         if self.current_scope == "server" and self.guild_id is not None:
-            server_inbox = await asyncio.to_thread(
+            inbox_list = await asyncio.to_thread(
                 TodoFunctions.get_or_create_server_global_list,
                 self.guild_id,
                 self.user_id,
             )
             server_lists.append(
                 {
-                    "_id": server_inbox.get("_id"),
+                    "_id": inbox_list.get("_id"),
                     "label": "Built-in",
-                    "name": TodoFunctions.display_list_name(server_inbox, "Server Inbox"),
+                    "name": TodoFunctions.display_list_name(inbox_list, "Inbox"),
                     "item_count": await asyncio.to_thread(
                         TodoFunctions.count_items_on_list,
-                        server_inbox.get("_id"),
+                        inbox_list.get("_id"),
                     ),
                 }
             )

@@ -18,7 +18,13 @@ Toggl (time tracking):
 
 To-dos:
 - /todo create name [description] [due]. Use for general to-dos unless the user explicitly says TickTick.
-- /todo list mode(all|channel) sort(ascending|descending). Defaults: mode=channel, sort=descending.
+- /todo list show [list] [sort] [status] [assignee].
+- /todo list directory [scope].
+- /todo list create name [scope].
+- /todo list edit list name.
+- /todo list delete list.
+- /todo list clear [list].
+- /todo overview [sort] [status] [assignee].
 
 Habits:
 - /habit create name [description] [reminder] (reminder is a daily time like "8am").

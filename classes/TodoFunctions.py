@@ -17,7 +17,7 @@ class TodoFunctions:
     _ALLOWED_ITEM_STATUSES = {"todo", "in_progress", "done"}
     _DEFAULT_LIST_TYPE = "default"
     _CUSTOM_LIST_TYPE = "custom"
-    _SERVER_INBOX_DISPLAY_NAME = "Server Inbox"
+    _SERVER_INBOX_DISPLAY_NAME = "Inbox"
 
     @staticmethod
     def _normalize_scope(scope: str) -> str:
@@ -385,7 +385,7 @@ class TodoFunctions:
         if guild_id is None:
             raise ValueError("Server-global lists are only available in servers.")
 
-        list_name = "Server"
+        list_name = TodoFunctions._SERVER_INBOX_DISPLAY_NAME
         query: Dict[str, Any] = {
             "scope": "channel",
             "guild_id": guild_id,
@@ -897,9 +897,9 @@ class TodoFunctions:
             mongo_db["todo_lists"]
             .find(query, {"name": 1, "channel_id": 1, "scope": 1, "list_type": 1, "guild_id": 1})
             .sort("name", 1)
-            .limit(capped_limit)
+            .limit(capped_limit + 1)
         )
-        return list(cursor)
+        return list(cursor)[:capped_limit]
 
     @staticmethod
     def find_list_for_item_scope(
@@ -956,7 +956,7 @@ class TodoFunctions:
                 channel_name=None,
                 target="personal",
             )
-        if token_lower == "__server_global__":
+        if token_lower == "__server_inbox__":
             return TodoFunctions.get_or_create_server_global_list(
                 guild_id=item.get("guild_id"),
                 user_id=acting_user_id,

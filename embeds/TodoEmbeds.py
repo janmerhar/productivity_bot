@@ -1083,7 +1083,7 @@ class TodoListItemsView(discord.ui.View):
         )
 
     async def _reload_items(self) -> None:
-        if self.view_scope == "all_server":
+        if self.view_scope in {"overview", "all_server"}:
             self._all_items = await asyncio.to_thread(
                 TodoFunctions.list_items_on_guild,
                 self.guild_id,
@@ -1357,11 +1357,10 @@ class TodoListItemsView(discord.ui.View):
         options: List[discord.SelectOption] = []
         seen_ids: set[str] = set()
         has_default = False
-        has_server_global_entry = False
 
         reserve_special = 0
         if current_scope == "channel" and guild_id is not None:
-            reserve_special = 2  # server-global + personal target
+            reserve_special = 1  # personal target
         max_doc_options = max(1, 25 - reserve_special - 1)  # reserve fallback current
 
         for list_doc in list_docs:
@@ -1378,11 +1377,7 @@ class TodoListItemsView(discord.ui.View):
             if scope == "channel" and channel_id is not None:
                 label = name if name.startswith("#") else f"#{name}"
             elif scope == "channel":
-                if TodoFunctions.is_server_inbox_list(list_doc):
-                    has_server_global_entry = True
-                    label = TodoFunctions._SERVER_INBOX_DISPLAY_NAME
-                else:
-                    label = f"Server - {name}"
+                label = name if TodoFunctions.is_server_inbox_list(list_doc) else f"Server - {name}"
             elif scope == "personal":
                 label = (
                     "Personal"
@@ -1414,8 +1409,6 @@ class TodoListItemsView(discord.ui.View):
                     if current_list_name.startswith("#")
                     else f"#{current_list_name}"
                 )
-            elif current_scope == "channel":
-                fallback_label = TodoFunctions._SERVER_INBOX_DISPLAY_NAME
             elif current_scope == "personal":
                 fallback_label = (
                     "Personal"
@@ -1440,14 +1433,6 @@ class TodoListItemsView(discord.ui.View):
                     default=False,
                 )
             ]
-            if not has_server_global_entry:
-                top_options.append(
-                    discord.SelectOption(
-                        label=TodoFunctions._SERVER_INBOX_DISPLAY_NAME,
-                        value="__server_global__",
-                        default=(current_channel_id is None and not has_default),
-                    )
-                )
             options = top_options + options
 
         return options[:25]
@@ -2982,7 +2967,7 @@ class TodoEmbeds:
         personal_lists: List[Dict[str, Any]],
     ) -> dict:
         embed = discord.Embed(
-            title="Available Todo Lists",
+            title="Todo List Directory",
             color=discord.Colour.blurple(),
         )
 
@@ -3039,7 +3024,7 @@ class TodoEmbeds:
         sort_direction: str = "ascending",
     ) -> dict:
         embed = discord.Embed(
-            title="Available Todo Lists",
+            title="Todo List Directory",
             color=discord.Colour.blurple(),
         )
 

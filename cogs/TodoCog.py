@@ -164,9 +164,7 @@ class TodoCog(commands.Cog):
         scope_value = TodoFunctions._normalize_scope(str(todo_list.get("scope") or ""))
         if scope_value == "personal":
             return f"Personal / {name}"[:100]
-        if todo_list.get("channel_id") is None:
-            return f"Server / {name}"[:100]
-        return f"This Channel / {name}"[:100]
+        return f"Server / {name}"[:100]
 
     async def _validate_list_access(
         self,
@@ -205,39 +203,16 @@ class TodoCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         list_target: Optional[str],
-        *,
-        allow_all_server: bool = False,
-    ) -> tuple[Optional[Dict[str, Any]], str, bool]:
+    ) -> tuple[Dict[str, Any], str]:
         target_value = (list_target or "").strip()
         if not target_value:
             target_value = "channel" if interaction.guild_id is not None else "personal"
 
         if interaction.guild_id is None and (
-            target_value in {"channel", "all_server"}
+            target_value == "channel"
             or target_value.startswith("channel:")
         ):
             target_value = "personal"
-
-        if target_value == "all_server":
-            if not allow_all_server or interaction.guild_id is None:
-                raise ValidationError(
-                    "All server channels is only available in servers.",
-                    ephemeral=True,
-                )
-            return None, "channel", True
-
-        if target_value == "__server_global__":
-            if interaction.guild_id is None:
-                raise ValidationError(
-                    "Server Inbox is only available in servers.",
-                    ephemeral=True,
-                )
-            todo_list = await asyncio.to_thread(
-                TodoFunctions.get_or_create_server_global_list,
-                interaction.guild_id,
-                interaction.user.id,
-            )
-            return todo_list, "channel", False
 
         if target_value == "personal":
             todo_list = await asyncio.to_thread(
@@ -248,7 +223,7 @@ class TodoCog(commands.Cog):
                 getattr(interaction.channel, "name", None),
                 "personal",
             )
-            return todo_list, "personal", False
+            return todo_list, "personal"
 
         if target_value == "channel":
             todo_list = await asyncio.to_thread(
@@ -259,7 +234,20 @@ class TodoCog(commands.Cog):
                 getattr(interaction.channel, "name", None),
                 "channel",
             )
-            return todo_list, "channel", False
+            return todo_list, "channel"
+
+        if target_value == "__server_inbox__":
+            if interaction.guild_id is None:
+                raise ValidationError(
+                    "Inbox is only available in servers.",
+                    ephemeral=True,
+                )
+            todo_list = await asyncio.to_thread(
+                TodoFunctions.get_or_create_server_global_list,
+                interaction.guild_id,
+                interaction.user.id,
+            )
+            return todo_list, "channel"
 
         if target_value.startswith("channel:"):
             try:
@@ -292,7 +280,7 @@ class TodoCog(commands.Cog):
                 interaction.user.id,
                 getattr(selected_channel, "name", None),
             )
-            return todo_list, "channel", False
+            return todo_list, "channel"
 
         todo_list = await asyncio.to_thread(
             TodoFunctions.fetch_todo_list_by_id,
@@ -306,14 +294,13 @@ class TodoCog(commands.Cog):
 
         await self._validate_list_access(interaction, todo_list)
         scope_value = TodoFunctions._normalize_scope(str(todo_list.get("scope") or ""))
-        return todo_list, scope_value, False
+        return todo_list, scope_value
 
     async def _build_list_target_autocomplete_options(
         self,
         interaction: discord.Interaction,
         current: str,
         *,
-        include_all_server: bool = False,
         custom_only: bool = False,
     ) -> List[app_commands.Choice[str]]:
         query = (current or "").strip().lower()
@@ -325,20 +312,14 @@ class TodoCog(commands.Cog):
                     app_commands.Choice(name="Personal", value="personal"),
                 ]
             else:
-                base_options = [app_commands.Choice(name="This Channel", value="channel")]
-                if include_all_server:
-                    base_options.append(
-                        app_commands.Choice(
-                            name="All Server Channels",
-                            value="all_server",
-                        )
-                    )
-                base_options.extend(
-                    [
-                        app_commands.Choice(name="Server Inbox", value="__server_global__"),
-                        app_commands.Choice(name="Personal", value="personal"),
-                    ]
-                )
+                base_options = [
+                    app_commands.Choice(name="This Channel", value="channel"),
+                    app_commands.Choice(
+                        name=TodoFunctions._SERVER_INBOX_DISPLAY_NAME,
+                        value="__server_inbox__",
+                    ),
+                    app_commands.Choice(name="Personal", value="personal"),
+                ]
 
             options.extend(
                 option
@@ -411,52 +392,34 @@ class TodoCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         *,
-        todo_list: Optional[Dict[str, Any]],
-        use_all_server_channels: bool,
+        todo_list: Dict[str, Any],
         ephemeral: bool,
     ) -> None:
         await interaction.response.defer(ephemeral=ephemeral)
         try:
-            if use_all_server_channels:
-                deleted_count = await asyncio.to_thread(
-                    TodoFunctions.clear_items_on_guild,
-                    interaction.guild_id,
+            refreshed_list = await asyncio.to_thread(
+                TodoFunctions.fetch_todo_list_by_id,
+                todo_list.get("_id"),
+            )
+            if refreshed_list is None:
+                raise ValidationError(
+                    "That list is no longer available.",
+                    ephemeral=ephemeral,
                 )
-                result_view = TodoListDescriptionView(
-                    title="Todo List Cleared",
-                    description=(
-                        f"List: `All Server Channels`\nRemoved items: `{deleted_count}`"
-                    ),
-                    color=discord.Colour.orange(),
-                    todo_list=None,
-                    user_id=interaction.user.id,
-                )
-            else:
-                if todo_list is None:
-                    raise ValueError("That list was not found.")
-                refreshed_list = await asyncio.to_thread(
-                    TodoFunctions.fetch_todo_list_by_id,
-                    todo_list.get("_id"),
-                )
-                if refreshed_list is None:
-                    raise ValidationError(
-                        "That list is no longer available.",
-                        ephemeral=ephemeral,
-                    )
-                deleted_count = await asyncio.to_thread(
-                    TodoFunctions.clear_todo_list_items,
-                    refreshed_list.get("_id"),
-                )
-                result_view = TodoListDescriptionView(
-                    title="Todo List Cleared",
-                    description=(
-                        f"List: `{TodoFunctions.display_list_name(refreshed_list, 'List')}`\n"
-                        f"Removed items: `{deleted_count}`"
-                    ),
-                    color=discord.Colour.orange(),
-                    todo_list=refreshed_list,
-                    user_id=interaction.user.id,
-                )
+            deleted_count = await asyncio.to_thread(
+                TodoFunctions.clear_todo_list_items,
+                refreshed_list.get("_id"),
+            )
+            result_view = TodoListDescriptionView(
+                title="Todo List Cleared",
+                description=(
+                    f"List: `{TodoFunctions.display_list_name(refreshed_list, 'List')}`\n"
+                    f"Removed items: `{deleted_count}`"
+                ),
+                color=discord.Colour.orange(),
+                todo_list=refreshed_list,
+                user_id=interaction.user.id,
+            )
         except UserVisibleError as exc:
             await handle_interaction_error(interaction, exc)
             return
@@ -559,12 +522,9 @@ class TodoCog(commands.Cog):
         assignee: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        todo_list, scope_value, use_all_server_channels = (
-            await self._resolve_list_target(
-                interaction,
-                list_target,
-                allow_all_server=True,
-            )
+        todo_list, scope_value = await self._resolve_list_target(
+            interaction,
+            list_target,
         )
 
         ephemeral = resolve_ephemeral_from_scope(
@@ -592,25 +552,11 @@ class TodoCog(commands.Cog):
         await interaction.response.defer(ephemeral=ephemeral)
 
         try:
-            if use_all_server_channels:
-                todo_list = {
-                    "name": "All Server Channels",
-                    "scope": "channel",
-                    "guild_id": interaction.guild_id,
-                }
-                items = await asyncio.to_thread(
-                    TodoFunctions.list_items_on_guild,
-                    interaction.guild_id,
-                    sort_value,
-                )
-            else:
-                if todo_list is None:
-                    raise ValueError("That list was not found.")
-                items = await asyncio.to_thread(
-                    TodoFunctions.list_items_on_list,
-                    todo_list["_id"],
-                    sort_value,
-                )
+            items = await asyncio.to_thread(
+                TodoFunctions.list_items_on_list,
+                todo_list["_id"],
+                sort_value,
+            )
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while loading that list.",
@@ -626,7 +572,7 @@ class TodoCog(commands.Cog):
             assignee_filter_id=assignee_filter_user_id,
             assignee_filter_unassigned=assignee_filter_unassigned,
             user_id=interaction.user.id,
-            view_scope="all_server" if use_all_server_channels else "list",
+            view_scope="list",
             guild_id=interaction.guild_id,
         )
         await interaction.followup.send(
@@ -641,11 +587,7 @@ class TodoCog(commands.Cog):
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
-        return await self._build_list_target_autocomplete_options(
-            interaction,
-            current,
-            include_all_server=True,
-        )
+        return await self._build_list_target_autocomplete_options(interaction, current)
 
     @list_view.autocomplete("assignee")
     async def list_view_assignee_autocomplete(
@@ -668,12 +610,9 @@ class TodoCog(commands.Cog):
         list_target: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        todo_list, scope_value, use_all_server_channels = (
-            await self._resolve_list_target(
-                interaction,
-                list_target,
-                allow_all_server=True,
-            )
+        todo_list, scope_value = await self._resolve_list_target(
+            interaction,
+            list_target,
         )
 
         ephemeral = resolve_ephemeral_from_scope(
@@ -682,20 +621,11 @@ class TodoCog(commands.Cog):
             visibility,
         )
         try:
-            if use_all_server_channels:
-                list_name = "All Server Channels"
-                item_count = await asyncio.to_thread(
-                    TodoFunctions.count_items_on_guild,
-                    interaction.guild_id,
-                )
-            else:
-                if todo_list is None:
-                    raise ValueError("That list was not found.")
-                list_name = TodoFunctions.display_list_name(todo_list, "List")
-                item_count = await asyncio.to_thread(
-                    TodoFunctions.count_items_on_list,
-                    todo_list["_id"],
-                )
+            list_name = TodoFunctions.display_list_name(todo_list, "List")
+            item_count = await asyncio.to_thread(
+                TodoFunctions.count_items_on_list,
+                todo_list["_id"],
+            )
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while preparing that confirmation.",
@@ -703,28 +633,18 @@ class TodoCog(commands.Cog):
                 cause=exc,
             )
 
-        action_text = (
-            "This will remove all todo list items in this server."
-            if use_all_server_channels
-            else "This will remove every item from this list."
-        )
         prompt = self._format_list_confirmation_prompt(
-            action_text=action_text,
+            action_text="This will remove every item from this list.",
             list_name=list_name,
             item_count=item_count,
         )
         await interaction.response.send_modal(
             TodoListConfirmModal(
-                title=(
-                    "Confirm Server Clear"
-                    if use_all_server_channels
-                    else "Clear Todo List"
-                ),
+                title="Clear Todo List",
                 description=prompt,
                 on_confirm=lambda confirm_interaction: self._run_list_clear_action(
                     confirm_interaction,
                     todo_list=todo_list,
-                    use_all_server_channels=use_all_server_channels,
                     ephemeral=ephemeral,
                 ),
             )
@@ -736,13 +656,9 @@ class TodoCog(commands.Cog):
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
-        return await self._build_list_target_autocomplete_options(
-            interaction,
-            current,
-            include_all_server=True,
-        )
+        return await self._build_list_target_autocomplete_options(interaction, current)
 
-    @list_group.command(name="all", description="Show all available todo lists")
+    @list_group.command(name="directory", description="Browse available todo lists")
     @app_commands.describe(
         scope="Which lists to include",
         visibility=VISIBILITY_DESC,
@@ -751,7 +667,7 @@ class TodoCog(commands.Cog):
         scope=_LIST_DIRECTORY_SCOPE_CHOICES,
         visibility=VISIBILITY_CHOICES,
     )
-    async def list_all(
+    async def list_directory(
         self,
         interaction: discord.Interaction,
         scope: Optional[app_commands.Choice[str]] = None,
@@ -777,19 +693,19 @@ class TodoCog(commands.Cog):
 
         try:
             if interaction.guild_id is not None and scope_value == "server":
-                server_inbox = await asyncio.to_thread(
+                inbox_list = await asyncio.to_thread(
                     TodoFunctions.get_or_create_server_global_list,
                     interaction.guild_id,
                     interaction.user.id,
                 )
                 server_lists.append(
                     {
-                        "_id": server_inbox.get("_id"),
+                        "_id": inbox_list.get("_id"),
                         "label": "Built-in",
-                        "name": TodoFunctions.display_list_name(server_inbox, "Server Inbox"),
+                        "name": TodoFunctions.display_list_name(inbox_list, "Inbox"),
                         "item_count": await asyncio.to_thread(
                             TodoFunctions.count_items_on_list,
-                            server_inbox.get("_id"),
+                            inbox_list.get("_id"),
                         ),
                     }
                 )
@@ -907,6 +823,99 @@ class TodoCog(commands.Cog):
                 cause=exc,
             ) from exc
 
+    @todo_group.command(name="overview", description="Show the server todo overview")
+    @app_commands.describe(
+        sort="Sort order for items",
+        status="Filter by item status",
+        assignee="Filter by assignee (None = unassigned, Me = yourself)",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(
+        sort=_SORT_CHOICES,
+        status=_LIST_STATUS_FILTER_CHOICES,
+        visibility=VISIBILITY_CHOICES,
+    )
+    async def overview(
+        self,
+        interaction: discord.Interaction,
+        sort: Optional[app_commands.Choice[str]] = None,
+        status: Optional[app_commands.Choice[str]] = None,
+        assignee: Optional[str] = None,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        if interaction.guild_id is None:
+            raise ValidationError(
+                "Server overview is only available in servers.",
+                ephemeral=True,
+            )
+
+        ephemeral = resolve_ephemeral_from_scope(
+            interaction.guild_id,
+            "channel",
+            visibility,
+            dm_default_visibility="public",
+        )
+        sort_value = sort.value if sort else "ascending"
+        status_value = status.value if status else "all"
+        assignee_filter_user_id: Optional[int] = None
+        assignee_filter_unassigned = False
+        assignee_value = (assignee or "").strip()
+        if assignee_value:
+            if assignee_value == "__none__":
+                assignee_filter_unassigned = True
+            else:
+                try:
+                    assignee_filter_user_id = TodoFunctions.parse_assignee_token(
+                        assignee_value,
+                        interaction.user.id,
+                    )
+                except ValueError as exc:
+                    raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
+
+        await interaction.response.defer(ephemeral=ephemeral)
+
+        try:
+            items = await asyncio.to_thread(
+                TodoFunctions.list_items_on_guild,
+                interaction.guild_id,
+                sort_value,
+            )
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while loading the server overview.",
+                ephemeral=ephemeral,
+                cause=exc,
+            )
+
+        view = TodoListItemsView(
+            todo_list={
+                "name": "Server Overview",
+                "scope": "channel",
+                "guild_id": interaction.guild_id,
+            },
+            items=items,
+            sort=sort_value,
+            status_filter=status_value,
+            assignee_filter_id=assignee_filter_user_id,
+            assignee_filter_unassigned=assignee_filter_unassigned,
+            user_id=interaction.user.id,
+            view_scope="overview",
+            guild_id=interaction.guild_id,
+        )
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            view=view,
+            **view.payload(),
+        )
+
+    @overview.autocomplete("assignee")
+    async def overview_assignee_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        return await self.todo_assign_autocomplete(interaction, current)
+
     @list_group.command(name="create", description="Create a new custom todo list")
     @app_commands.describe(
         name="Name of the new list",
@@ -985,18 +994,7 @@ class TodoCog(commands.Cog):
         name: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        todo_list, scope_value, use_all_server_channels = (
-            await self._resolve_list_target(
-                interaction,
-                list_target,
-                allow_all_server=False,
-            )
-        )
-        if use_all_server_channels or todo_list is None:
-            raise ValidationError(
-                "Please select a custom list from autocomplete.",
-                ephemeral=True,
-            )
+        todo_list, scope_value = await self._resolve_list_target(interaction, list_target)
         if TodoFunctions.list_type(todo_list) != TodoFunctions._CUSTOM_LIST_TYPE:
             raise ValidationError(
                 "Only custom lists can be renamed.",
@@ -1074,18 +1072,7 @@ class TodoCog(commands.Cog):
         list_target: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        todo_list, scope_value, use_all_server_channels = (
-            await self._resolve_list_target(
-                interaction,
-                list_target,
-                allow_all_server=False,
-            )
-        )
-        if use_all_server_channels or todo_list is None:
-            raise ValidationError(
-                "Please select a custom list from autocomplete.",
-                ephemeral=True,
-            )
+        todo_list, scope_value = await self._resolve_list_target(interaction, list_target)
         if TodoFunctions.list_type(todo_list) != TodoFunctions._CUSTOM_LIST_TYPE:
             raise ValidationError(
                 "Only custom lists can be deleted.",
@@ -1190,18 +1177,7 @@ class TodoCog(commands.Cog):
             )
             return
 
-        todo_list, scope_value, use_all_server_channels = (
-            await self._resolve_list_target(
-                interaction,
-                list,
-                allow_all_server=False,
-            )
-        )
-        if use_all_server_channels or todo_list is None:
-            raise ValidationError(
-                "Please select a valid list from autocomplete.",
-                ephemeral=True,
-            )
+        todo_list, scope_value = await self._resolve_list_target(interaction, list)
 
         ephemeral = resolve_ephemeral_from_scope(
             interaction.guild_id,
@@ -1399,7 +1375,6 @@ class TodoCog(commands.Cog):
         options = await self._build_list_target_autocomplete_options(
             interaction,
             current,
-            include_all_server=False,
         )
         create_option = app_commands.Choice(
             name="Create new list",
