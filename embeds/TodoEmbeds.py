@@ -141,6 +141,7 @@ class TodoItemEditModal(discord.ui.Modal):
         item: Dict[str, Any],
         item_number: Any,
         source_message: Optional[discord.Message],
+        source_interaction: Optional[discord.Interaction] = None,
         assignee_options: Optional[List[discord.SelectOption]] = None,
         list_options: Optional[List[discord.SelectOption]] = None,
         return_item_embed: bool = False,
@@ -157,6 +158,7 @@ class TodoItemEditModal(discord.ui.Modal):
         self.item_number = item_number
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.source_message = source_message
+        self.source_interaction = source_interaction
         self.return_item_embed = return_item_embed
         self.refresh_source_as_item_embed = refresh_source_as_item_embed
         self.locale_code = DueDateService.normalize_locale_code(locale_code)
@@ -286,6 +288,22 @@ class TodoItemEditModal(discord.ui.Modal):
             )
             self.add_item(self.assignee_input)
             self.add_item(self.list_input)
+
+    async def _edit_source_payload(self, **payload: Any) -> bool:
+        if self.source_interaction is not None:
+            try:
+                await self.source_interaction.edit_original_response(**payload)
+                return True
+            except discord.NotFound:
+                pass
+            except discord.HTTPException:
+                pass
+
+        if self.source_message is None:
+            return False
+
+        await self.source_message.edit(**payload)
+        return True
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
@@ -480,7 +498,7 @@ class TodoItemEditModal(discord.ui.Modal):
         if self.source_message is not None and self.refresh_source_as_item_embed:
             try:
                 payload = TodoEmbeds.item_details_embed(final_list, final_item)
-                await self.source_message.edit(**payload)
+                await self._edit_source_payload(**payload)
             except discord.NotFound:
                 pass
             except Exception as exc:
@@ -498,7 +516,7 @@ class TodoItemEditModal(discord.ui.Modal):
                 await self.parent_view._reload_items()
                 self.parent_view._build()
                 if self.source_message is not None:
-                    await self.source_message.edit(
+                    await self._edit_source_payload(
                         view=self.parent_view,
                         **self.parent_view.payload(),
                     )
@@ -2265,6 +2283,7 @@ class TodoItemActionsView(discord.ui.View):
                         item=current_item,
                         item_number=modal_item_number,
                         source_message=interaction.message,
+                        source_interaction=interaction,
                         assignee_options=assignee_options,
                         list_options=list_options,
                         refresh_source_as_item_embed=True,
@@ -2285,6 +2304,7 @@ class TodoItemActionsView(discord.ui.View):
                 item=current_item,
                 item_number=modal_item_number,
                 source_message=interaction.message,
+                source_interaction=interaction,
                 refresh_source_as_item_embed=True,
                 locale_code=modal_locale,
                 timezone=modal_timezone,
