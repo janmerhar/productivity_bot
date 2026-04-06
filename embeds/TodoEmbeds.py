@@ -1069,6 +1069,12 @@ class TodoListItemsView(discord.ui.View):
         end = start + self.page_size
         return self.items[start:end]
 
+    def _page_item(self, slot_index: int) -> Optional[Dict[str, Any]]:
+        page_items = self._page_slice()
+        if 0 <= slot_index < len(page_items):
+            return page_items[slot_index]
+        return None
+
     def payload(self) -> dict:
         return TodoEmbeds.list_items_page_embed(
             todo_list=self.todo_list,
@@ -1250,6 +1256,61 @@ class TodoListItemsView(discord.ui.View):
         except discord.NotFound:
             await self._notify_missing_message(interaction)
             return False
+
+    async def _resolve_list_for_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        list_id = item.get("list_id")
+        if not list_id:
+            return self.todo_list
+        try:
+            resolved_list = await asyncio.to_thread(
+                TodoFunctions.fetch_todo_list_by_id,
+                list_id,
+            )
+            if resolved_list is not None:
+                return resolved_list
+        except Exception:
+            pass
+        return self.todo_list
+
+    async def _open_item_details(
+        self,
+        interaction: discord.Interaction,
+        item: Optional[Dict[str, Any]],
+    ) -> None:
+        item_id = str((item or {}).get("_id") or "").strip()
+        if not item_id:
+            await interaction.response.defer(ephemeral=True)
+            return
+
+        try:
+            current_item = await asyncio.to_thread(
+                TodoFunctions.fetch_todo,
+                item_id,
+                interaction.guild_id,
+            )
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while loading that item.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
+
+        if current_item is None:
+            await self._reload_items()
+            self._build()
+            await self._safe_refresh_message(interaction)
+            return
+
+        todo_list = await self._resolve_list_for_item(current_item)
+        payload = TodoEmbeds.item_details_embed(todo_list, current_item)
+        await interaction.response.send_message(
+            ephemeral=True,
+            **payload,
+        )
 
     @staticmethod
     def _member_option_label(member: Any) -> str:
@@ -1439,191 +1500,47 @@ class TodoListItemsView(discord.ui.View):
 
     def _build(self) -> None:
         self.clear_items()
-        page_items = self._page_slice()
 
-        for display_index, item in enumerate(page_items, start=1):
-            item_id = str(item.get("_id") or "")
-            item_no = item.get("item_no")
-            item_name = TodoFunctions.task_name_from_item(item)
-            item_status = TodoFunctions.item_status(item)
-            if item_status == "todo":
-                progress_emoji = "🟡"
-                progress_style = discord.ButtonStyle.primary
-                progress_disabled = False
-            elif item_status == "in_progress":
-                progress_emoji = "✅"
-                progress_style = discord.ButtonStyle.success
-                progress_disabled = False
-            else:
-                progress_emoji = "✅"
-                progress_style = discord.ButtonStyle.secondary
-                progress_disabled = True
-            complete_button = discord.ui.Button(
-                label=f"{progress_emoji} {display_index}",
-                style=progress_style,
-                custom_id=f"todo_item_complete:{item_id}",
-                row=0,
-                disabled=(not item_id) or progress_disabled,
-            )
+        for slot_index in range(self.page_size):
+            display_index = slot_index + 1
+            item = self._page_item(slot_index)
+            item_id = str((item or {}).get("_id") or "")
+            has_item = item is not None
 
-            async def _callback(
-                interaction: discord.Interaction,
-                item_object_id: str = item_id,
-                item_number: Any = item_no,
-                task_name: str = item_name,
-            ) -> None:
-                await interaction.response.defer()
-                if not item_object_id:
-                    await interaction.followup.send(
-                        ephemeral=True,
-                        content="Couldn't complete that item.",
-                    )
-                    return
-                current_item = await asyncio.to_thread(
-                    TodoFunctions.fetch_todo,
-                    item_object_id,
-                    interaction.guild_id,
-                )
-                if not current_item:
-                    await interaction.followup.send(
-                        ephemeral=True,
-                        content=f"Task {TodoFunctions.task_ref(task_name)} no longer exists.",
-                    )
-                    return
-
-                current_status = TodoFunctions.item_status(current_item)
-                if current_status == "todo":
-                    next_status = "in_progress"
-                elif current_status == "in_progress":
-                    next_status = "done"
-                else:
-                    next_status = None
-
-                if next_status is None:
-                    await self._reload_items()
-                    self._build()
-                    refreshed = await self._safe_refresh_message(interaction)
-                    if not refreshed:
-                        return
-                    return
-                updated = await asyncio.to_thread(
-                    TodoFunctions.set_item_status,
-                    item_object_id,
-                    next_status,
-                )
-                if not updated:
-                    await interaction.followup.send(
-                        ephemeral=True,
-                        content=f"Couldn't update task {TodoFunctions.task_ref(task_name)}.",
-                    )
-                    return
-                await self._reload_items()
-                self._build()
-                refreshed = await self._safe_refresh_message(interaction)
-                if not refreshed:
-                    return
-
-            complete_button.callback = _callback
-            self.add_item(complete_button)
-
-            edit_button = discord.ui.Button(
-                label=f"✏️ {display_index}",
+            info_button = discord.ui.Button(
+                label=str(display_index),
                 style=discord.ButtonStyle.secondary,
-                custom_id=f"todo_item_edit:{item_id}",
-                row=1,
-                disabled=not item_id,
+                custom_id=f"todo_item_info:{item_id or display_index}",
+                row=0,
+                disabled=not has_item,
             )
 
-            async def _edit_callback(
+            async def _info_callback(
                 interaction: discord.Interaction,
-                item_data: Dict[str, Any] = item,
-                item_number_value: Any = item_no,
-                display_number: int = display_index,
+                item_data: Optional[Dict[str, Any]] = item,
             ) -> None:
-                global _MODAL_SELECTS_SUPPORTED
-                assignee_options = self._build_assignee_select_options(
-                    interaction,
-                    item_data,
-                )
-                list_options: List[discord.SelectOption] = []
-                try:
-                    list_docs = await asyncio.to_thread(
-                        TodoFunctions.list_candidate_lists_for_item_scope,
-                        item_data,
-                        interaction.user.id,
-                        25,
-                    )
-                    list_options = self._build_list_select_options(item_data, list_docs)
-                except Exception:
-                    list_options = []
+                await self._open_item_details(interaction, item_data)
 
-                modal_item_number = (
-                    item_number_value
-                    if item_number_value is not None
-                    else display_number
-                )
-                modal_locale = str(getattr(interaction, "locale", "") or "").strip()
-                if not modal_locale:
-                    modal_locale = None
-                try:
-                    modal_timezone = await asyncio.to_thread(
-                        UserSettingsFunctions.get_timezone,
-                        interaction.user.id,
-                    )
-                except Exception:
-                    modal_timezone = None
-                if _MODAL_SELECTS_SUPPORTED:
-                    try:
-                        await interaction.response.send_modal(
-                            TodoItemEditModal(
-                                parent_view=self,
-                                item=item_data,
-                                item_number=modal_item_number,
-                                source_message=interaction.message,
-                                assignee_options=assignee_options,
-                                list_options=list_options,
-                                locale_code=modal_locale,
-                                timezone=modal_timezone,
-                            )
-                        )
-                        return
-                    except discord.HTTPException as exc:
-                        if exc.code == 50035 and "must be one of (4,)" in str(exc):
-                            _MODAL_SELECTS_SUPPORTED = False
-                        else:
-                            raise
-
-                await interaction.response.send_modal(
-                    TodoItemEditModal(
-                        parent_view=self,
-                        item=item_data,
-                        item_number=modal_item_number,
-                        source_message=interaction.message,
-                        locale_code=modal_locale,
-                        timezone=modal_timezone,
-                    )
-                )
-
-            edit_button.callback = _edit_callback
-            self.add_item(edit_button)
+            info_button.callback = _info_callback
+            self.add_item(info_button)
 
         prev_button = discord.ui.Button(
             style=discord.ButtonStyle.secondary,
             emoji="◀️",
             disabled=self.page <= 1,
-            row=2,
+            row=1,
         )
         add_button = discord.ui.Button(
             style=discord.ButtonStyle.success,
             emoji="➕",
-            row=2,
+            row=1,
             disabled=(self.view_scope != "list") or (self.todo_list.get("_id") is None),
         )
         next_button = discord.ui.Button(
             style=discord.ButtonStyle.secondary,
             emoji="▶️",
             disabled=self.page >= self.total_pages,
-            row=2,
+            row=1,
         )
         options_button = discord.ui.Button(
             style=(
@@ -1632,7 +1549,7 @@ class TodoListItemsView(discord.ui.View):
                 else discord.ButtonStyle.secondary
             ),
             emoji="🔎",
-            row=2,
+            row=1,
         )
 
         async def _prev_callback(interaction: discord.Interaction) -> None:
