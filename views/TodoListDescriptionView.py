@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 import discord
 
@@ -10,6 +10,27 @@ from services.error_reporting import (
     ValidationError,
     handle_interaction_error,
 )
+
+
+ListConfirmCallback = Callable[[discord.Interaction], Awaitable[None]]
+
+
+class TodoListConfirmModal(discord.ui.Modal):
+    def __init__(
+        self,
+        *,
+        title: str,
+        description: str,
+        on_confirm: ListConfirmCallback,
+    ) -> None:
+        super().__init__(title=(str(title or "").strip() or "Confirm Action")[:45])
+        self.description = str(description or "").strip()
+        self.on_confirm = on_confirm
+        if self.description:
+            self.add_item(discord.ui.TextDisplay(self.description))
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await self.on_confirm(interaction)
 
 
 class TodoListRenameModal(discord.ui.Modal):
@@ -101,7 +122,7 @@ class TodoListDescriptionView(discord.ui.View):
     def list_name(self) -> str:
         if not self.todo_list:
             return "List"
-        return str(self.todo_list.get("name") or "List")
+        return TodoFunctions.display_list_name(self.todo_list, "List")
 
     def sync_button_state(self) -> None:
         has_list = bool(self.todo_list and self.todo_list.get("_id"))
@@ -173,6 +194,98 @@ class TodoListDescriptionView(discord.ui.View):
                 ),
             )
 
+    @staticmethod
+    def _format_confirmation_description(
+        *,
+        action_text: str,
+        list_name: str,
+        item_count: int,
+    ) -> str:
+        return (
+            f"{action_text}\n"
+            f"List: `{list_name}`\n"
+            f"Current items: `{item_count}`"
+        )
+
+    async def _run_clear_list(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        todo_list = await self.refresh_todo_list()
+        if todo_list is None:
+            await handle_interaction_error(
+                interaction,
+                ValidationError("That list is no longer available.", ephemeral=True),
+            )
+            return
+
+        try:
+            deleted_count = await asyncio.to_thread(
+                TodoFunctions.clear_todo_list_items,
+                todo_list.get("_id"),
+            )
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while clearing that list.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
+
+        self.embed_title = "Todo List Cleared"
+        self.embed_description = (
+            f"List: `{TodoFunctions.display_list_name(todo_list, 'List')}`\n"
+            f"Removed items: `{deleted_count}`"
+        )
+        self.color = discord.Colour.orange()
+        await self.refresh_message(interaction)
+
+    async def _run_delete_list(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        todo_list = await self.refresh_todo_list()
+        if todo_list is None:
+            await handle_interaction_error(
+                interaction,
+                ValidationError("That list is no longer available.", ephemeral=True),
+            )
+            return
+
+        list_name = TodoFunctions.display_list_name(todo_list, "List")
+        try:
+            deleted, deleted_count = await asyncio.to_thread(
+                TodoFunctions.delete_todo_list,
+                todo_list.get("_id"),
+            )
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while deleting that list.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
+
+        if not deleted:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError("That list could not be deleted.", ephemeral=True),
+            )
+            return
+
+        self.todo_list = None
+        self.embed_title = "Todo List Deleted"
+        self.embed_description = (
+            f"List: `{list_name}`\n"
+            f"Removed items: `{deleted_count}`"
+        )
+        self.color = discord.Colour.red()
+        self.sync_button_state()
+        self.stop()
+        await self.refresh_message(interaction)
+
     @discord.ui.button(emoji="📋", style=discord.ButtonStyle.secondary, row=0)
     async def show_list(
         self,
@@ -203,11 +316,6 @@ class TodoListDescriptionView(discord.ui.View):
                     cause=exc,
                 ),
             )
-            return
-
-        if not items:
-            payload = TodoEmbeds.list_items_embed(todo_list, items, "ascending", "all")
-            await interaction.response.send_message(ephemeral=True, **payload)
             return
 
         view = TodoListItemsView(
@@ -286,30 +394,34 @@ class TodoListDescriptionView(discord.ui.View):
             )
             return
 
-        await interaction.response.defer()
         try:
-            deleted_count = await asyncio.to_thread(
-                TodoFunctions.clear_todo_list_items,
+            item_count = await asyncio.to_thread(
+                TodoFunctions.count_items_on_list,
                 todo_list.get("_id"),
             )
         except Exception as exc:
             await handle_interaction_error(
                 interaction,
                 UserVisibleError(
-                    "Something went wrong while clearing that list.",
+                    "Something went wrong while preparing that confirmation.",
                     ephemeral=True,
                     cause=exc,
                 ),
             )
             return
 
-        self.embed_title = "Todo List Cleared"
-        self.embed_description = (
-            f"List: `{todo_list.get('name') or 'List'}`\n"
-            f"Removed items: `{deleted_count}`"
+        description = self._format_confirmation_description(
+            action_text="This will remove every item from this list.",
+            list_name=TodoFunctions.display_list_name(todo_list, "List"),
+            item_count=item_count,
         )
-        self.color = discord.Colour.orange()
-        await self.refresh_message(interaction)
+        await interaction.response.send_modal(
+            TodoListConfirmModal(
+                title="Clear Todo List",
+                description=description,
+                on_confirm=self._run_clear_list,
+            )
+        )
 
     @discord.ui.button(emoji="🗑️", style=discord.ButtonStyle.danger, row=0)
     async def delete_list(
@@ -326,38 +438,32 @@ class TodoListDescriptionView(discord.ui.View):
             )
             return
 
-        list_name = str(todo_list.get("name") or "List")
-        await interaction.response.defer()
+        list_name = TodoFunctions.display_list_name(todo_list, "List")
         try:
-            deleted, deleted_count = await asyncio.to_thread(
-                TodoFunctions.delete_todo_list,
+            item_count = await asyncio.to_thread(
+                TodoFunctions.count_items_on_list,
                 todo_list.get("_id"),
             )
         except Exception as exc:
             await handle_interaction_error(
                 interaction,
                 UserVisibleError(
-                    "Something went wrong while deleting that list.",
+                    "Something went wrong while preparing that confirmation.",
                     ephemeral=True,
                     cause=exc,
                 ),
             )
             return
 
-        if not deleted:
-            await handle_interaction_error(
-                interaction,
-                UserVisibleError("That list could not be deleted.", ephemeral=True),
-            )
-            return
-
-        self.todo_list = None
-        self.embed_title = "Todo List Deleted"
-        self.embed_description = (
-            f"List: `{list_name}`\n"
-            f"Removed items: `{deleted_count}`"
+        description = self._format_confirmation_description(
+            action_text="This will permanently delete this custom list.",
+            list_name=list_name,
+            item_count=item_count,
         )
-        self.color = discord.Colour.red()
-        self.sync_button_state()
-        self.stop()
-        await self.refresh_message(interaction)
+        await interaction.response.send_modal(
+            TodoListConfirmModal(
+                title="Delete Todo List",
+                description=description,
+                on_confirm=self._run_delete_list,
+            )
+        )

@@ -17,6 +17,7 @@ class TodoFunctions:
     _ALLOWED_ITEM_STATUSES = {"todo", "in_progress", "done"}
     _DEFAULT_LIST_TYPE = "default"
     _CUSTOM_LIST_TYPE = "custom"
+    _SERVER_INBOX_DISPLAY_NAME = "Inbox"
 
     @staticmethod
     def _normalize_scope(scope: str) -> str:
@@ -45,6 +46,26 @@ class TodoFunctions:
         }:
             return explicit
         return TodoFunctions._CUSTOM_LIST_TYPE
+
+    @staticmethod
+    def is_server_inbox_list(todo_list: Optional[Dict[str, Any]]) -> bool:
+        if not todo_list:
+            return False
+        return (
+            TodoFunctions._normalize_scope(str(todo_list.get("scope") or "")) == "channel"
+            and todo_list.get("guild_id") is not None
+            and todo_list.get("channel_id") is None
+            and TodoFunctions.list_type(todo_list) == TodoFunctions._DEFAULT_LIST_TYPE
+        )
+
+    @staticmethod
+    def display_list_name(
+        todo_list: Optional[Dict[str, Any]],
+        fallback: str = "List",
+    ) -> str:
+        if TodoFunctions.is_server_inbox_list(todo_list):
+            return TodoFunctions._SERVER_INBOX_DISPLAY_NAME
+        return str((todo_list or {}).get("name") or fallback)
 
     @staticmethod
     def _clean_item_text(text: str) -> str:
@@ -364,14 +385,24 @@ class TodoFunctions:
         if guild_id is None:
             raise ValueError("Server-global lists are only available in servers.")
 
-        list_name = "Server"
+        list_name = TodoFunctions._SERVER_INBOX_DISPLAY_NAME
         query: Dict[str, Any] = {
             "scope": "channel",
             "guild_id": guild_id,
             "channel_id": None,
-            "name_key": list_name.lower(),
+            "list_type": TodoFunctions._DEFAULT_LIST_TYPE,
         }
         existing = mongo_db["todo_lists"].find_one(query)
+        if not existing:
+            existing = mongo_db["todo_lists"].find_one(
+                {
+                    "scope": "channel",
+                    "guild_id": guild_id,
+                    "channel_id": None,
+                    "name_key": list_name.lower(),
+                    "list_type": {"$ne": TodoFunctions._CUSTOM_LIST_TYPE},
+                }
+            )
         if existing:
             updates: Dict[str, Any] = {}
             if existing.get("name") != list_name:
@@ -864,11 +895,11 @@ class TodoFunctions:
         capped_limit = max(1, min(limit, 25))
         cursor = (
             mongo_db["todo_lists"]
-            .find(query, {"name": 1, "channel_id": 1, "scope": 1})
+            .find(query, {"name": 1, "channel_id": 1, "scope": 1, "list_type": 1, "guild_id": 1})
             .sort("name", 1)
-            .limit(capped_limit)
+            .limit(capped_limit + 1)
         )
-        return list(cursor)
+        return list(cursor)[:capped_limit]
 
     @staticmethod
     def find_list_for_item_scope(
@@ -925,7 +956,7 @@ class TodoFunctions:
                 channel_name=None,
                 target="personal",
             )
-        if token_lower == "__server_global__":
+        if token_lower == "__server_inbox__":
             return TodoFunctions.get_or_create_server_global_list(
                 guild_id=item.get("guild_id"),
                 user_id=acting_user_id,
@@ -1025,11 +1056,50 @@ class TodoFunctions:
         return deleted.deleted_count
 
     @staticmethod
+    def count_items_on_guild(guild_id: Optional[int]) -> int:
+        if guild_id is None:
+            return 0
+
+        return mongo_db["todos"].count_documents(
+            {
+                "guild_id": guild_id,
+                "scope": {"$ne": "personal"},
+                "list_id": {"$exists": True},
+            }
+        )
+
+    @staticmethod
     def count_items_on_list(list_id: Any) -> int:
         object_id = TodoFunctions._coerce_object_id(list_id)
         if object_id is None:
             return 0
         return mongo_db["todos"].count_documents({"list_id": object_id})
+
+    @staticmethod
+    def count_items_for_lists(list_ids: List[Any]) -> Dict[str, int]:
+        object_ids: List[ObjectId] = []
+        seen_ids: set[ObjectId] = set()
+        for value in list_ids:
+            object_id = TodoFunctions._coerce_object_id(value)
+            if object_id is None or object_id in seen_ids:
+                continue
+            object_ids.append(object_id)
+            seen_ids.add(object_id)
+
+        if not object_ids:
+            return {}
+
+        pipeline = [
+            {"$match": {"list_id": {"$in": object_ids}}},
+            {"$group": {"_id": "$list_id", "count": {"$sum": 1}}},
+        ]
+        counts: Dict[str, int] = {}
+        for row in mongo_db["todos"].aggregate(pipeline):
+            list_id = row.get("_id")
+            if list_id is None:
+                continue
+            counts[str(list_id)] = int(row.get("count") or 0)
+        return counts
 
     @staticmethod
     def _next_item_number(list_id: ObjectId) -> int:
@@ -1120,10 +1190,10 @@ class TodoFunctions:
         sort_direction = 1 if sort == "ascending" else -1
         list_docs = mongo_db["todo_lists"].find(
             {"guild_id": guild_id, "scope": "channel"},
-            {"_id": 1, "name": 1},
+            {"_id": 1, "name": 1, "channel_id": 1, "scope": 1, "list_type": 1, "guild_id": 1},
         )
         list_name_map: Dict[ObjectId, str] = {
-            doc["_id"]: str(doc.get("name") or "Unnamed")
+            doc["_id"]: TodoFunctions.display_list_name(doc, "Unnamed")
             for doc in list_docs
             if isinstance(doc.get("_id"), ObjectId)
         }
