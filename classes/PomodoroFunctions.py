@@ -24,6 +24,7 @@ class PomodoroExtendResult:
     message: str
     end_time: Optional[datetime.datetime] = None
     duration_minutes: Optional[int] = None
+    mode: Optional[str] = None
 
 
 @dataclass
@@ -529,6 +530,17 @@ class PomodoroFunctions:
                 ),
             )
 
+        running_user_jobs = [
+            job
+            for job in user_jobs
+            if not PomodoroFunctions._is_truthy((job.data or {}).get("paused"))
+        ]
+        if not running_user_jobs:
+            return PomodoroExtendResult(
+                ok=False,
+                message="Resume the pomodoro before extending it.",
+            )
+
         def _normalized(dt: Optional[datetime.datetime]) -> Optional[datetime.datetime]:
             if dt is None:
                 return None
@@ -541,7 +553,7 @@ class PomodoroFunctions:
         selected_job_end_time = None
         best_distance_seconds: Optional[float] = None
 
-        for job in user_jobs:
+        for job in running_user_jobs:
             scheduled = PomodoroFunctions.parse_schedule_datetime(job.schedule)
             if scheduled is None:
                 continue
@@ -580,6 +592,9 @@ class PomodoroFunctions:
             current_duration = int(current_duration_raw)
         except ValueError:
             current_duration = 0
+        mode = str((selected_job.data or {}).get("mode", "focus")).strip().lower()
+        if mode not in ("focus", "break"):
+            mode = "focus"
 
         new_duration = max(0, current_duration) + minutes
         new_end_time = selected_job_end_time + datetime.timedelta(minutes=minutes)
@@ -618,4 +633,5 @@ class PomodoroFunctions:
             message=f"Extended by {minutes} minutes.",
             end_time=new_end_time,
             duration_minutes=new_duration,
+            mode=mode,
         )
