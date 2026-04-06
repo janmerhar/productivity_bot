@@ -375,6 +375,73 @@ class TodoCog(commands.Cog):
 
         return options[:25]
 
+    async def _list_items_for_command_scope(
+        self,
+        interaction: discord.Interaction,
+    ) -> List[Dict[str, Any]]:
+        if interaction.guild_id is None:
+            return await asyncio.to_thread(
+                TodoFunctions.list_items_on_personal_scope,
+                interaction.user.id,
+                "ascending",
+            )
+
+        return await asyncio.to_thread(
+            TodoFunctions.list_items_on_guild,
+            interaction.guild_id,
+            "ascending",
+        )
+
+    async def _resolve_scope_item(
+        self,
+        interaction: discord.Interaction,
+        todo_token: str,
+    ) -> tuple[Dict[str, Any], Dict[str, Any], str]:
+        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        try:
+            item = await asyncio.to_thread(
+                TodoFunctions.fetch_todo_for_scope,
+                todo_token,
+                interaction.guild_id,
+                interaction.user.id,
+            )
+            if item is None:
+                raise ValidationError(
+                    "Please select a valid todo from autocomplete.",
+                    ephemeral=True,
+                )
+
+            todo_list = await asyncio.to_thread(
+                TodoFunctions.fetch_todo_list_by_id,
+                item.get("list_id"),
+            )
+            if todo_list is None:
+                raise ValidationError(
+                    "That todo's list is no longer available.",
+                    ephemeral=True,
+                )
+        except ValidationError:
+            raise
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while loading that todo.",
+                ephemeral=True,
+                cause=exc,
+            )
+
+        return item, todo_list, scope_value
+
+    @staticmethod
+    def _scope_item_option_label(item: Dict[str, Any]) -> str:
+        list_name = str(item.get("list_name") or "List").strip() or "List"
+        todo_name = str(item.get("name") or "").strip() or "Untitled"
+        status = TodoFunctions.status_label(TodoFunctions.item_status(item))
+        due_value = item.get("due")
+        due_label = DueDateService.format_due(due_value) if due_value else "No due date"
+        item_no = item.get("item_no")
+        prefix = f"{item_no}. " if isinstance(item_no, int) and item_no > 0 else ""
+        return f"{list_name} / {prefix}{todo_name} [{status}] - {due_label}"[:100]
+
     @staticmethod
     def _format_list_confirmation_prompt(
         *,
@@ -1380,39 +1447,16 @@ class TodoCog(commands.Cog):
     async def item_view(
         self,
         interaction: discord.Interaction,
-        todo: int,
+        todo: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
         ephemeral = resolve_ephemeral_from_scope(
             interaction.guild_id,
             scope_value,
             visibility,
         )
         await interaction.response.defer(ephemeral=ephemeral)
-
-        try:
-            todo_list = await asyncio.to_thread(
-                TodoFunctions.get_or_create_implicit_list,
-                interaction.guild_id,
-                interaction.channel_id,
-                interaction.user.id,
-                getattr(interaction.channel, "name", None),
-                "channel" if interaction.guild_id is not None else "personal",
-            )
-            item = await asyncio.to_thread(
-                TodoFunctions.fetch_item_on_list_or_error,
-                todo_list["_id"],
-                todo,
-            )
-        except ValueError as exc:
-            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
-        except Exception as exc:
-            raise UserVisibleError(
-                "Something went wrong while loading that item.",
-                ephemeral=ephemeral,
-                cause=exc,
-            )
 
         payload = TodoEmbeds.item_details_embed(todo_list, item)
         await interaction.followup.send(ephemeral=ephemeral, **payload)
@@ -1426,10 +1470,10 @@ class TodoCog(commands.Cog):
     async def item_edit(
         self,
         interaction: discord.Interaction,
-        todo: int,
+        todo: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
         ephemeral = resolve_ephemeral_from_scope(
             interaction.guild_id,
             scope_value,
@@ -1437,26 +1481,11 @@ class TodoCog(commands.Cog):
         )
 
         try:
-            todo_list = await asyncio.to_thread(
-                TodoFunctions.get_or_create_implicit_list,
-                interaction.guild_id,
-                interaction.channel_id,
-                interaction.user.id,
-                getattr(interaction.channel, "name", None),
-                "channel" if interaction.guild_id is not None else "personal",
-            )
             items = await asyncio.to_thread(
                 TodoFunctions.list_items_on_list,
                 todo_list["_id"],
                 "ascending",
             )
-            item = await asyncio.to_thread(
-                TodoFunctions.fetch_item_on_list_or_error,
-                todo_list["_id"],
-                todo,
-            )
-        except ValueError as exc:
-            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while loading that item.",
@@ -1503,7 +1532,7 @@ class TodoCog(commands.Cog):
                 TodoItemEditModal(
                     parent_view=parent_view,
                     item=item,
-                    item_number=todo,
+                    item_number=item.get("item_no"),
                     source_message=None,
                     assignee_options=assignee_options,
                     list_options=list_options,
@@ -1518,7 +1547,7 @@ class TodoCog(commands.Cog):
                     TodoItemEditModal(
                         parent_view=parent_view,
                         item=item,
-                        item_number=todo,
+                        item_number=item.get("item_no"),
                         source_message=None,
                         return_item_embed=True,
                         locale_code=modal_locale,
@@ -1546,11 +1575,11 @@ class TodoCog(commands.Cog):
     async def item_status(
         self,
         interaction: discord.Interaction,
-        todo: int,
+        todo: str,
         status: app_commands.Choice[str],
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
         ephemeral = resolve_ephemeral_from_scope(
             interaction.guild_id,
             scope_value,
@@ -1559,26 +1588,11 @@ class TodoCog(commands.Cog):
         await interaction.response.defer(ephemeral=ephemeral)
 
         try:
-            todo_list = await asyncio.to_thread(
-                TodoFunctions.get_or_create_implicit_list,
-                interaction.guild_id,
-                interaction.channel_id,
-                interaction.user.id,
-                getattr(interaction.channel, "name", None),
-                "channel" if interaction.guild_id is not None else "personal",
-            )
-            item = await asyncio.to_thread(
-                TodoFunctions.fetch_item_on_list_or_error,
-                todo_list["_id"],
-                todo,
-            )
             updated_item = await asyncio.to_thread(
                 TodoFunctions.set_item_status,
                 item["_id"],
                 status.value,
             )
-        except ValueError as exc:
-            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while updating that status.",
@@ -1604,10 +1618,10 @@ class TodoCog(commands.Cog):
     async def item_delete(
         self,
         interaction: discord.Interaction,
-        todo: int,
+        todo: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
         ephemeral = resolve_ephemeral_from_scope(
             interaction.guild_id,
             scope_value,
@@ -1616,22 +1630,7 @@ class TodoCog(commands.Cog):
         await interaction.response.defer(ephemeral=ephemeral)
 
         try:
-            todo_list = await asyncio.to_thread(
-                TodoFunctions.get_or_create_implicit_list,
-                interaction.guild_id,
-                interaction.channel_id,
-                interaction.user.id,
-                getattr(interaction.channel, "name", None),
-                "channel" if interaction.guild_id is not None else "personal",
-            )
-            item = await asyncio.to_thread(
-                TodoFunctions.fetch_item_on_list_or_error,
-                todo_list["_id"],
-                todo,
-            )
             deleted = await asyncio.to_thread(TodoFunctions.delete_item, item["_id"])
-        except ValueError as exc:
-            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while deleting that item.",
@@ -1664,11 +1663,11 @@ class TodoCog(commands.Cog):
     async def todo_assign(
         self,
         interaction: discord.Interaction,
-        todo: int,
+        todo: str,
         assignee: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
         ephemeral = resolve_ephemeral_from_scope(
             interaction.guild_id,
             scope_value,
@@ -1685,26 +1684,11 @@ class TodoCog(commands.Cog):
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
 
         try:
-            todo_list = await asyncio.to_thread(
-                TodoFunctions.get_or_create_implicit_list,
-                interaction.guild_id,
-                interaction.channel_id,
-                interaction.user.id,
-                getattr(interaction.channel, "name", None),
-                "channel" if interaction.guild_id is not None else "personal",
-            )
-            item = await asyncio.to_thread(
-                TodoFunctions.fetch_item_on_list_or_error,
-                todo_list["_id"],
-                todo,
-            )
             updated_item = await asyncio.to_thread(
                 TodoFunctions.set_item_assignee,
                 item["_id"],
                 assignee_id,
             )
-        except ValueError as exc:
-            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while updating assignment.",
@@ -1762,52 +1746,39 @@ class TodoCog(commands.Cog):
 
         return options[:25]
 
-    async def todo_item_number_autocomplete(
+    async def todo_item_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
-    ) -> List[app_commands.Choice[int]]:
+    ) -> List[app_commands.Choice[str]]:
         query = (current or "").strip().lower()
-        scope_value = "channel" if interaction.guild_id is not None else "personal"
 
         try:
-            todo_list = await asyncio.to_thread(
-                TodoFunctions.get_or_create_implicit_list,
-                interaction.guild_id,
-                interaction.channel_id,
-                interaction.user.id,
-                getattr(interaction.channel, "name", None),
-                scope_value,
-            )
-            items = await asyncio.to_thread(
-                TodoFunctions.list_items_on_list,
-                todo_list["_id"],
-                "ascending",
-            )
+            items = await self._list_items_for_command_scope(interaction)
         except Exception:
             return []
 
-        options: List[app_commands.Choice[int]] = []
+        options: List[app_commands.Choice[str]] = []
         for item in items:
-            item_no = item.get("item_no")
-            if not isinstance(item_no, int):
+            item_id = str(item.get("_id") or "").strip()
+            if not item_id:
                 continue
 
             todo_name = str(item.get("name") or "").strip() or "Untitled"
+            list_name = str(item.get("list_name") or "").strip() or "List"
             status = TodoFunctions.status_label(TodoFunctions.item_status(item))
             due_value = item.get("due")
             due_label = (
                 DueDateService.format_due(due_value) if due_value else "No due date"
             )
-            search_text = f"{todo_name} {status} {due_label}".lower()
+            search_text = f"{list_name} {todo_name} {status} {due_label}".lower()
             if query and query not in search_text:
                 continue
 
-            label = f"{todo_name} [{status}] - {due_label}"
             options.append(
                 app_commands.Choice(
-                    name=label[:100],
-                    value=item_no,
+                    name=self._scope_item_option_label(item),
+                    value=item_id,
                 )
             )
             if len(options) >= 25:
@@ -1820,24 +1791,24 @@ class TodoCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         current: str,
-    ) -> List[app_commands.Choice[int]]:
-        return await self.todo_item_number_autocomplete(interaction, current)
+    ) -> List[app_commands.Choice[str]]:
+        return await self.todo_item_autocomplete(interaction, current)
 
     @item_edit.autocomplete("todo")
     async def todo_item_edit_number_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
-    ) -> List[app_commands.Choice[int]]:
-        return await self.todo_item_number_autocomplete(interaction, current)
+    ) -> List[app_commands.Choice[str]]:
+        return await self.todo_item_autocomplete(interaction, current)
 
     @item_status.autocomplete("todo")
     async def todo_item_status_number_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
-    ) -> List[app_commands.Choice[int]]:
-        return await self.todo_item_number_autocomplete(interaction, current)
+    ) -> List[app_commands.Choice[str]]:
+        return await self.todo_item_autocomplete(interaction, current)
 
     @todo_group.command(name="complete", description="Mark an item as done")
     @app_commands.describe(
@@ -1848,10 +1819,10 @@ class TodoCog(commands.Cog):
     async def item_complete(
         self,
         interaction: discord.Interaction,
-        todo: int,
+        todo: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
         ephemeral = resolve_ephemeral_from_scope(
             interaction.guild_id,
             scope_value,
@@ -1860,26 +1831,11 @@ class TodoCog(commands.Cog):
         await interaction.response.defer(ephemeral=ephemeral)
 
         try:
-            todo_list = await asyncio.to_thread(
-                TodoFunctions.get_or_create_implicit_list,
-                interaction.guild_id,
-                interaction.channel_id,
-                interaction.user.id,
-                getattr(interaction.channel, "name", None),
-                scope_value,
-            )
-            item = await asyncio.to_thread(
-                TodoFunctions.fetch_item_on_list_or_error,
-                todo_list["_id"],
-                todo,
-            )
             updated_item = await asyncio.to_thread(
                 TodoFunctions.set_item_status,
                 item["_id"],
                 "done",
             )
-        except ValueError as exc:
-            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while completing that item.",
@@ -1901,24 +1857,24 @@ class TodoCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         current: str,
-    ) -> List[app_commands.Choice[int]]:
-        return await self.todo_item_number_autocomplete(interaction, current)
+    ) -> List[app_commands.Choice[str]]:
+        return await self.todo_item_autocomplete(interaction, current)
 
     @todo_assign.autocomplete("todo")
     async def todo_item_assign_number_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
-    ) -> List[app_commands.Choice[int]]:
-        return await self.todo_item_number_autocomplete(interaction, current)
+    ) -> List[app_commands.Choice[str]]:
+        return await self.todo_item_autocomplete(interaction, current)
 
     @item_complete.autocomplete("todo")
     async def todo_item_complete_number_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
-    ) -> List[app_commands.Choice[int]]:
-        return await self.todo_item_number_autocomplete(interaction, current)
+    ) -> List[app_commands.Choice[str]]:
+        return await self.todo_item_autocomplete(interaction, current)
 
 
 async def setup(client: commands.Bot) -> None:
