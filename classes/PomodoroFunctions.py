@@ -72,6 +72,30 @@ class PomodoroFunctions:
             return default
 
     @staticmethod
+    async def _list_scope_jobs(
+        manager: DailyJobManager,
+        interaction: discord.Interaction,
+    ) -> List[DailyJob]:
+        if interaction.guild_id is None:
+            return await asyncio.to_thread(
+                manager.list_jobs,
+                interaction.channel_id,
+                None,
+            )
+
+        return await asyncio.to_thread(
+            manager.list_jobs,
+            None,
+            interaction.guild_id,
+        )
+
+    @staticmethod
+    def _scope_message(interaction: discord.Interaction) -> str:
+        if interaction.guild_id is None:
+            return "in this channel"
+        return "on this server"
+
+    @staticmethod
     def _select_user_job_by_pause_state(
         jobs: List[DailyJob],
         *,
@@ -206,14 +230,9 @@ class PomodoroFunctions:
         interaction: discord.Interaction,
     ) -> PomodoroStopResult:
         manager = DailyJobManager()
-        guild_id = interaction.guild_id
 
         try:
-            jobs = await asyncio.to_thread(
-                manager.list_jobs,
-                interaction.channel_id,
-                guild_id,
-            )
+            jobs = await PomodoroFunctions._list_scope_jobs(manager, interaction)
         except Exception:
             return PomodoroStopResult(
                 ok=False,
@@ -230,7 +249,10 @@ class PomodoroFunctions:
         if not user_jobs:
             return PomodoroStopResult(
                 ok=False,
-                message="You don't have an active pomodoro in this channel.",
+                message=(
+                    "You don't have an active pomodoro "
+                    f"{PomodoroFunctions._scope_message(interaction)}."
+                ),
             )
 
         deleted_count = 0
@@ -239,8 +261,8 @@ class PomodoroFunctions:
                 deleted = await asyncio.to_thread(
                     manager.delete_job,
                     str(job.id),
-                    interaction.channel_id,
-                    guild_id,
+                    None if interaction.guild_id is not None else interaction.channel_id,
+                    interaction.guild_id,
                 )
             except Exception:
                 continue
@@ -253,11 +275,7 @@ class PomodoroFunctions:
                 message="I couldn't stop that pomodoro. Please try again.",
             )
 
-        remaining_jobs = await asyncio.to_thread(
-            manager.list_jobs,
-            interaction.channel_id,
-            guild_id,
-        )
+        remaining_jobs = await PomodoroFunctions._list_scope_jobs(manager, interaction)
         remaining_pomodoros = [job for job in remaining_jobs if job.type == "pomodoro"]
 
         audio_stopped = False
@@ -284,11 +302,7 @@ class PomodoroFunctions:
         guild_id = interaction.guild_id
 
         try:
-            jobs = await asyncio.to_thread(
-                manager.list_jobs,
-                interaction.channel_id,
-                guild_id,
-            )
+            jobs = await PomodoroFunctions._list_scope_jobs(manager, interaction)
         except Exception:
             return PomodoroPauseResult(
                 ok=False,
@@ -304,7 +318,10 @@ class PomodoroFunctions:
         if not user_jobs:
             return PomodoroPauseResult(
                 ok=False,
-                message="You don't have an active pomodoro in this channel.",
+                message=(
+                    "You don't have an active pomodoro "
+                    f"{PomodoroFunctions._scope_message(interaction)}."
+                ),
             )
 
         selected_job, selected_end_time = PomodoroFunctions._select_user_job_by_pause_state(
@@ -375,11 +392,7 @@ class PomodoroFunctions:
         guild_id = interaction.guild_id
 
         try:
-            jobs = await asyncio.to_thread(
-                manager.list_jobs,
-                interaction.channel_id,
-                guild_id,
-            )
+            jobs = await PomodoroFunctions._list_scope_jobs(manager, interaction)
         except Exception:
             return PomodoroResumeResult(
                 ok=False,
@@ -395,7 +408,10 @@ class PomodoroFunctions:
         if not user_jobs:
             return PomodoroResumeResult(
                 ok=False,
-                message="You don't have an active pomodoro in this channel.",
+                message=(
+                    "You don't have an active pomodoro "
+                    f"{PomodoroFunctions._scope_message(interaction)}."
+                ),
             )
 
         selected_job, _ = PomodoroFunctions._select_user_job_by_pause_state(
@@ -489,15 +505,10 @@ class PomodoroFunctions:
 
         manager = DailyJobManager()
         guild_id = interaction.guild_id
-        channel_id = interaction.channel_id
         user_id = str(interaction.user.id)
 
         try:
-            jobs = await asyncio.to_thread(
-                manager.list_jobs,
-                channel_id,
-                guild_id,
-            )
+            jobs = await PomodoroFunctions._list_scope_jobs(manager, interaction)
         except Exception:
             return PomodoroExtendResult(
                 ok=False,
@@ -512,7 +523,10 @@ class PomodoroFunctions:
         if not user_jobs:
             return PomodoroExtendResult(
                 ok=False,
-                message="You don't have an active pomodoro in this channel.",
+                message=(
+                    "You don't have an active pomodoro "
+                    f"{PomodoroFunctions._scope_message(interaction)}."
+                ),
             )
 
         def _normalized(dt: Optional[datetime.datetime]) -> Optional[datetime.datetime]:

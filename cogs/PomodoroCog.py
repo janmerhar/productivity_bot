@@ -508,7 +508,10 @@ class PomodoroCog(commands.Cog):
         )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
-    @pomodoro_group.command(name="active", description="Show active pomodoro timers")
+    @pomodoro_group.command(
+        name="active",
+        description="Show the active pomodoro session",
+    )
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def pomodoro_active(
