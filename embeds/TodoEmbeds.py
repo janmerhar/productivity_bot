@@ -2184,16 +2184,22 @@ class TodoItemActionsView(discord.ui.View):
         todo_list: Dict[str, Any],
         item: Dict[str, Any],
     ) -> bool:
-        source_message = interaction.message
-        if source_message is None:
-            return False
-
         payload = TodoEmbeds.item_details_embed(todo_list, item)
         try:
-            await source_message.edit(**payload)
+            if interaction.response.is_done():
+                await interaction.edit_original_response(**payload)
+            else:
+                await interaction.response.edit_message(**payload)
             return True
         except discord.NotFound:
-            return False
+            source_message = interaction.message
+            if source_message is None:
+                return False
+            try:
+                await source_message.edit(**payload)
+                return True
+            except discord.NotFound:
+                return False
         except Exception as exc:
             await handle_interaction_error(
                 interaction,

@@ -650,6 +650,32 @@ class TodoFunctions:
         return mongo_db["todos"].find_one(query)
 
     @staticmethod
+    def fetch_todo_for_scope(
+        todo_id: str,
+        guild_id: Optional[int],
+        user_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            object_id = ObjectId(todo_id)
+        except Exception:
+            return None
+
+        if guild_id is None:
+            query: Dict[str, Any] = {
+                "_id": object_id,
+                "scope": "personal",
+                "user_id": user_id,
+            }
+        else:
+            query = {
+                "_id": object_id,
+                "guild_id": guild_id,
+                "scope": {"$ne": "personal"},
+            }
+
+        return mongo_db["todos"].find_one(query)
+
+    @staticmethod
     def complete_todo(
         todo_id: str,
         guild_id: Optional[int] = None,
@@ -1204,6 +1230,42 @@ class TodoFunctions:
                 {
                     "guild_id": guild_id,
                     "scope": {"$ne": "personal"},
+                    "list_id": {"$exists": True},
+                }
+            )
+            .sort("_id", sort_direction)
+        )
+        items = list(cursor)
+
+        for item in items:
+            list_id = item.get("list_id")
+            if isinstance(list_id, ObjectId):
+                item["list_name"] = list_name_map.get(list_id, "Unnamed")
+
+        return items
+
+    @staticmethod
+    def list_items_on_personal_scope(
+        user_id: int,
+        sort: str = "ascending",
+    ) -> List[Dict[str, Any]]:
+        sort_direction = 1 if sort == "ascending" else -1
+        list_docs = mongo_db["todo_lists"].find(
+            {"scope": "personal", "user_id": user_id},
+            {"_id": 1, "name": 1, "scope": 1, "list_type": 1, "user_id": 1},
+        )
+        list_name_map: Dict[ObjectId, str] = {
+            doc["_id"]: TodoFunctions.display_list_name(doc, "Unnamed")
+            for doc in list_docs
+            if isinstance(doc.get("_id"), ObjectId)
+        }
+
+        cursor = (
+            mongo_db["todos"]
+            .find(
+                {
+                    "user_id": user_id,
+                    "scope": "personal",
                     "list_id": {"$exists": True},
                 }
             )

@@ -508,7 +508,79 @@ class PomodoroCog(commands.Cog):
         )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
-    @pomodoro_group.command(name="active", description="Show active pomodoro timers")
+    @pomodoro_group.command(
+        name="extend",
+        description="Extend your active pomodoro timer",
+    )
+    @app_commands.describe(
+        minutes="How many minutes to add",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def pomodoro_extend(
+        self,
+        interaction: discord.Interaction,
+        minutes: app_commands.Range[int, 1, 240] = 5,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        ephemeral = resolve_visibility(visibility, default="public")
+        await interaction.response.defer(ephemeral=ephemeral)
+
+        result = await PomodoroFunctions.extend_user_pomodoro(
+            interaction,
+            minutes=minutes,
+        )
+        if not result.ok:
+            no_active_timer = "don't have an active pomodoro" in result.message.lower()
+            if no_active_timer:
+                payload = PomodoroEmbeds.timer_stopped_embed(
+                    "No active pomodoro timers were running.",
+                    description="No active pomodoro timers were found.",
+                )
+                payload["view"] = PomodoroStoppedView(interaction.user.id)
+                await interaction.followup.send(ephemeral=ephemeral, **payload)
+                return
+            await interaction.followup.send(ephemeral=ephemeral, content=result.message)
+            return
+
+        if result.end_time is None or result.duration_minutes is None:
+            await interaction.followup.send(ephemeral=ephemeral, content=result.message)
+            return
+
+        mode = result.mode or "focus"
+        payload = PomodoroEmbeds.insert_timer_embed(
+            mode,
+            result.duration_minutes,
+            result.end_time,
+        )
+        embed = payload.get("embed")
+        if isinstance(embed, discord.Embed):
+            embed.title = "Pomodoro Extended"
+            embed.description = (
+                f"{mode.capitalize()} timer extended by {minutes} minute(s)."
+            )
+
+        join_url: Optional[str] = None
+        if interaction.guild is not None:
+            session = PomodoroVoiceManager.sessions.get(interaction.guild.id)
+            if session is not None:
+                channel = interaction.guild.get_channel(session.voice_channel_id)
+                if isinstance(channel, discord.VoiceChannel):
+                    join_url = channel.jump_url
+
+        payload["view"] = PomodoroStartView(
+            interaction.user.id,
+            join_url=join_url,
+            mode=mode,
+            end_time=result.end_time,
+            voice_channel_select_enabled=interaction.guild is not None,
+        )
+        await interaction.followup.send(ephemeral=ephemeral, **payload)
+
+    @pomodoro_group.command(
+        name="active",
+        description="Show the active pomodoro session",
+    )
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def pomodoro_active(
