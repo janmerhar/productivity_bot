@@ -20,6 +20,7 @@ from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_vis
 from views.ReminderEditModal import (
     ReminderCreateModal,
     ReminderEditModal,
+    ReminderPingModal,
     _build_destination_select_options,
 )
 from views.ReminderListView import ReminderListView
@@ -144,29 +145,29 @@ class ReminderCog(commands.Cog):
     @app_commands.describe(
         reminder="Reminder title or primary content",
         schedule="Cron expression or natural language schedule",
-        ping="User or role to ping",
+        add_pings="Open a modal to select multiple user pings",
         thumbnail_url="Thumbnail URL",
         description="Reminder description",
         until="Stop sending after this time",
         destination="Destination channel or private delivery",
-        response_visibility=VISIBILITY_DESC,
+        visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
-        response_visibility=VISIBILITY_CHOICES,
+        visibility=VISIBILITY_CHOICES,
     )
     async def reminder_add(
         self,
         interaction: discord.Interaction,
         reminder: str,
         schedule: str,
-        ping: Optional[discord.Member | discord.Role] = None,
+        add_pings: bool = False,
         thumbnail_url: Optional[str] = None,
         description: Optional[str] = None,
         until: Optional[str] = None,
         destination: Optional[str] = None,
-        response_visibility: Optional[app_commands.Choice[str]] = None,
+        visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(response_visibility, default="public")
+        ephemeral = resolve_visibility(visibility, default="public")
         try:
             destination_type, destination_channel_id, _ = normalize_reminder_destination(
                 interaction,
@@ -174,6 +175,43 @@ class ReminderCog(commands.Cog):
             )
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
+
+        if add_pings:
+            if interaction.guild is None:
+                raise ValidationError(
+                    "`add_pings` is only available in servers.",
+                    ephemeral=True,
+                )
+
+            setup_default_channel_id = (
+                destination_channel_id
+                if destination_type == "channel" and destination_channel_id is not None
+                else interaction.channel_id
+            )
+            try:
+                await interaction.response.send_modal(
+                    ReminderPingModal(
+                        guild=interaction.guild,
+                        guild_id=interaction.guild_id,
+                        default_channel_id=setup_default_channel_id,
+                        reminder=reminder,
+                        schedule=schedule,
+                        description=description,
+                        thumbnail_url=thumbnail_url,
+                        until=until,
+                        destination_type=destination_type,
+                        destination_channel_id=destination_channel_id,
+                        response_ephemeral=ephemeral,
+                        user_id=interaction.user.id,
+                    )
+                )
+            except discord.HTTPException as exc:
+                raise UserVisibleError(
+                    "Something went wrong while opening the ping picker.",
+                    ephemeral=ephemeral,
+                    cause=exc,
+                )
+            return
 
         needs_timezone = ReminderFunctions.needs_timezone(
             schedule,
@@ -188,7 +226,6 @@ class ReminderCog(commands.Cog):
                 interaction=followup_interaction,
                 reminder=reminder,
                 schedule=schedule,
-                ping=ping,
                 thumbnail_url=thumbnail_url,
                 description=description,
                 until=until,
@@ -214,7 +251,6 @@ class ReminderCog(commands.Cog):
             interaction=interaction,
             reminder=reminder,
             schedule=schedule,
-            ping=ping,
             thumbnail_url=thumbnail_url,
             description=description,
             until=until,
@@ -545,7 +581,6 @@ class ReminderCog(commands.Cog):
         interaction: discord.Interaction,
         reminder: str,
         schedule: str,
-        ping: Optional[discord.Member | discord.Role],
         thumbnail_url: Optional[str],
         description: Optional[str],
         until: Optional[str],
@@ -554,14 +589,12 @@ class ReminderCog(commands.Cog):
         ephemeral: bool,
         timezone: Optional[str],
     ) -> None:
-        ping_text = ping.mention if ping is not None else None
         created_job, confirmation = await asyncio.to_thread(
             ReminderFunctions.create_reminder,
             guild_id=interaction.guild_id,
             default_channel_id=interaction.channel_id,
             reminder=reminder,
             schedule=schedule,
-            ping_text=ping_text,
             thumbnail_url=thumbnail_url,
             description=description,
             until=until,

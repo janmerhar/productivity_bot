@@ -554,3 +554,145 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
                 exc,
                 ephemeral=self._response_ephemeral,
             )
+
+
+class ReminderPingModal(discord.ui.Modal, title="Add Ping Users"):
+    def __init__(
+        self,
+        *,
+        guild: Optional[discord.Guild],
+        guild_id: Optional[int],
+        default_channel_id: Optional[int],
+        reminder: str,
+        schedule: str,
+        description: Optional[str],
+        thumbnail_url: Optional[str],
+        until: Optional[str],
+        destination_type: str,
+        destination_channel_id: Optional[int],
+        response_ephemeral: bool,
+        user_id: int,
+    ) -> None:
+        super().__init__()
+        self._guild = guild
+        self._guild_id = guild_id
+        self._default_channel_id = default_channel_id
+        self._reminder = reminder
+        self._schedule = schedule
+        self._description = description
+        self._thumbnail_url = thumbnail_url
+        self._until = until
+        self._destination_type = destination_type
+        self._destination_channel_id = destination_channel_id
+        self._response_ephemeral = bool(response_ephemeral)
+        self._user_id = user_id
+
+        self.ping_select = discord.ui.UserSelect(
+            placeholder="Choose users to ping",
+            min_values=0,
+            max_values=25,
+            required=False,
+        )
+        self.ping_select_label = discord.ui.Label(
+            text="Ping users",
+            component=self.ping_select,
+        )
+        self.add_item(self.ping_select_label)
+
+    async def _apply_create(
+        self,
+        interaction: discord.Interaction,
+        *,
+        ping: str,
+        timezone: Optional[str],
+    ) -> None:
+        try:
+            created_job, confirmation = await asyncio.to_thread(
+                ReminderFunctions.create_reminder,
+                guild_id=self._guild_id,
+                default_channel_id=self._default_channel_id,
+                reminder=self._reminder,
+                schedule=self._schedule,
+                ping_text=ping or None,
+                thumbnail_url=self._thumbnail_url,
+                description=self._description,
+                until=self._until,
+                destination_channel_id=self._destination_channel_id,
+                destination_type=self._destination_type,
+                destination_user_id=interaction.user.id,
+                ephemeral=self._response_ephemeral,
+                timezone=timezone,
+            )
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                exc,
+                ephemeral=self._response_ephemeral,
+            )
+            return
+
+        reminder_view = ReminderOutputView(
+            job=created_job,
+            guild=interaction.guild or self._guild,
+            result_message=confirmation,
+            ok=True,
+            user_id=interaction.user.id,
+            response_ephemeral=self._response_ephemeral,
+        )
+        await interaction.followup.send(
+            ephemeral=self._response_ephemeral,
+            **reminder_view.response_payload(),
+        )
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id != self._user_id:
+            await interaction.response.send_message(
+                "This form is only for the user who started the command.",
+                ephemeral=self._response_ephemeral,
+            )
+            return
+
+        raw_ping = " ".join(
+            member.mention
+            for member in self.ping_select.values
+            if hasattr(member, "mention")
+        ).strip()
+
+        try:
+            timezone = None
+            if ReminderFunctions.needs_timezone(
+                self._schedule,
+                until=self._until,
+            ):
+
+                async def _continue_with_timezone(
+                    followup_interaction: discord.Interaction,
+                    resolved_timezone: str,
+                ) -> None:
+                    await self._apply_create(
+                        followup_interaction,
+                        ping=raw_ping,
+                        timezone=resolved_timezone,
+                    )
+
+                timezone = await ensure_user_timezone(
+                    interaction,
+                    _continue_with_timezone,
+                    continue_message="Timezone saved as `{timezone}`. Continuing `/reminder add`.",
+                    response_ephemeral=self._response_ephemeral,
+                )
+                if timezone is None:
+                    return
+
+            await interaction.response.defer(ephemeral=self._response_ephemeral)
+            await self._apply_create(
+                interaction,
+                ping=raw_ping,
+                timezone=timezone,
+            )
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                exc,
+                ephemeral=self._response_ephemeral,
+            )
