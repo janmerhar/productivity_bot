@@ -180,18 +180,17 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
         try:
             updated_job = await asyncio.to_thread(
                 ReminderFunctions.update_reminder,
-                self._job_id,
-                self._guild_id,
-                schedule,
-                reminder,
-                ping,
-                description,
-                None,
-                destination_channel_id,
-                destination_type,
-                interaction.user.id,
-                self._response_ephemeral,
-                timezone,
+                reminder_id=self._job_id,
+                guild_id=self._guild_id,
+                schedule=schedule,
+                reminder=reminder,
+                ping_text=ping,
+                description=description,
+                destination_channel_id=destination_channel_id,
+                destination_type=destination_type,
+                destination_user_id=interaction.user.id,
+                ephemeral=self._response_ephemeral,
+                timezone=timezone,
             )
         except Exception as exc:
             await handle_interaction_error(
@@ -427,21 +426,17 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         try:
             created_job, confirmation = await asyncio.to_thread(
                 ReminderFunctions.create_reminder,
-                self._guild_id,
-                self._default_channel_id,
-                reminder,
-                schedule,
-                None,
-                ping,
-                None,
-                None,
-                description,
-                None,
-                destination_channel_id,
-                destination_type,
-                interaction.user.id,
-                self._response_ephemeral,
-                timezone,
+                guild_id=self._guild_id,
+                default_channel_id=self._default_channel_id,
+                reminder=reminder,
+                schedule=schedule,
+                ping_text=ping,
+                description=description,
+                destination_channel_id=destination_channel_id,
+                destination_type=destination_type,
+                destination_user_id=interaction.user.id,
+                ephemeral=self._response_ephemeral,
+                timezone=timezone,
             )
         except Exception as exc:
             await handle_interaction_error(

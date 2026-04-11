@@ -143,46 +143,41 @@ class ReminderCog(commands.Cog):
     )
     @app_commands.describe(
         reminder="Reminder title or primary content",
-        time="Cron expression or natural language schedule",
-        repeat="Repeat interval or custom repeat expression",
+        schedule="Cron expression or natural language schedule",
         ping="User or role to ping",
         thumbnail_url="Thumbnail URL",
-        skip_days="Comma-separated days to skip",
         description="Reminder description",
-        expires_after="Expiration time",
-        channel="Destination channel",
-        visibility=VISIBILITY_DESC,
+        until="Stop sending after this time",
+        destination="Destination channel or private delivery",
+        response_visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
-        visibility=VISIBILITY_CHOICES,
+        response_visibility=VISIBILITY_CHOICES,
     )
     async def reminder_add(
         self,
         interaction: discord.Interaction,
         reminder: str,
-        time: str,
-        repeat: Optional[str] = None,
+        schedule: str,
         ping: Optional[discord.Member | discord.Role] = None,
         thumbnail_url: Optional[str] = None,
-        skip_days: Optional[str] = None,
         description: Optional[str] = None,
-        expires_after: Optional[str] = None,
-        channel: Optional[str] = None,
-        visibility: Optional[app_commands.Choice[str]] = None,
+        until: Optional[str] = None,
+        destination: Optional[str] = None,
+        response_visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = resolve_visibility(response_visibility, default="public")
         try:
             destination_type, destination_channel_id, _ = normalize_reminder_destination(
                 interaction,
-                channel,
+                destination,
             )
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
 
         needs_timezone = ReminderFunctions.needs_timezone(
-            time,
-            repeat=repeat,
-            expires_after=expires_after,
+            schedule,
+            until=until,
         )
 
         async def _continue_with_timezone(
@@ -192,13 +187,11 @@ class ReminderCog(commands.Cog):
             await self._create_reminder_from_options(
                 interaction=followup_interaction,
                 reminder=reminder,
-                time=time,
-                repeat=repeat,
+                schedule=schedule,
                 ping=ping,
                 thumbnail_url=thumbnail_url,
-                skip_days=skip_days,
                 description=description,
-                expires_after=expires_after,
+                until=until,
                 destination_type=destination_type,
                 destination_channel_id=destination_channel_id,
                 ephemeral=ephemeral,
@@ -220,13 +213,11 @@ class ReminderCog(commands.Cog):
         await self._create_reminder_from_options(
             interaction=interaction,
             reminder=reminder,
-            time=time,
-            repeat=repeat,
+            schedule=schedule,
             ping=ping,
             thumbnail_url=thumbnail_url,
-            skip_days=skip_days,
             description=description,
-            expires_after=expires_after,
+            until=until,
             destination_type=destination_type,
             destination_channel_id=destination_channel_id,
             ephemeral=ephemeral,
@@ -553,13 +544,11 @@ class ReminderCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         reminder: str,
-        time: str,
-        repeat: Optional[str],
+        schedule: str,
         ping: Optional[discord.Member | discord.Role],
         thumbnail_url: Optional[str],
-        skip_days: Optional[str],
         description: Optional[str],
-        expires_after: Optional[str],
+        until: Optional[str],
         destination_type: str,
         destination_channel_id: Optional[int],
         ephemeral: bool,
@@ -568,21 +557,19 @@ class ReminderCog(commands.Cog):
         ping_text = ping.mention if ping is not None else None
         created_job, confirmation = await asyncio.to_thread(
             ReminderFunctions.create_reminder,
-            interaction.guild_id,
-            interaction.channel_id,
-            reminder,
-            time,
-            repeat,
-            ping_text,
-            thumbnail_url,
-            skip_days,
-            description,
-            expires_after,
-            destination_channel_id,
-            destination_type,
-            interaction.user.id,
-            ephemeral,
-            timezone,
+            guild_id=interaction.guild_id,
+            default_channel_id=interaction.channel_id,
+            reminder=reminder,
+            schedule=schedule,
+            ping_text=ping_text,
+            thumbnail_url=thumbnail_url,
+            description=description,
+            until=until,
+            destination_channel_id=destination_channel_id,
+            destination_type=destination_type,
+            destination_user_id=interaction.user.id,
+            ephemeral=ephemeral,
+            timezone=timezone,
         )
         await self._send_reminder_output(
             interaction,
@@ -757,7 +744,7 @@ class ReminderCog(commands.Cog):
 
         return options[:25]
 
-    @reminder_add.autocomplete("channel")
+    @reminder_add.autocomplete("destination")
     async def reminder_add_destination_autocomplete(
         self,
         interaction: discord.Interaction,

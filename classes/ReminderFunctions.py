@@ -175,7 +175,7 @@ class ReminderFunctions:
     def reminder_edit_values(job: DailyJob) -> Dict[str, str]:
         data = job.data or {}
         schedule = ReminderFunctions.schedule_input_for_job(job)
-        expires_after = ReminderFunctions.expiration_input_for_job(job)
+        until = ReminderFunctions.expiration_input_for_job(job)
 
         if job.type == "stock":
             header_text = str(data.get("header") or "").strip()
@@ -186,7 +186,7 @@ class ReminderFunctions:
                 "reminder": reminder,
                 "description": description,
                 "thumbnail_url": "",
-                "expires_after": expires_after,
+                "until": until,
                 "ping_text": ping_text or "",
                 "destination_channel": ReminderFunctions.destination_label(job),
             }
@@ -205,7 +205,7 @@ class ReminderFunctions:
             "reminder": reminder,
             "description": description,
             "thumbnail_url": thumbnail_url,
-            "expires_after": expires_after,
+            "until": until,
             "ping_text": ping_text or "",
             "destination_channel": ReminderFunctions.destination_label(job),
         }
@@ -268,17 +268,14 @@ class ReminderFunctions:
 
     @staticmethod
     def needs_timezone(
-        time: str,
-        repeat: Optional[str] = None,
-        expires_after: Optional[str] = None,
+        schedule: str,
+        until: Optional[str] = None,
     ) -> bool:
-        raw_time = time.strip()
-        raw_repeat = (repeat or "").strip()
-        raw_expires_after = (expires_after or "").strip()
+        raw_schedule = schedule.strip()
+        raw_until = (until or "").strip()
         return (
-            bool(raw_repeat)
-            or not is_valid_cron_expression(raw_time)
-            or bool(raw_expires_after)
+            not is_valid_cron_expression(raw_schedule)
+            or bool(raw_until)
         )
 
     @staticmethod
@@ -334,27 +331,6 @@ class ReminderFunctions:
         return default_channel_id, f"<#{default_channel_id}>", {"destination_type": "channel"}
 
     @staticmethod
-    def _build_repeat_schedule_input(
-        time: str,
-        repeat: str,
-        skip_days: Optional[str],
-    ) -> str:
-        raw_time = time.strip()
-        raw_repeat = repeat.strip()
-        raw_skip_days = (skip_days or "").strip()
-
-        if is_valid_cron_expression(raw_time):
-            raise ValidationError(
-                "When `repeat` is set, `time` should be a time of day like `8am`, not a cron expression.",
-            )
-
-        schedule_input = f"{raw_repeat} at {raw_time}"
-        if raw_skip_days:
-            schedule_input = f"{schedule_input}, except on {raw_skip_days}"
-
-        return schedule_input
-
-    @staticmethod
     def _looks_like_recurring_schedule(value: str) -> bool:
         text = value.strip().lower()
         if not text:
@@ -377,11 +353,11 @@ class ReminderFunctions:
 
     @staticmethod
     def _parse_expiration(
-        expires_after: Optional[str],
+        until: Optional[str],
         timezone: Optional[str],
         ephemeral: bool,
     ) -> Optional[datetime.datetime]:
-        raw_expiration = (expires_after or "").strip()
+        raw_expiration = (until or "").strip()
         if not raw_expiration:
             return None
 
@@ -391,7 +367,7 @@ class ReminderFunctions:
         )
         if expires_at is None:
             raise ValidationError(
-                "I couldn't understand `expires_after`.",
+                "I couldn't understand `until`.",
                 hint="Try `in 2 weeks` or a specific date/time.",
                 ephemeral=ephemeral,
             )
@@ -399,7 +375,7 @@ class ReminderFunctions:
         now = datetime.datetime.now().replace(second=0, microsecond=0)
         if expires_at <= now:
             raise ValidationError(
-                "`expires_after` needs to be in the future.",
+                "`until` needs to be in the future.",
                 ephemeral=ephemeral,
             )
 
@@ -493,33 +469,23 @@ class ReminderFunctions:
 
     @staticmethod
     def _resolve_schedule(
-        time: str,
-        repeat: Optional[str],
-        skip_days: Optional[str],
+        schedule: str,
         expires_at: Optional[datetime.datetime],
         ephemeral: bool,
         timezone: Optional[str],
     ) -> Tuple[ScheduleConfig, str]:
-        raw_time = time.strip()
-        raw_repeat = (repeat or "").strip()
-        raw_skip_days = (skip_days or "").strip()
+        raw_schedule = schedule.strip()
 
-        if raw_skip_days and not raw_repeat and not is_valid_cron_expression(raw_time):
-            if not ReminderFunctions._looks_like_recurring_schedule(raw_time):
-                raise ValidationError(
-                    "`skip_days` only applies to recurring reminders.",
-                    ephemeral=ephemeral,
-                )
-
-        if raw_repeat:
-            schedule_input = ReminderFunctions._build_repeat_schedule_input(
-                raw_time,
-                raw_repeat,
-                raw_skip_days,
+        if is_valid_cron_expression(raw_schedule):
+            return (
+                CronSchedule(expression=raw_schedule, timezone=timezone),
+                f"`{raw_schedule}` (Cron: `{raw_schedule}`)",
             )
+
+        if ReminderFunctions._looks_like_recurring_schedule(raw_schedule):
             try:
                 cron_expression = resolve_cron_expression(
-                    schedule_input,
+                    raw_schedule,
                     timezone=timezone,
                 )
             except CronConversionError as exc:
@@ -527,50 +493,22 @@ class ReminderFunctions:
 
             return (
                 CronSchedule(expression=cron_expression, timezone=timezone),
-                f"`{schedule_input}` (Cron: `{cron_expression}`)",
-            )
-
-        if is_valid_cron_expression(raw_time):
-            if raw_skip_days:
-                raise ValidationError(
-                    "`skip_days` cannot be combined with a raw cron expression.",
-                    ephemeral=ephemeral,
-                )
-            return (
-                CronSchedule(expression=raw_time, timezone=timezone),
-                f"`{raw_time}` (Cron: `{raw_time}`)",
-            )
-
-        if ReminderFunctions._looks_like_recurring_schedule(raw_time):
-            schedule_input = raw_time
-            if raw_skip_days:
-                schedule_input = f"{schedule_input}, except on {raw_skip_days}"
-            try:
-                cron_expression = resolve_cron_expression(
-                    schedule_input,
-                    timezone=timezone,
-                )
-            except CronConversionError as exc:
-                raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
-
-            return (
-                CronSchedule(expression=cron_expression, timezone=timezone),
-                f"`{schedule_input}` (Cron: `{cron_expression}`)",
+                f"`{raw_schedule}` (Cron: `{cron_expression}`)",
             )
 
         scheduled_dt = ReminderFunctions.parse_time_string(
-            raw_time,
+            raw_schedule,
             timezone=timezone,
         )
         if scheduled_dt is None:
             raise ValidationError(
-                "I couldn't understand that time.",
-                hint="Try `08:30`, `8pm`, or use a cron expression.",
+                "I couldn't understand that schedule.",
+                hint="Try `08:30`, `8pm`, `every weekday at 9am`, or use a cron expression.",
                 ephemeral=ephemeral,
             )
         if expires_at is not None and expires_at <= scheduled_dt:
             raise ValidationError(
-                "`expires_after` must be later than the reminder time.",
+                "`until` must be later than the reminder time.",
                 ephemeral=ephemeral,
             )
 
@@ -773,11 +711,11 @@ class ReminderFunctions:
     def update_reminder(
         reminder_id: str,
         guild_id: Optional[int],
-        time: str,
+        schedule: str,
         reminder: str,
         ping_text: Optional[str] = None,
         description: Optional[str] = None,
-        expires_after: Optional[str] = None,
+        until: Optional[str] = None,
         destination_channel_id: Optional[int] = None,
         destination_type: Optional[str] = None,
         destination_user_id: Optional[int] = None,
@@ -803,27 +741,25 @@ class ReminderFunctions:
         existing_schedule_timezone = schedule_timezone_name(job.schedule)
         raw_ping_text = ping_text.strip() if ping_text is not None else None
         raw_description = description.strip() if description is not None else None
-        raw_expires_after = expires_after
-        if raw_expires_after is None:
-            raw_expires_after = str(existing_data.get("expires_at") or "").strip()
+        raw_until = until
+        if raw_until is None:
+            raw_until = str(existing_data.get("expires_at") or "").strip()
         else:
-            raw_expires_after = raw_expires_after.strip()
-            if raw_expires_after.lower() in {"none", "clear", "off"}:
-                raw_expires_after = ""
+            raw_until = raw_until.strip()
+            if raw_until.lower() in {"none", "clear", "off"}:
+                raw_until = ""
 
         expires_at = (
             ReminderFunctions._parse_expiration(
-                raw_expires_after,
+                raw_until,
                 timezone,
                 ephemeral,
             )
-            if raw_expires_after
+            if raw_until
             else None
         )
         schedule_config, _ = ReminderFunctions._resolve_schedule(
-            time,
-            repeat=None,
-            skip_days=None,
+            schedule,
             expires_at=expires_at,
             ephemeral=ephemeral,
             timezone=timezone or existing_schedule_timezone,
@@ -925,13 +861,11 @@ class ReminderFunctions:
         guild_id: Optional[int],
         default_channel_id: Optional[int],
         reminder: str,
-        time: str,
-        repeat: Optional[str] = None,
+        schedule: str,
         ping_text: Optional[str] = None,
         thumbnail_url: Optional[str] = None,
-        skip_days: Optional[str] = None,
         description: Optional[str] = None,
-        expires_after: Optional[str] = None,
+        until: Optional[str] = None,
         destination_channel_id: Optional[int] = None,
         destination_type: str = "channel",
         destination_user_id: Optional[int] = None,
@@ -939,7 +873,7 @@ class ReminderFunctions:
         timezone: Optional[str] = None,
     ) -> Tuple[DailyJob, str]:
         expires_at = ReminderFunctions._parse_expiration(
-            expires_after,
+            until,
             timezone,
             ephemeral,
         )
@@ -952,9 +886,7 @@ class ReminderFunctions:
         )
 
         schedule_config, schedule_label = ReminderFunctions._resolve_schedule(
-            time,
-            repeat,
-            skip_days,
+            schedule,
             expires_at,
             ephemeral,
             timezone,

@@ -341,10 +341,10 @@ class ReminderOutputView(discord.ui.View):
                 inline=False,
             )
 
-        expires_value = self._format_timestamp(values.get("expires_after") or "")
+        expires_value = self._format_timestamp(values.get("until") or "")
         if expires_value:
             embed.add_field(
-                name="Expires",
+                name="Until",
                 value=expires_value,
                 inline=False,
             )
