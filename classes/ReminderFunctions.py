@@ -188,6 +188,11 @@ class ReminderFunctions:
                 "thumbnail_url": "",
                 "until": until,
                 "ping_text": ping_text or "",
+                "notify_in_dms": (
+                    "yes"
+                    if ReminderFunctions._as_bool(data.get("notify_ping_users_in_dm"))
+                    else ""
+                ),
                 "destination_channel": ReminderFunctions.destination_label(job),
             }
 
@@ -207,8 +212,35 @@ class ReminderFunctions:
             "thumbnail_url": thumbnail_url,
             "until": until,
             "ping_text": ping_text or "",
+            "notify_in_dms": (
+                "yes"
+                if ReminderFunctions._as_bool(data.get("notify_ping_users_in_dm"))
+                else ""
+            ),
             "destination_channel": ReminderFunctions.destination_label(job),
         }
+
+    @staticmethod
+    def notify_ping_users_in_dm(job: DailyJob) -> bool:
+        return ReminderFunctions._as_bool(
+            (job.data or {}).get("notify_ping_users_in_dm")
+        )
+
+    @staticmethod
+    def ping_user_ids(job: DailyJob) -> List[int]:
+        ping_text = str(ReminderFunctions.reminder_edit_values(job).get("ping_text") or "")
+        user_ids: List[int] = []
+        seen: set[int] = set()
+        for raw_id in re.findall(r"<@!?(\d+)>", ping_text):
+            try:
+                user_id = int(raw_id)
+            except ValueError:
+                continue
+            if user_id in seen:
+                continue
+            seen.add(user_id)
+            user_ids.append(user_id)
+        return user_ids
 
     @staticmethod
     def _parse_datetime_string(
@@ -388,6 +420,7 @@ class ReminderFunctions:
         description: Optional[str],
         thumbnail_url: Optional[str],
         expires_at: Optional[datetime.datetime],
+        notify_ping_users_in_dm: bool = False,
     ) -> Dict[str, Any]:
         title = reminder.strip()
         body = (description or "").strip()
@@ -414,6 +447,8 @@ class ReminderFunctions:
 
         if expires_at is not None:
             payload["expires_at"] = expires_at.isoformat()
+        if notify_ping_users_in_dm:
+            payload["notify_ping_users_in_dm"] = True
         payload["source"] = "reminder"
 
         return payload
@@ -426,6 +461,7 @@ class ReminderFunctions:
         thumbnail_url: Optional[str],
         expires_at: Optional[datetime.datetime],
         ephemeral: bool,
+        notify_ping_users_in_dm: bool = False,
     ) -> Tuple[str, Dict[str, Any]]:
         if (thumbnail_url or "").strip():
             raise ValidationError(
@@ -463,6 +499,8 @@ class ReminderFunctions:
             payload["header"] = "\n".join(header_lines)
         if expires_at is not None:
             payload["expires_at"] = expires_at.isoformat()
+        if notify_ping_users_in_dm:
+            payload["notify_ping_users_in_dm"] = True
         payload["source"] = "reminder"
 
         return symbol, payload
@@ -716,6 +754,7 @@ class ReminderFunctions:
         ping_text: Optional[str] = None,
         description: Optional[str] = None,
         until: Optional[str] = None,
+        notify_ping_users_in_dm: Optional[bool] = None,
         destination_channel_id: Optional[int] = None,
         destination_type: Optional[str] = None,
         destination_user_id: Optional[int] = None,
@@ -741,6 +780,11 @@ class ReminderFunctions:
         existing_schedule_timezone = schedule_timezone_name(job.schedule)
         raw_ping_text = ping_text.strip() if ping_text is not None else None
         raw_description = description.strip() if description is not None else None
+        effective_notify_ping_users_in_dm = (
+            ReminderFunctions.notify_ping_users_in_dm(job)
+            if notify_ping_users_in_dm is None
+            else bool(notify_ping_users_in_dm)
+        )
         raw_until = until
         if raw_until is None:
             raw_until = str(existing_data.get("expires_at") or "").strip()
@@ -766,7 +810,7 @@ class ReminderFunctions:
         )
 
         updated_data: Dict[str, Any]
-        managed_keys = {"expires_at", "source", "paused"}
+        managed_keys = {"expires_at", "notify_ping_users_in_dm", "source", "paused"}
 
         if job.type == "stock":
             effective_ping_text = (
@@ -787,6 +831,7 @@ class ReminderFunctions:
                 None,
                 expires_at,
                 ephemeral,
+                effective_notify_ping_users_in_dm,
             )
             managed_keys.update({"ticker", "header"})
         else:
@@ -810,6 +855,7 @@ class ReminderFunctions:
                 effective_description,
                 effective_thumbnail_url,
                 expires_at,
+                effective_notify_ping_users_in_dm,
             )
             managed_keys.update({"message", "embed"})
 
@@ -866,6 +912,7 @@ class ReminderFunctions:
         thumbnail_url: Optional[str] = None,
         description: Optional[str] = None,
         until: Optional[str] = None,
+        notify_ping_users_in_dm: bool = False,
         destination_channel_id: Optional[int] = None,
         destination_type: str = "channel",
         destination_user_id: Optional[int] = None,
@@ -901,6 +948,7 @@ class ReminderFunctions:
                 thumbnail_url,
                 expires_at,
                 ephemeral,
+                notify_ping_users_in_dm,
             )
             job_type = "stock"
             if isinstance(schedule_config, CronSchedule):
@@ -918,6 +966,7 @@ class ReminderFunctions:
                 description,
                 thumbnail_url,
                 expires_at,
+                notify_ping_users_in_dm,
             )
             if isinstance(schedule_config, CronSchedule):
                 confirmation = (

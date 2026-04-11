@@ -3,140 +3,14 @@ import datetime
 from typing import Optional
 
 import discord
-from discord.ext import commands
 
-from classes.DailyJobManager import DailyJobManager
 from classes.DailyJob import DailyJob
 from classes.ReminderFunctions import ReminderFunctions
 from services.discord_helpers import (
     format_reminder_mentions,
-    resolve_messageable_channel,
 )
 from services.error_reporting import ValidationError, handle_interaction_error
-from services.reminder_destination import (
-    build_reminder_destination_select_options,
-    parse_reminder_destination_value,
-)
-
-
-class ReminderChangeChannelModal(discord.ui.Modal, title="Change Reminder Channel"):
-    def __init__(
-        self,
-        view: "ReminderOutputView",
-        *,
-        channel_options: Optional[list[discord.SelectOption]] = None,
-    ) -> None:
-        super().__init__()
-        self._view = view
-        self.channel_select: Optional[discord.ui.Select] = None
-        self.channel_select_label: Optional[discord.ui.Label] = None
-        self.channel_input: Optional[discord.ui.TextInput] = None
-
-        if channel_options:
-            try:
-                self.channel_select = discord.ui.Select(
-                    placeholder="Choose a destination channel",
-                    min_values=1,
-                    max_values=1,
-                    options=channel_options[:25],
-                )
-                self.channel_select_label = discord.ui.Label(
-                    text="Destination channel",
-                    component=self.channel_select,
-                )
-                self.add_item(self.channel_select_label)
-            except Exception:
-                self.channel_select = None
-                self.channel_select_label = None
-
-        if self.channel_select is None:
-            default_channel = ReminderFunctions.destination_label(self._view.job)
-            self.channel_input = discord.ui.TextInput(
-                label="Destination channel",
-                placeholder="Use `Private`, a channel mention, or a channel id",
-                required=True,
-                max_length=64,
-                default=default_channel[:64],
-            )
-            self.add_item(self.channel_input)
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=self._view.response_ephemeral)
-
-        try:
-            if self.channel_select is not None:
-                raw_value = (
-                    self.channel_select.values[0] if self.channel_select.values else ""
-                )
-                destination_type, new_channel_id = parse_reminder_destination_value(raw_value)
-            else:
-                raw_value = (
-                    str(self.channel_input.value or "")
-                    if self.channel_input is not None
-                    else ""
-                )
-                destination_type, new_channel_id = parse_reminder_destination_value(raw_value)
-
-            bot = interaction.client
-            if not isinstance(bot, commands.Bot):
-                raise ValidationError(
-                    "Bot is not ready to change this reminder.",
-                    ephemeral=self._view.response_ephemeral,
-                )
-
-            if destination_type == "channel":
-                resolved_channel = await resolve_messageable_channel(bot, new_channel_id)
-                if resolved_channel is None:
-                    raise ValidationError(
-                        "I can't access that destination channel.",
-                        ephemeral=self._view.response_ephemeral,
-                    )
-
-                if self._view.guild_id is not None:
-                    channel_guild = getattr(resolved_channel, "guild", None)
-                    if channel_guild is None or channel_guild.id != self._view.guild_id:
-                        raise ValidationError(
-                            "Please choose a channel from the same server as this reminder.",
-                            ephemeral=self._view.response_ephemeral,
-                        )
-
-            manager = DailyJobManager()
-            updated_data = {
-                **(self._view.job.data or {}),
-                "destination_type": destination_type,
-            }
-            if destination_type == "private":
-                updated_data["user_id"] = interaction.user.id
-            else:
-                updated_data.pop("user_id", None)
-            updated = await asyncio.to_thread(
-                manager.update_job,
-                self._view.job_id,
-                new_channel_id=new_channel_id,
-                data=updated_data,
-                guild_id=self._view.guild_id,
-            )
-            if not updated:
-                raise ValidationError(
-                    "That reminder is no longer available.",
-                    ephemeral=self._view.response_ephemeral,
-                )
-        except Exception as exc:
-            await handle_interaction_error(
-                interaction,
-                exc,
-                ephemeral=self._view.response_ephemeral,
-            )
-            return
-
-        destination_label = "Private" if destination_type == "private" else f"<#{new_channel_id}>"
-        result_message = f"Updated reminder `{self._view.job_id}` to post in {destination_label}."
-        self._view.ok = True
-        await self._view.refresh_message(
-            interaction,
-            source_message=self._view.message or interaction.message,
-            result_message=result_message,
-        )
+from services.reminder_destination import build_reminder_destination_select_options
 
 
 class ReminderOutputView(discord.ui.View):
@@ -209,7 +83,7 @@ class ReminderOutputView(discord.ui.View):
     def _sync_button_state(self) -> None:
         has_job = self.job is not None
         self.edit_this_reminder.disabled = not has_job
-        self.change_channel.disabled = not has_job
+        self.edit_ping_users.disabled = not has_job
         self.toggle_state.disabled = not has_job
         self.delete_reminder.disabled = not has_job
 
@@ -324,6 +198,12 @@ class ReminderOutputView(discord.ui.View):
         )
         if ping_value:
             embed.add_field(name="Ping", value=ping_value[:1024], inline=False)
+            if ReminderFunctions.notify_ping_users_in_dm(self.job):
+                embed.add_field(
+                    name="Ping DMs",
+                    value="Enabled",
+                    inline=True,
+                )
 
         description_value = str(values.get("description") or "").strip()
         if description_value:
@@ -434,11 +314,15 @@ class ReminderOutputView(discord.ui.View):
         style=discord.ButtonStyle.primary,
         row=0,
     )
-    async def change_channel(
+    async def edit_ping_users(
         self,
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
+        from views.ReminderEditModal import (
+            ReminderPingModal,
+        )
+
         self.message = interaction.message
         if self.job is None:
             await interaction.response.send_message(
@@ -447,15 +331,16 @@ class ReminderOutputView(discord.ui.View):
             )
             return
 
-        channel_options = build_reminder_destination_select_options(
-            interaction.guild,
-            self.job.channel_id,
-            is_private_selected=ReminderFunctions.is_private_destination(self.job),
-        )
         await interaction.response.send_modal(
-            ReminderChangeChannelModal(
-                self,
-                channel_options=channel_options,
+            ReminderPingModal(
+                guild=interaction.guild or self.guild,
+                guild_id=self.guild_id,
+                default_channel_id=self.channel_id or interaction.channel_id,
+                response_ephemeral=self.response_ephemeral,
+                user_id=interaction.user.id,
+                job=self.job,
+                parent_view=self,
+                source_message=interaction.message,
             )
         )
 
