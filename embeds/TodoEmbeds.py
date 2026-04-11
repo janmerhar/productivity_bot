@@ -153,18 +153,7 @@ class TodoItemEditModal(discord.ui.Modal):
         self.refresh_source_as_item_embed = refresh_source_as_item_embed
 
         current_task = str(item.get("name") or "").strip() or "Untitled"
-        current_text = TodoFunctions.item_text(item)
-        current_description = ""
-        if current_text:
-            prefix = f"{current_task}\n"
-            if current_text.startswith(prefix):
-                current_description = current_text[len(prefix) :].strip()
-            elif current_text.strip().lower() != current_task.lower():
-                current_description = current_text.strip()
-        if not current_description:
-            raw_description = str(item.get("description") or "").strip()
-            if raw_description and raw_description.lower() != current_task.lower():
-                current_description = raw_description
+        current_description = TodoFunctions.item_description(item) or ""
 
         current_status = TodoFunctions.item_status(item)
         due_value = item.get("due")
@@ -1890,6 +1879,7 @@ class TodoReminderView(discord.ui.View):
 
 class TodoEmbeds:
     _MAX_LIST_ITEMS_PREVIEW = 10
+    _MAX_LIST_ITEM_DESCRIPTION_PREVIEW = 90
 
     @staticmethod
     def _status_filter_label(status_filter: str) -> str:
@@ -2090,6 +2080,21 @@ class TodoEmbeds:
         return TodoFunctions.format_due(due)
 
     @staticmethod
+    def _list_item_description_preview(item: Dict[str, Any]) -> Optional[str]:
+        description = TodoFunctions.item_description(item)
+        if not description:
+            return None
+
+        preview = TodoFunctions.truncate_multiline(
+            description,
+            limit=TodoEmbeds._MAX_LIST_ITEM_DESCRIPTION_PREVIEW,
+        )
+        if not preview:
+            return None
+
+        return f"*{discord.utils.escape_markdown(preview)}*"
+
+    @staticmethod
     def insert_todo_embed(
         name: str,
         description: Optional[str],
@@ -2233,7 +2238,6 @@ class TodoEmbeds:
             }.get(item_status_value, "\u26aa")
             item_name = str(item.get("name") or "Untitled")
             list_name = str(item.get("list_name") or "").strip()
-            text = TodoFunctions.item_text(item) or ""
             due_line = TodoEmbeds._due_line(item.get("due"))
             assignees = item.get("assignees") or []
             item_title = (
@@ -2242,14 +2246,14 @@ class TodoEmbeds:
                 else f"{status_emoji} {item_name}"
             )
             value_lines = []
-            description_line = TodoFunctions.truncate_multiline(text)
             if due_line:
                 value_lines.append(due_line)
-            if description_line and description_line.lower() != item_name.lower():
-                value_lines.append(description_line)
             if assignees:
                 mentions = " ".join(f"<@{uid}>" for uid in assignees)
                 value_lines.append(f"\U0001f465 Assignees: {mentions}")
+            description_preview = TodoEmbeds._list_item_description_preview(item)
+            if description_preview:
+                value_lines.append(description_preview)
             if not value_lines:
                 value_lines.append("No details")
             value_text = "\n".join(value_lines)
@@ -2312,7 +2316,6 @@ class TodoEmbeds:
             }.get(item_status_value, "\u26aa")
             item_name = str(item.get("name") or "Untitled")
             list_name = str(item.get("list_name") or "").strip()
-            text = TodoFunctions.item_text(item) or ""
             due_line = TodoEmbeds._due_line(item.get("due"))
             assignees = item.get("assignees") or []
             item_title = (
@@ -2323,14 +2326,14 @@ class TodoEmbeds:
             if item_id and item_id == str(selected_item_id or "").strip():
                 item_title = f"\U0001f449{item_title}"
             value_lines = []
-            description_line = TodoFunctions.truncate_multiline(text)
             if due_line:
                 value_lines.append(due_line)
-            if description_line and description_line.lower() != item_name.lower():
-                value_lines.append(description_line)
             if assignees:
                 mentions = " ".join(f"<@{uid}>" for uid in assignees)
                 value_lines.append(f"\U0001f465 Assignees: {mentions}")
+            description_preview = TodoEmbeds._list_item_description_preview(item)
+            if description_preview:
+                value_lines.append(description_preview)
             if not value_lines:
                 value_lines.append("No details")
             value_text = "\n".join(value_lines)
@@ -2355,7 +2358,6 @@ class TodoEmbeds:
         item_status = TodoFunctions.item_status(item)
         status = TodoFunctions.status_label(item_status)
         status_emoji = TodoFunctions.item_status_emoji(item_status)
-        text = TodoFunctions.item_text(item) or "No text"
         due_text = TodoEmbeds._due_line(item.get("due"))
         assignees = item.get("assignees") or []
         mentions = " ".join(f"<@{uid}>" for uid in assignees) if assignees else ""
@@ -2367,12 +2369,14 @@ class TodoEmbeds:
             part for part in [list_reference, item_number_value] if part
         )
         status_line = f"{status_emoji} {status}"
-        description_text = text if len(text) <= 800 else text[:797] + "..."
-        description_line = (
-            description_text
-            if description_text.strip().lower() != item_name.strip().lower()
-            else None
-        )
+        item_description = TodoFunctions.item_description(item)
+        description_line = None
+        if item_description:
+            description_line = (
+                item_description
+                if len(item_description) <= 800
+                else item_description[:797] + "..."
+            )
         description_lines = [
             metadata,
             "\u200b",

@@ -440,6 +440,27 @@ class TodoFunctions:
         return str(value).strip()
 
     @staticmethod
+    def item_description(item: Dict[str, Any]) -> Optional[str]:
+        item_name = str(item.get("name") or "").strip()
+
+        for raw_value in (item.get("description"), item.get("text")):
+            value = str(raw_value or "").strip()
+            if not value:
+                continue
+
+            if item_name:
+                prefix = f"{item_name}\n"
+                if value.startswith(prefix):
+                    value = value[len(prefix) :].strip()
+                elif value.lower() == item_name.lower():
+                    value = ""
+
+            if value:
+                return value
+
+        return None
+
+    @staticmethod
     def item_status(item: Dict[str, Any]) -> str:
         status = str(item.get("status") or "").strip().lower()
         if status in TodoFunctions._ALLOWED_ITEM_STATUSES:
