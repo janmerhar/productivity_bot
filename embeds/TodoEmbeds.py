@@ -1102,6 +1102,7 @@ class TodoListItemsView(discord.ui.View):
             label="…",
             row=3,
         )
+        more_options_button.label = "Less" if self.show_more_options else "More"
 
         async def _prev_callback(interaction: discord.Interaction) -> None:
             if self.page <= 1:
