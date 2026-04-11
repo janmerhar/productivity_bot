@@ -79,7 +79,7 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
             default=_clamp_text(values.get("schedule"), 120),
         )
         self.reminder = discord.ui.TextInput(
-            label="Stock ticker" if job.type == "stock" else "Reminder",
+            label="Reminder",
             placeholder="Updated reminder value",
             required=True,
             max_length=400,
@@ -323,7 +323,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         )
         self.reminder = discord.ui.TextInput(
             label="Reminder",
-            placeholder="Reminder text or stock: AAPL",
+            placeholder="Reminder text",
             required=True,
             max_length=400,
             style=discord.TextStyle.short,

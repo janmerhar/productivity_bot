@@ -71,12 +71,6 @@ class ReminderFunctions:
     def reminder_label(job: DailyJob) -> str:
         data = job.data or {}
 
-        if job.type == "stock":
-            ticker = str(data.get("ticker") or "").strip().upper()
-            if ticker:
-                return f"stock: {ticker}"
-            return "stock reminder"
-
         embed_data = data.get("embed")
         if isinstance(embed_data, dict):
             title = str(embed_data.get("title") or "").strip()
@@ -176,25 +170,6 @@ class ReminderFunctions:
         data = job.data or {}
         schedule = ReminderFunctions.schedule_input_for_job(job)
         until = ReminderFunctions.expiration_input_for_job(job)
-
-        if job.type == "stock":
-            header_text = str(data.get("header") or "").strip()
-            ping_text, description = ReminderFunctions._split_message_content(header_text)
-            reminder = str(data.get("ticker") or "").strip().upper()
-            return {
-                "schedule": schedule,
-                "reminder": reminder,
-                "description": description,
-                "thumbnail_url": "",
-                "until": until,
-                "ping_text": ping_text or "",
-                "notify_in_dms": (
-                    "yes"
-                    if ReminderFunctions._as_bool(data.get("notify_ping_users_in_dm"))
-                    else ""
-                ),
-                "destination_channel": ReminderFunctions.destination_label(job),
-            }
 
         message_text = str(data.get("message") or "").strip()
         ping_text, body_text = ReminderFunctions._split_message_content(message_text)
@@ -454,58 +429,6 @@ class ReminderFunctions:
         return payload
 
     @staticmethod
-    def _build_stock_job_data(
-        reminder: str,
-        ping_text: Optional[str],
-        description: Optional[str],
-        thumbnail_url: Optional[str],
-        expires_at: Optional[datetime.datetime],
-        ephemeral: bool,
-        notify_ping_users_in_dm: bool = False,
-    ) -> Tuple[str, Dict[str, Any]]:
-        if (thumbnail_url or "").strip():
-            raise ValidationError(
-                "Stock reminders do not support `thumbnail_url` yet.",
-                ephemeral=ephemeral,
-            )
-
-        stock_value = reminder.strip()[6:].strip()
-        stock_tokens = [
-            token.strip().upper()
-            for token in stock_value.replace(",", " ").split()
-            if token.strip()
-        ]
-        if not stock_tokens:
-            raise ValidationError(
-                "Please provide a stock ticker after `stock:`.",
-                ephemeral=ephemeral,
-            )
-        if len(stock_tokens) != 1:
-            raise ValidationError(
-                "Please provide exactly one stock ticker after `stock:`.",
-                ephemeral=ephemeral,
-            )
-
-        symbol = stock_tokens[0]
-        header_lines = []
-        mention_text = (ping_text or "").strip()
-        if mention_text:
-            header_lines.append(mention_text)
-        if (description or "").strip():
-            header_lines.append(description.strip())
-
-        payload: Dict[str, Any] = {"ticker": symbol}
-        if header_lines:
-            payload["header"] = "\n".join(header_lines)
-        if expires_at is not None:
-            payload["expires_at"] = expires_at.isoformat()
-        if notify_ping_users_in_dm:
-            payload["notify_ping_users_in_dm"] = True
-        payload["source"] = "reminder"
-
-        return symbol, payload
-
-    @staticmethod
     def _resolve_schedule(
         schedule: str,
         expires_at: Optional[datetime.datetime],
@@ -568,7 +491,7 @@ class ReminderFunctions:
         # reminder-specific metadata was stored.
         return (
             ReminderFunctions._job_schedule_mode(job) == "one-time"
-            and job.type in {"message", "stock"}
+            and job.type == "message"
         )
 
     @staticmethod
@@ -809,55 +732,25 @@ class ReminderFunctions:
             timezone=timezone or existing_schedule_timezone,
         )
 
-        updated_data: Dict[str, Any]
         managed_keys = {"expires_at", "notify_ping_users_in_dm", "source", "paused"}
-
-        if job.type == "stock":
-            effective_ping_text = (
-                edit_values.get("ping_text") if raw_ping_text is None else raw_ping_text
-            ) or None
-            effective_description = (
-                edit_values.get("description")
-                if raw_description is None
-                else raw_description
-            ) or None
-            normalized_reminder = reminder.strip()
-            if not normalized_reminder.lower().startswith("stock:"):
-                normalized_reminder = f"stock: {normalized_reminder}"
-            _, updated_data = ReminderFunctions._build_stock_job_data(
-                normalized_reminder,
-                effective_ping_text,
-                effective_description,
-                None,
-                expires_at,
-                ephemeral,
-                effective_notify_ping_users_in_dm,
-            )
-            managed_keys.update({"ticker", "header"})
-        else:
-            if reminder.strip().lower().startswith("stock:"):
-                raise ValidationError(
-                    "Changing a message reminder into a stock reminder is not supported.",
-                    ephemeral=ephemeral,
-                )
-            effective_ping_text = (
-                edit_values.get("ping_text") if raw_ping_text is None else raw_ping_text
-            ) or None
-            effective_description = (
-                edit_values.get("description")
-                if raw_description is None
-                else raw_description
-            ) or None
-            effective_thumbnail_url = edit_values.get("thumbnail_url") or None
-            updated_data = ReminderFunctions._build_message_job_data(
-                reminder,
-                effective_ping_text,
-                effective_description,
-                effective_thumbnail_url,
-                expires_at,
-                effective_notify_ping_users_in_dm,
-            )
-            managed_keys.update({"message", "embed"})
+        effective_ping_text = (
+            edit_values.get("ping_text") if raw_ping_text is None else raw_ping_text
+        ) or None
+        effective_description = (
+            edit_values.get("description")
+            if raw_description is None
+            else raw_description
+        ) or None
+        effective_thumbnail_url = edit_values.get("thumbnail_url") or None
+        updated_data = ReminderFunctions._build_message_job_data(
+            reminder,
+            effective_ping_text,
+            effective_description,
+            effective_thumbnail_url,
+            expires_at,
+            effective_notify_ping_users_in_dm,
+        )
+        managed_keys.update({"message", "embed"})
 
         for key, value in existing_data.items():
             if key in managed_keys or key in updated_data:
@@ -938,44 +831,23 @@ class ReminderFunctions:
             ephemeral,
             timezone,
         )
-        job_type = "message"
 
-        if reminder.strip().lower().startswith("stock:"):
-            symbol, job_data = ReminderFunctions._build_stock_job_data(
-                reminder,
-                ping_text,
-                description,
-                thumbnail_url,
-                expires_at,
-                ephemeral,
-                notify_ping_users_in_dm,
+        job_data = ReminderFunctions._build_message_job_data(
+            reminder,
+            ping_text,
+            description,
+            thumbnail_url,
+            expires_at,
+            notify_ping_users_in_dm,
+        )
+        if isinstance(schedule_config, CronSchedule):
+            confirmation = (
+                f"Scheduled recurring reminder in {destination_label} on {schedule_label}."
             )
-            job_type = "stock"
-            if isinstance(schedule_config, CronSchedule):
-                confirmation = (
-                    f"Scheduled recurring stock reminder for `{symbol}` in {destination_label} on {schedule_label}."
-                )
-            else:
-                confirmation = (
-                    f"Got it! I'll post stock price for `{symbol}` in {destination_label} at {schedule_label}."
-                )
         else:
-            job_data = ReminderFunctions._build_message_job_data(
-                reminder,
-                ping_text,
-                description,
-                thumbnail_url,
-                expires_at,
-                notify_ping_users_in_dm,
+            confirmation = (
+                f"Got it! I'll post that reminder in {destination_label} at {schedule_label}."
             )
-            if isinstance(schedule_config, CronSchedule):
-                confirmation = (
-                    f"Scheduled recurring reminder in {destination_label} on {schedule_label}."
-                )
-            else:
-                confirmation = (
-                    f"Got it! I'll post that reminder in {destination_label} at {schedule_label}."
-                )
 
         job_data.update(destination_data)
 
@@ -984,7 +856,7 @@ class ReminderFunctions:
             created_job = manager.insert_job(
                 guild_id,
                 channel_id,
-                job_type,
+                "message",
                 job_data,
                 schedule_config,
             )
