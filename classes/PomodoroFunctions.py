@@ -32,6 +32,7 @@ class PomodoroPauseResult:
     ok: bool
     message: str
     mode: Optional[str] = None
+    duration_minutes: Optional[int] = None
     remaining_minutes: Optional[int] = None
     remaining_seconds: Optional[int] = None
 
@@ -72,6 +73,19 @@ class PomodoroFunctions:
             return int(str(value).strip())
         except (TypeError, ValueError):
             return default
+
+    @staticmethod
+    def _resolve_total_duration_minutes(
+        data: Optional[Mapping[str, Any]],
+        *,
+        fallback: int = 0,
+    ) -> int:
+        payload = data or {}
+        for key in ("total_duration_minutes", "duration"):
+            value = PomodoroFunctions._safe_int(payload.get(key), default=0)
+            if value > 0:
+                return value
+        return max(0, fallback)
 
     @staticmethod
     async def _list_scope_jobs(
@@ -193,6 +207,7 @@ class PomodoroFunctions:
         data = {
             "mode": normalized_mode,
             "duration": str(resolved_duration),
+            "total_duration_minutes": str(resolved_duration),
             "user": str(user_id),
         }
 
@@ -337,7 +352,10 @@ class PomodoroFunctions:
             )
 
         now = datetime.datetime.now()
-        remaining_seconds = int((selected_end_time - now).total_seconds())
+        remaining_seconds = max(
+            0,
+            math.ceil((selected_end_time - now).total_seconds()),
+        )
         if remaining_seconds <= 0:
             return PomodoroPauseResult(
                 ok=False,
@@ -345,6 +363,10 @@ class PomodoroFunctions:
             )
 
         remaining_minutes = max(1, math.ceil(remaining_seconds / 60))
+        total_duration_minutes = PomodoroFunctions._resolve_total_duration_minutes(
+            selected_job.data,
+            fallback=remaining_minutes,
+        )
         mode = str((selected_job.data or {}).get("mode", "focus")).strip().lower()
         if mode not in ("focus", "break"):
             mode = "focus"
@@ -358,7 +380,7 @@ class PomodoroFunctions:
                         "data.paused": True,
                         "data.paused_remaining_seconds": remaining_seconds,
                         "data.paused_at": now.isoformat(),
-                        "data.duration": str(remaining_minutes),
+                        "data.total_duration_minutes": str(total_duration_minutes),
                     }
                 },
             )
@@ -383,6 +405,7 @@ class PomodoroFunctions:
             ok=True,
             message=f"Paused with {remaining_minutes} minute(s) remaining.",
             mode=mode,
+            duration_minutes=total_duration_minutes,
             remaining_minutes=remaining_minutes,
             remaining_seconds=remaining_seconds,
         )
@@ -442,7 +465,10 @@ class PomodoroFunctions:
                 message="I couldn't resume that pomodoro because remaining time is missing.",
             )
 
-        remaining_minutes = max(1, math.ceil(remaining_seconds / 60))
+        total_duration_minutes = PomodoroFunctions._resolve_total_duration_minutes(
+            data,
+            fallback=max(1, math.ceil(remaining_seconds / 60)),
+        )
         new_end_time = (
             datetime.datetime.now() + datetime.timedelta(seconds=remaining_seconds)
         ).replace(second=0, microsecond=0)
@@ -459,7 +485,8 @@ class PomodoroFunctions:
                     "$set": {
                         "schedule.datetime": new_end_time.isoformat(),
                         "data.paused": False,
-                        "data.duration": str(remaining_minutes),
+                        "data.duration": str(total_duration_minutes),
+                        "data.total_duration_minutes": str(total_duration_minutes),
                     },
                     "$unset": {
                         "data.paused_remaining_seconds": "",
@@ -490,7 +517,7 @@ class PomodoroFunctions:
             message="Pomodoro resumed.",
             mode=mode,
             end_time=new_end_time,
-            duration_minutes=remaining_minutes,
+            duration_minutes=total_duration_minutes,
         )
 
     @staticmethod
@@ -589,11 +616,9 @@ class PomodoroFunctions:
                 message="I couldn't find an active pomodoro to extend.",
             )
 
-        current_duration_raw = str((selected_job.data or {}).get("duration") or "").strip()
-        try:
-            current_duration = int(current_duration_raw)
-        except ValueError:
-            current_duration = 0
+        current_duration = PomodoroFunctions._resolve_total_duration_minutes(
+            selected_job.data
+        )
         mode = str((selected_job.data or {}).get("mode", "focus")).strip().lower()
         if mode not in ("focus", "break"):
             mode = "focus"
@@ -610,6 +635,7 @@ class PomodoroFunctions:
                     "$set": {
                         "schedule.datetime": new_end_time.isoformat(),
                         "data.duration": str(new_duration),
+                        "data.total_duration_minutes": str(new_duration),
                     }
                 },
             )

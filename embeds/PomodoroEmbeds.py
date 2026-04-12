@@ -1,15 +1,10 @@
 import datetime
-import math
 from typing import Optional, Union
 
 import discord
 
 
 class PomodoroEmbeds:
-    @staticmethod
-    def _round_half_up(value: float) -> int:
-        return int(math.floor(value + 0.5))
-
     @staticmethod
     def _format_end_time(end_time: Optional[datetime.datetime]) -> str:
         if end_time is None:
@@ -27,39 +22,27 @@ class PomodoroEmbeds:
         return f"**Ends {PomodoroEmbeds._format_relative_end_time(end_time)}**"
 
     @staticmethod
-    def _discord_relative_text_from_seconds(remaining_seconds: Union[int, float]) -> str:
+    def _format_static_remaining_time(remaining_seconds: Union[int, float]) -> str:
         seconds = max(0, int(remaining_seconds))
-        if seconds < 45:
-            return "in a few seconds"
-        if seconds < 90:
-            return "in a minute"
+        if seconds < 60:
+            return "less than a minute"
 
-        minutes = PomodoroEmbeds._round_half_up(seconds / 60)
-        if minutes < 45:
-            return f"in {minutes} minutes"
-        if minutes < 90:
-            return "in an hour"
+        total_minutes = seconds // 60
+        days, remaining_minutes = divmod(total_minutes, 1440)
+        hours, minutes = divmod(remaining_minutes, 60)
 
-        hours = PomodoroEmbeds._round_half_up(seconds / 3600)
-        if hours < 22:
-            return f"in {hours} hours"
-        if hours < 36:
-            return "in a day"
+        parts = []
+        if days > 0:
+            parts.append(f"{days} day{'s' if days != 1 else ''}")
+        if hours > 0:
+            parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+        if minutes > 0:
+            parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
 
-        days = PomodoroEmbeds._round_half_up(seconds / 86400)
-        if days < 26:
-            return f"in {days} days"
-        if days < 46:
-            return "in a month"
+        if not parts:
+            return "1 minute"
 
-        months = PomodoroEmbeds._round_half_up(seconds / (86400 * 30.44))
-        if days < 320:
-            return f"in {max(2, months)} months"
-        if days < 548:
-            return "in a year"
-
-        years = PomodoroEmbeds._round_half_up(seconds / (86400 * 365.25))
-        return f"in {max(2, years)} years"
+        return " ".join(parts[:2])
 
     @staticmethod
     def paused_description(
@@ -67,12 +50,13 @@ class PomodoroEmbeds:
         remaining_minutes: Optional[Union[int, str]] = None,
     ) -> str:
         if remaining_seconds is not None:
-            return f"**Ends {PomodoroEmbeds._discord_relative_text_from_seconds(remaining_seconds)}**"
+            formatted = PomodoroEmbeds._format_static_remaining_time(remaining_seconds)
+            return f"**Paused with {formatted} remaining**"
 
         value = str(remaining_minutes).strip() if remaining_minutes is not None else ""
         if value.isdigit():
-            return f"**Ends in {value} minute{'s' if value != '1' else ''}**"
-        return "**Ends soon**"
+            return f"**Paused with {value} minute{'s' if value != '1' else ''} remaining**"
+        return "**Paused**"
 
     @staticmethod
     def insert_timer_embed(

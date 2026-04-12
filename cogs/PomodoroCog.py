@@ -1,5 +1,4 @@
 import asyncio
-import math
 from typing import Optional
 
 import discord
@@ -149,7 +148,8 @@ class PomodoroCog(commands.Cog):
         mode = str(data.get("mode", "focus")).strip().lower()
         if mode not in ("focus", "break"):
             mode = "focus"
-        duration = str(data.get("duration", "?")).strip() or "?"
+        duration_minutes = PomodoroFunctions._resolve_total_duration_minutes(data)
+        duration = str(duration_minutes) if duration_minutes > 0 else "?"
         paused_value = data.get("paused")
         if isinstance(paused_value, str):
             is_paused = paused_value.strip().lower() in ("1", "true", "yes", "on")
@@ -164,8 +164,6 @@ class PomodoroCog(commands.Cog):
                 remaining_seconds = int(remaining_seconds_raw)
             except ValueError:
                 remaining_seconds = 0
-            if remaining_seconds > 0:
-                duration = str(max(1, math.ceil(remaining_seconds / 60)))
             selected_end_time = None
         else:
             remaining_seconds = 0
@@ -403,6 +401,7 @@ class PomodoroCog(commands.Cog):
             return
 
         mode = result.mode or "focus"
+        duration_minutes = result.duration_minutes or result.remaining_minutes or 1
         remaining_minutes = (
             result.remaining_minutes if result.remaining_minutes else "?"
         )
@@ -417,7 +416,7 @@ class PomodoroCog(commands.Cog):
 
         payload = PomodoroEmbeds.insert_timer_embed(
             mode,
-            remaining_minutes,
+            duration_minutes,
             None,
         )
         embed = payload.get("embed")

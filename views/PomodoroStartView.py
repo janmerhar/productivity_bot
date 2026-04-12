@@ -300,6 +300,8 @@ class PomodoroStartView(discord.ui.View):
         if embed is None:
             return None
         updated = embed.copy()
+        updated.description = PomodoroEmbeds.running_description(end_time)
+        updated.set_footer(text=f"{duration_minutes} min")
         for idx, field in enumerate(updated.fields):
             field_name = (field.name or "").strip().lower()
             if field_name == "ends":
@@ -335,6 +337,7 @@ class PomodoroStartView(discord.ui.View):
         self,
         embed: Optional[discord.Embed],
         mode: str,
+        duration_minutes: int,
         remaining_minutes: int,
         remaining_seconds: Optional[int] = None,
     ) -> Optional[discord.Embed]:
@@ -348,6 +351,7 @@ class PomodoroStartView(discord.ui.View):
             remaining_minutes=remaining_minutes,
         )
         updated.color = discord.Colour.orange()
+        updated.set_footer(text=f"{duration_minutes} min")
 
         for idx, field in enumerate(updated.fields):
             field_name = (field.name or "").strip().lower()
@@ -362,7 +366,7 @@ class PomodoroStartView(discord.ui.View):
                 updated.set_field_at(
                     idx,
                     name=field.name,
-                    value=f"{remaining_minutes} minutes",
+                    value=f"{duration_minutes} minutes",
                     inline=field.inline,
                 )
         return updated
@@ -509,6 +513,7 @@ class PomodoroStartView(discord.ui.View):
             return
 
         remaining_minutes = result.remaining_minutes or 1
+        duration_minutes = result.duration_minutes or remaining_minutes
         if result.mode:
             self._mode = result.mode
         self._end_time = None
@@ -522,6 +527,7 @@ class PomodoroStartView(discord.ui.View):
                 else None
             ),
             self._mode,
+            duration_minutes,
             remaining_minutes,
             result.remaining_seconds,
         )
