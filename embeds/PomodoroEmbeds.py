@@ -27,11 +27,7 @@ class PomodoroEmbeds:
         duration_label: str = "Duration",
         ends_label: str = "Ends",
     ) -> dict:
-        resolved_title = (
-            title
-            if title is not None
-            else f"{mode.capitalize()} • {duration_minutes} min"
-        )
+        resolved_title = title if title is not None else mode.capitalize()
         resolved_description = (
             description
             if description is not None
@@ -42,6 +38,7 @@ class PomodoroEmbeds:
             description=resolved_description,
             color=discord.Colour.green(),
         )
+        embed.set_footer(text=f"{duration_minutes} min")
 
         return {"embed": embed}
 
