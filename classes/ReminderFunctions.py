@@ -169,7 +169,7 @@ class ReminderFunctions:
     def reminder_edit_values(job: DailyJob) -> Dict[str, str]:
         data = job.data or {}
         schedule = ReminderFunctions.schedule_input_for_job(job)
-        until = ReminderFunctions.expiration_input_for_job(job)
+        expires = ReminderFunctions.expiration_input_for_job(job)
 
         message_text = str(data.get("message") or "").strip()
         ping_text, body_text = ReminderFunctions._split_message_content(message_text)
@@ -185,7 +185,8 @@ class ReminderFunctions:
             "reminder": reminder,
             "description": description,
             "thumbnail_url": thumbnail_url,
-            "until": until,
+            "expires": expires,
+            "until": expires,
             "ping_text": ping_text or "",
             "notify_in_dms": (
                 "yes"
@@ -276,13 +277,13 @@ class ReminderFunctions:
     @staticmethod
     def needs_timezone(
         schedule: str,
-        until: Optional[str] = None,
+        expires: Optional[str] = None,
     ) -> bool:
         raw_schedule = schedule.strip()
-        raw_until = (until or "").strip()
+        raw_expires = (expires or "").strip()
         return (
             not is_valid_cron_expression(raw_schedule)
-            or bool(raw_until)
+            or bool(raw_expires)
         )
 
     @staticmethod
@@ -360,11 +361,11 @@ class ReminderFunctions:
 
     @staticmethod
     def _parse_expiration(
-        until: Optional[str],
+        expires: Optional[str],
         timezone: Optional[str],
         ephemeral: bool,
     ) -> Optional[datetime.datetime]:
-        raw_expiration = (until or "").strip()
+        raw_expiration = (expires or "").strip()
         if not raw_expiration:
             return None
 
@@ -374,7 +375,7 @@ class ReminderFunctions:
         )
         if expires_at is None:
             raise ValidationError(
-                "I couldn't understand `until`.",
+                "I couldn't understand `expires`.",
                 hint="Try `in 2 weeks` or a specific date/time.",
                 ephemeral=ephemeral,
             )
@@ -382,7 +383,7 @@ class ReminderFunctions:
         now = datetime.datetime.now().replace(second=0, microsecond=0)
         if expires_at <= now:
             raise ValidationError(
-                "`until` needs to be in the future.",
+                "`expires` needs to be in the future.",
                 ephemeral=ephemeral,
             )
 
@@ -469,7 +470,7 @@ class ReminderFunctions:
             )
         if expires_at is not None and expires_at <= scheduled_dt:
             raise ValidationError(
-                "`until` must be later than the reminder time.",
+                "`expires` must be later than the reminder time.",
                 ephemeral=ephemeral,
             )
 
@@ -676,7 +677,7 @@ class ReminderFunctions:
         reminder: str,
         ping_text: Optional[str] = None,
         description: Optional[str] = None,
-        until: Optional[str] = None,
+        expires: Optional[str] = None,
         notify_ping_users_in_dm: Optional[bool] = None,
         destination_channel_id: Optional[int] = None,
         destination_type: Optional[str] = None,
@@ -708,21 +709,21 @@ class ReminderFunctions:
             if notify_ping_users_in_dm is None
             else bool(notify_ping_users_in_dm)
         )
-        raw_until = until
-        if raw_until is None:
-            raw_until = str(existing_data.get("expires_at") or "").strip()
+        raw_expires = expires
+        if raw_expires is None:
+            raw_expires = str(existing_data.get("expires_at") or "").strip()
         else:
-            raw_until = raw_until.strip()
-            if raw_until.lower() in {"none", "clear", "off"}:
-                raw_until = ""
+            raw_expires = raw_expires.strip()
+            if raw_expires.lower() in {"none", "clear", "off"}:
+                raw_expires = ""
 
         expires_at = (
             ReminderFunctions._parse_expiration(
-                raw_until,
+                raw_expires,
                 timezone,
                 ephemeral,
             )
-            if raw_until
+            if raw_expires
             else None
         )
         schedule_config, _ = ReminderFunctions._resolve_schedule(
@@ -804,7 +805,7 @@ class ReminderFunctions:
         ping_text: Optional[str] = None,
         thumbnail_url: Optional[str] = None,
         description: Optional[str] = None,
-        until: Optional[str] = None,
+        expires: Optional[str] = None,
         notify_ping_users_in_dm: bool = False,
         destination_channel_id: Optional[int] = None,
         destination_type: str = "channel",
@@ -813,7 +814,7 @@ class ReminderFunctions:
         timezone: Optional[str] = None,
     ) -> Tuple[DailyJob, str]:
         expires_at = ReminderFunctions._parse_expiration(
-            until,
+            expires,
             timezone,
             ephemeral,
         )

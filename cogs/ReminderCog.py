@@ -324,7 +324,7 @@ class ReminderCog(commands.Cog):
         schedule="Cron expression or natural language schedule",
         add_pings="Open a modal to select multiple user pings",
         description="Reminder description",
-        until="Stop sending after this time",
+        expires="Stop sending after this time",
         destination="Destination channel or private delivery",
         visibility=VISIBILITY_DESC,
     )
@@ -338,7 +338,7 @@ class ReminderCog(commands.Cog):
         schedule: str,
         add_pings: bool = False,
         description: Optional[str] = None,
-        until: Optional[str] = None,
+        expires: Optional[str] = None,
         destination: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
@@ -372,7 +372,7 @@ class ReminderCog(commands.Cog):
                         reminder=reminder,
                         schedule=schedule,
                         description=description,
-                        until=until,
+                        until=expires,
                         destination_type=destination_type,
                         destination_channel_id=destination_channel_id,
                         response_ephemeral=ephemeral,
@@ -389,7 +389,7 @@ class ReminderCog(commands.Cog):
 
         needs_timezone = ReminderFunctions.needs_timezone(
             schedule,
-            until=until,
+            expires=expires,
         )
 
         async def _continue_with_timezone(
@@ -401,7 +401,7 @@ class ReminderCog(commands.Cog):
                 reminder=reminder,
                 schedule=schedule,
                 description=description,
-                until=until,
+                expires=expires,
                 destination_type=destination_type,
                 destination_channel_id=destination_channel_id,
                 ephemeral=ephemeral,
@@ -425,7 +425,7 @@ class ReminderCog(commands.Cog):
             reminder=reminder,
             schedule=schedule,
             description=description,
-            until=until,
+            expires=expires,
             destination_type=destination_type,
             destination_channel_id=destination_channel_id,
             ephemeral=ephemeral,
@@ -701,7 +701,7 @@ class ReminderCog(commands.Cog):
         reminder: str,
         schedule: str,
         description: Optional[str],
-        until: Optional[str],
+        expires: Optional[str],
         destination_type: str,
         destination_channel_id: Optional[int],
         ephemeral: bool,
@@ -716,7 +716,7 @@ class ReminderCog(commands.Cog):
             schedule=schedule,
             thumbnail_url=thumbnail_url,
             description=description,
-            until=until,
+            expires=expires,
             destination_channel_id=destination_channel_id,
             destination_type=destination_type,
             destination_user_id=interaction.user.id,

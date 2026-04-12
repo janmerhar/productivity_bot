@@ -654,7 +654,7 @@ class ReminderPingModal(discord.ui.Modal, title="Add Ping Users"):
                     reminder=self._reminder,
                     ping_text=ping,
                     description=values.get("description") or None,
-                    until=values.get("until") or None,
+                    expires=values.get("expires") or values.get("until") or None,
                     notify_ping_users_in_dm=notify_ping_users_in_dm,
                     destination_channel_id=self._destination_channel_id,
                     destination_type=self._destination_type,
@@ -702,7 +702,7 @@ class ReminderPingModal(discord.ui.Modal, title="Add Ping Users"):
                 ping_text=ping or None,
                 thumbnail_url=self._thumbnail_url,
                 description=self._description,
-                until=self._until,
+                expires=self._until,
                 notify_ping_users_in_dm=notify_ping_users_in_dm,
                 destination_channel_id=self._destination_channel_id,
                 destination_type=self._destination_type,
@@ -755,7 +755,7 @@ class ReminderPingModal(discord.ui.Modal, title="Add Ping Users"):
             )
             if ReminderFunctions.needs_timezone(
                 self._schedule,
-                until=self._until,
+                expires=self._until,
             ):
 
                 async def _continue_with_timezone(
