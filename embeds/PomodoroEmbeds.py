@@ -31,7 +31,7 @@ class PomodoroEmbeds:
         resolved_description = (
             description
             if description is not None
-            else f"Ends {PomodoroEmbeds._format_relative_end_time(end_time)}"
+            else f"**Ends {PomodoroEmbeds._format_relative_end_time(end_time)}**"
         )
         embed = discord.Embed(
             title=resolved_title,
