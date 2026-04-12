@@ -7,7 +7,136 @@ import discord
 
 from classes.DailyJob import DailyJob
 from classes.ReminderFunctions import ReminderFunctions
+from services.error_reporting import UserVisibleError, handle_interaction_error
+from views.ReminderOutputView import ReminderOutputView
 from views.ReminderEditModal import ReminderCreateModal
+
+
+class ReminderListOptionsModal(discord.ui.Modal):
+    def __init__(
+        self,
+        *,
+        parent_view: "ReminderListView",
+        source_message: Optional[discord.Message],
+    ) -> None:
+        modal_title = f"View Options • {parent_view.scope_label}"
+        if len(modal_title) > 45:
+            modal_title = modal_title[:42].rstrip() + "..."
+        super().__init__(title=modal_title)
+        self.parent_view = parent_view
+        self.source_message = source_message
+
+        self.sort_group = discord.ui.RadioGroup(
+            custom_id="reminder_list_options_sort",
+            options=[
+                discord.RadioGroupOption(
+                    label="Ascending",
+                    value="ascending",
+                    default=parent_view.sort == "ascending",
+                ),
+                discord.RadioGroupOption(
+                    label="Descending",
+                    value="descending",
+                    default=parent_view.sort == "descending",
+                ),
+            ],
+        )
+        self.status_group = discord.ui.RadioGroup(
+            custom_id="reminder_list_options_status",
+            options=[
+                discord.RadioGroupOption(
+                    label="All",
+                    value="all",
+                    default=parent_view.status_label == "All",
+                ),
+                discord.RadioGroupOption(
+                    label="Active",
+                    value="active",
+                    default=parent_view.status_label == "Active",
+                ),
+                discord.RadioGroupOption(
+                    label="Paused",
+                    value="paused",
+                    default=parent_view.status_label == "Paused",
+                ),
+            ],
+        )
+
+        self.add_item(
+            discord.ui.Label(
+                text="Sort",
+                component=self.sort_group,
+            )
+        )
+        self.add_item(
+            discord.ui.Label(
+                text="Status",
+                component=self.status_group,
+            )
+        )
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        sort_value = str(self.sort_group.value or "ascending")
+        status_value = str(self.status_group.value or "all")
+        if sort_value not in {"ascending", "descending"}:
+            sort_value = "ascending"
+        if status_value == "active":
+            paused_filter = False
+            status_label = "Active"
+        elif status_value == "paused":
+            paused_filter = True
+            status_label = "Paused"
+        else:
+            paused_filter = None
+            status_label = "All"
+
+        self.parent_view.sort = sort_value
+        self.parent_view.paused_filter = paused_filter
+        self.parent_view.status_label = status_label
+        self.parent_view.page = 1
+
+        try:
+            await self.parent_view._reload_reminders()
+            self.parent_view._build()
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Something went wrong while updating the list options.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
+            return
+
+        target_message = self.source_message or self.parent_view.message
+        if target_message is None:
+            await interaction.followup.send(
+                ephemeral=True,
+                view=self.parent_view,
+                **self.parent_view.payload(),
+            )
+            return
+
+        try:
+            await target_message.edit(
+                view=self.parent_view,
+                **self.parent_view.payload(),
+            )
+            self.parent_view.message = target_message
+        except discord.NotFound:
+            await self.parent_view._notify_missing_message(interaction)
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Options updated, but refreshing the list failed.",
+                    ephemeral=True,
+                    cause=exc,
+                ),
+            )
 
 
 class ReminderListView(discord.ui.View):
@@ -24,6 +153,7 @@ class ReminderListView(discord.ui.View):
         destination_type: Optional[str],
         paused_filter: Optional[bool],
         user_id: Optional[int],
+        sort: str = "ascending",
         response_ephemeral: bool = False,
         page: int = 1,
         timeout: float = 300,
@@ -37,11 +167,13 @@ class ReminderListView(discord.ui.View):
         self.destination_type = destination_type
         self.paused_filter = paused_filter
         self.user_id = user_id
+        self.sort = sort if sort in {"ascending", "descending"} else "ascending"
+        self.message: Optional[discord.Message] = None
         self.response_ephemeral = bool(response_ephemeral)
         self.page_size = self.PAGE_SIZE
         self.total_pages = max(1, math.ceil(len(self.reminders) / self.page_size))
         self.page = max(1, min(page, self.total_pages))
-        self._sync_buttons()
+        self._build()
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if self.user_id is None or interaction.user.id == self.user_id:
@@ -143,7 +275,8 @@ class ReminderListView(discord.ui.View):
             embed.set_footer(
                 text=(
                     f"Page {self.page}/{self.total_pages} | Items: {len(self.reminders)} | "
-                    f"Scope: {self.scope_label} | Status: {self.status_label}"
+                    f"Sort: {self.sort.title()} | Scope: {self.scope_label} | "
+                    f"Status: {self.status_label}"
                 )
             )
             return embed
@@ -170,13 +303,100 @@ class ReminderListView(discord.ui.View):
         embed.set_footer(
             text=(
                 f"Page {self.page}/{self.total_pages} | Items: {len(self.reminders)} | "
-                f"Scope: {self.scope_label} | Status: {self.status_label}"
+                f"Sort: {self.sort.title()} | Scope: {self.scope_label} | "
+                f"Status: {self.status_label}"
             )
         )
         return embed
 
     def payload(self) -> dict:
         return {"embed": self._embed()}
+
+    def _page_item(self, slot_index: int) -> Optional[DailyJob]:
+        page_items = self._page_slice()
+        if 0 <= slot_index < len(page_items):
+            return page_items[slot_index]
+        return None
+
+    def _has_active_list_options(self) -> bool:
+        return self.paused_filter is not None or self.sort != "ascending"
+
+    async def _notify_missing_message(self, interaction: discord.Interaction) -> None:
+        message = (
+            "That reminder list message is no longer available. "
+            "Run `/reminder list` again."
+        )
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(ephemeral=True, content=message)
+            else:
+                await interaction.response.send_message(ephemeral=True, content=message)
+        except Exception:
+            return
+
+    async def _open_reminder_details(
+        self,
+        interaction: discord.Interaction,
+        job: Optional[DailyJob],
+    ) -> None:
+        if job is None:
+            await interaction.response.defer(ephemeral=True)
+            return
+
+        current_job = await asyncio.to_thread(
+            ReminderFunctions.get_reminder,
+            str(job.id),
+            self.guild_id,
+        )
+        if current_job is None:
+            await self._reload_reminders()
+            self._build()
+            await interaction.response.edit_message(view=self, **self.payload())
+            return
+
+        output_view = ReminderOutputView(
+            job=current_job,
+            guild=interaction.guild,
+            result_message=f"Showing reminder `{str(current_job.id)}`.",
+            ok=True,
+            user_id=interaction.user.id,
+            response_ephemeral=True,
+        )
+        await interaction.response.send_message(
+            ephemeral=True,
+            **output_view.response_payload(),
+        )
+
+    async def open_create_modal(
+        self,
+        interaction: discord.Interaction,
+        *,
+        source_message: Optional[discord.Message],
+    ) -> None:
+        default_channel_id = self.channel_id or interaction.channel_id
+        await interaction.response.send_modal(
+            ReminderCreateModal(
+                parent_view=self,
+                default_channel_id=default_channel_id,
+                default_destination_type=self.destination_type or "channel",
+                guild=interaction.guild,
+                source_message=source_message,
+                response_ephemeral=self.response_ephemeral,
+            )
+        )
+
+    async def open_options_modal(
+        self,
+        interaction: discord.Interaction,
+        *,
+        source_message: Optional[discord.Message],
+    ) -> None:
+        await interaction.response.send_modal(
+            ReminderListOptionsModal(
+                parent_view=self,
+                source_message=source_message,
+            )
+        )
 
     async def _reload_reminders(self) -> None:
         reminders = await asyncio.to_thread(
@@ -187,6 +407,8 @@ class ReminderListView(discord.ui.View):
             self.destination_type,
             self.user_id if self.destination_type == "private" else None,
         )
+        if self.sort == "descending":
+            reminders.reverse()
         self.reminders = reminders
         self.total_pages = max(1, math.ceil(len(self.reminders) / self.page_size))
         self.page = max(1, min(self.page, self.total_pages))
@@ -201,7 +423,7 @@ class ReminderListView(discord.ui.View):
         await self._reload_reminders()
         if jump_to_last_page and self.reminders:
             self.page = self.total_pages
-        self._sync_buttons()
+        self._build()
 
         target_message = source_message or interaction.message
         if target_message is None:
@@ -209,63 +431,99 @@ class ReminderListView(discord.ui.View):
 
         try:
             await target_message.edit(view=self, **self.payload())
+            self.message = target_message
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             await interaction.followup.send(
                 "Reminder created, but the original list message is no longer available.",
                 ephemeral=self.response_ephemeral,
             )
 
-    def _sync_buttons(self) -> None:
-        self.previous_page.disabled = self.page <= 1
-        self.next_page.disabled = self.page >= self.total_pages
+    def _build(self) -> None:
+        self.clear_items()
 
-    @discord.ui.button(label="Prev", style=discord.ButtonStyle.secondary, row=0)
-    async def previous_page(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button,
-    ) -> None:
-        del button
-        if self.page <= 1:
-            await interaction.response.defer()
-            return
-        self.page -= 1
-        self._sync_buttons()
-        await interaction.response.edit_message(view=self, **self.payload())
+        for slot_index in range(self.page_size):
+            display_index = slot_index + 1
+            job = self._page_item(slot_index)
+            job_id = str(job.id) if job is not None else ""
 
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary, row=0)
-    async def next_page(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button,
-    ) -> None:
-        del button
-        if self.page >= self.total_pages:
-            await interaction.response.defer()
-            return
-        self.page += 1
-        self._sync_buttons()
-        await interaction.response.edit_message(view=self, **self.payload())
-
-    @discord.ui.button(
-        label="New Reminder",
-        style=discord.ButtonStyle.primary,
-        row=1,
-    )
-    async def create_reminder(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button,
-    ) -> None:
-        del button
-        default_channel_id = self.channel_id or interaction.channel_id
-        await interaction.response.send_modal(
-            ReminderCreateModal(
-                parent_view=self,
-                default_channel_id=default_channel_id,
-                default_destination_type=self.destination_type or "channel",
-                guild=interaction.guild,
-                source_message=interaction.message,
-                response_ephemeral=self.response_ephemeral,
+            info_button = discord.ui.Button(
+                label=str(display_index),
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"reminder_item_info:{job_id or display_index}",
+                row=0,
+                disabled=job is None,
             )
+
+            async def _info_callback(
+                interaction: discord.Interaction,
+                job_data: Optional[DailyJob] = job,
+            ) -> None:
+                await self._open_reminder_details(interaction, job_data)
+
+            info_button.callback = _info_callback
+            self.add_item(info_button)
+
+        prev_button = discord.ui.Button(
+            style=discord.ButtonStyle.secondary,
+            emoji="◀️",
+            disabled=self.page <= 1,
+            row=1,
         )
+        add_button = discord.ui.Button(
+            style=discord.ButtonStyle.success,
+            emoji="➕",
+            row=1,
+        )
+        next_button = discord.ui.Button(
+            style=discord.ButtonStyle.secondary,
+            emoji="▶️",
+            disabled=self.page >= self.total_pages,
+            row=1,
+        )
+        options_button = discord.ui.Button(
+            style=(
+                discord.ButtonStyle.success
+                if self._has_active_list_options()
+                else discord.ButtonStyle.secondary
+            ),
+            emoji="🔎",
+            row=1,
+        )
+
+        async def _prev_callback(interaction: discord.Interaction) -> None:
+            if self.page <= 1:
+                await interaction.response.defer(ephemeral=True)
+                return
+            self.page -= 1
+            self._build()
+            await interaction.response.edit_message(view=self, **self.payload())
+
+        async def _next_callback(interaction: discord.Interaction) -> None:
+            if self.page >= self.total_pages:
+                await interaction.response.defer(ephemeral=True)
+                return
+            self.page += 1
+            self._build()
+            await interaction.response.edit_message(view=self, **self.payload())
+
+        async def _add_callback(interaction: discord.Interaction) -> None:
+            await self.open_create_modal(
+                interaction,
+                source_message=interaction.message,
+            )
+
+        async def _options_callback(interaction: discord.Interaction) -> None:
+            await self.open_options_modal(
+                interaction,
+                source_message=interaction.message,
+            )
+
+        prev_button.callback = _prev_callback
+        add_button.callback = _add_callback
+        next_button.callback = _next_callback
+        options_button.callback = _options_callback
+
+        self.add_item(prev_button)
+        self.add_item(next_button)
+        self.add_item(add_button)
+        self.add_item(options_button)

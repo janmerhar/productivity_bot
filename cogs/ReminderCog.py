@@ -501,10 +501,13 @@ class ReminderCog(commands.Cog):
             user_id=interaction.user.id,
             response_ephemeral=ephemeral,
         )
-        await interaction.followup.send(
+        message = await interaction.followup.send(
             ephemeral=ephemeral,
+            view=view,
+            wait=True,
             **view.payload(),
         )
+        view.message = message
 
     @reminder_group.command(
         name="remove",
