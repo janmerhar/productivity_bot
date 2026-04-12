@@ -58,6 +58,22 @@ class ReminderListView(discord.ui.View):
         return self.reminders[start:end]
 
     @staticmethod
+    def _number_emoji(value: int) -> str:
+        digits = {
+            "0": "0️⃣",
+            "1": "1️⃣",
+            "2": "2️⃣",
+            "3": "3️⃣",
+            "4": "4️⃣",
+            "5": "5️⃣",
+            "6": "6️⃣",
+            "7": "7️⃣",
+            "8": "8️⃣",
+            "9": "9️⃣",
+        }
+        return "".join(digits.get(ch, ch) for ch in str(value))
+
+    @staticmethod
     def _truncate(text: str, limit: int = 80) -> str:
         cleaned = str(text or "").strip()
         if len(cleaned) <= limit:
@@ -107,9 +123,17 @@ class ReminderListView(discord.ui.View):
         raw_value = str((job.data or {}).get("expires_at") or "").strip()
         return ReminderListView._datetime_label(raw_value)
 
+    @staticmethod
+    def _detail_text(job: DailyJob) -> Optional[str]:
+        values = ReminderFunctions.reminder_edit_values(job)
+        detail = str(values.get("description") or "").strip()
+        if not detail:
+            return None
+        return ReminderListView._truncate(detail, 140)
+
     def _embed(self) -> discord.Embed:
         embed = discord.Embed(
-            title="Reminder List",
+            title=f"Reminders • {self.scope_label}",
             color=discord.Colour.blurple(),
         )
 
@@ -126,7 +150,7 @@ class ReminderListView(discord.ui.View):
 
         for display_index, job in enumerate(page_items, start=1):
             label = self._truncate(ReminderFunctions.reminder_label(job), 90)
-            status = "paused" if ReminderFunctions.is_paused(job) else "active"
+            status = "Paused" if ReminderFunctions.is_paused(job) else "Active"
             value_lines = [
                 f"Schedule: {self._schedule_label(job)}",
                 f"Destination: {self._destination_label(job)} | ID: `{str(job.id)[:8]}`",
@@ -134,8 +158,11 @@ class ReminderListView(discord.ui.View):
             expires_label = self._expires_label(job)
             if expires_label:
                 value_lines.append(f"Expires: {expires_label}")
+            detail_text = self._detail_text(job)
+            if detail_text and detail_text.lower() != label.lower():
+                value_lines.insert(0, detail_text)
             embed.add_field(
-                name=f"{display_index}. {label} [{status}]",
+                name=f"{self._number_emoji(display_index)} {label} [{status}]",
                 value="\n".join(value_lines),
                 inline=False,
             )

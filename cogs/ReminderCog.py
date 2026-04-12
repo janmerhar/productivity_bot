@@ -501,16 +501,8 @@ class ReminderCog(commands.Cog):
             user_id=interaction.user.id,
             response_ephemeral=ephemeral,
         )
-        if not reminders:
-            await interaction.followup.send(
-                ephemeral=ephemeral,
-                **view.payload(),
-            )
-            return
-
         await interaction.followup.send(
             ephemeral=ephemeral,
-            view=view,
             **view.payload(),
         )
 
