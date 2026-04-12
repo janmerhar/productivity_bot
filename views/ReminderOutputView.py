@@ -13,6 +13,25 @@ from services.error_reporting import ValidationError, handle_interaction_error
 from services.reminder_destination import build_reminder_destination_select_options
 
 
+class ReminderDeleteConfirmModal(discord.ui.Modal):
+    def __init__(self, parent_view: "ReminderOutputView") -> None:
+        super().__init__(title="Delete Reminder")
+        self.parent_view = parent_view
+        reminder_name = "this reminder"
+        if parent_view.job is not None:
+            label = str(ReminderFunctions.reminder_label(parent_view.job) or "").strip()
+            if label:
+                reminder_name = f"`{label[:80]}`"
+        self.add_item(
+            discord.ui.TextDisplay(
+                f"This will permanently delete {reminder_name} (`{parent_view.job_id}`)."
+            )
+        )
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await self.parent_view._confirm_delete(interaction)
+
+
 class ReminderOutputView(discord.ui.View):
     def __init__(
         self,
@@ -460,8 +479,10 @@ class ReminderOutputView(discord.ui.View):
             )
             return
 
-        await interaction.response.defer(ephemeral=self.response_ephemeral)
+        await interaction.response.send_modal(ReminderDeleteConfirmModal(self))
 
+    async def _confirm_delete(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         try:
             deleted = await asyncio.to_thread(
                 ReminderFunctions.delete_reminder,
