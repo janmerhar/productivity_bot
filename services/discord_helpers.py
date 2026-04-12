@@ -78,6 +78,12 @@ def normalize_alert_destination(
         return "dm", None, "your DMs"
 
     cleaned = destination.strip().lower()
+    if cleaned in {"current", "current channel", "here"}:
+        channel_id = interaction.channel_id
+        if channel_id and interaction.guild is not None:
+            return "channel", channel_id, f"<#{channel_id}>"
+        return "dm", None, "your DMs"
+
     if cleaned == "dm":
         return "dm", None, "your DMs"
 
@@ -109,17 +115,15 @@ def alert_destination_autocomplete(
     choices: List[app_commands.Choice[str]] = []
 
     current_channel_id = interaction.channel_id
-    current_channel_name = getattr(interaction.channel, "name", None)
-    if current_channel_id and (not query or "current" in query or "here" in query):
-        label = (
-            f"Current channel (#{current_channel_name})"
-            if current_channel_name
-            else "Current channel"
-        )
+    if (
+        interaction.guild is not None
+        and current_channel_id
+        and (not query or "current" in query or "here" in query)
+    ):
         choices.append(
             app_commands.Choice(
-                name=label[:100],
-                value=f"channel:{current_channel_id}",
+                name="Current channel",
+                value="current",
             )
         )
 
@@ -168,6 +172,12 @@ def normalize_reminder_destination(
         return "private", None, "Private"
 
     cleaned = destination.strip().lower()
+    if cleaned in {"current", "current channel", "here"}:
+        channel_id = interaction.channel_id
+        if channel_id and interaction.guild is not None:
+            return "channel", channel_id, f"<#{channel_id}>"
+        return "private", None, "Private"
+
     if cleaned in {"private", "dm", "direct messages", "your dms", "your dm"}:
         return "private", None, "Private"
 
@@ -199,17 +209,15 @@ def reminder_destination_autocomplete(
     choices: List[app_commands.Choice[str]] = []
 
     current_channel_id = interaction.channel_id
-    current_channel_name = getattr(interaction.channel, "name", None)
-    if current_channel_id and (not query or "current" in query or "here" in query):
-        label = (
-            f"Current channel (#{current_channel_name})"
-            if current_channel_name
-            else "Current channel"
-        )
+    if (
+        interaction.guild is not None
+        and current_channel_id
+        and (not query or "current" in query or "here" in query)
+    ):
         choices.append(
             app_commands.Choice(
-                name=label[:100],
-                value=f"channel:{current_channel_id}",
+                name="Current channel",
+                value="current",
             )
         )
 
