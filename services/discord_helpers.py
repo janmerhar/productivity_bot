@@ -113,10 +113,11 @@ def alert_destination_autocomplete(
 ) -> List[app_commands.Choice[str]]:
     query = (current or "").strip().lower()
     choices: List[app_commands.Choice[str]] = []
+    in_guild = interaction.guild is not None
 
     current_channel_id = interaction.channel_id
     if (
-        interaction.guild is not None
+        in_guild
         and current_channel_id
         and (not query or "current" in query or "here" in query)
     ):
@@ -149,9 +150,22 @@ def alert_destination_autocomplete(
                 )
             )
 
+    if not in_guild and (
+        not query
+        or "current" in query
+        or "here" in query
+        or "dm" in query
+        or "direct" in query
+        or "message" in query
+        or "private" in query
+    ):
+        return [app_commands.Choice(name="Direct messages", value="dm")]
+
     if len(choices) < 25 and (
         not query
         or "dm" in query
+        or "current" in query
+        or "here" in query
         or "direct" in query
         or "message" in query
         or "private" in query
@@ -207,10 +221,11 @@ def reminder_destination_autocomplete(
 ) -> List[app_commands.Choice[str]]:
     query = (current or "").strip().lower()
     choices: List[app_commands.Choice[str]] = []
+    in_guild = interaction.guild is not None
 
     current_channel_id = interaction.channel_id
     if (
-        interaction.guild is not None
+        in_guild
         and current_channel_id
         and (not query or "current" in query or "here" in query)
     ):
@@ -243,9 +258,22 @@ def reminder_destination_autocomplete(
                 )
             )
 
+    if not in_guild and (
+        not query
+        or "current" in query
+        or "here" in query
+        or "private" in query
+        or "dm" in query
+        or "direct" in query
+        or "message" in query
+    ):
+        return [app_commands.Choice(name="Direct messages", value="private")]
+
     if len(choices) < 25 and (
         not query
         or "private" in query
+        or "current" in query
+        or "here" in query
         or "dm" in query
         or "direct" in query
         or "message" in query
