@@ -136,14 +136,20 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
         interaction: discord.Interaction,
         *,
         result_message: Optional[str] = None,
-    ) -> None:
+    ) -> bool:
         refresh_method = getattr(self._parent_view, "refresh_message", None)
         if callable(refresh_method):
-            await refresh_method(
+            return await refresh_method(
                 interaction,
                 source_message=self._source_message,
                 result_message=result_message,
             )
+        return False
+
+    def _should_send_followup_result(self, refreshed_parent: bool) -> bool:
+        return not (
+            refreshed_parent and isinstance(self._parent_view, ReminderOutputView)
+        )
 
     async def _apply_update(
         self,
@@ -178,10 +184,13 @@ class ReminderEditModal(discord.ui.Modal, title="Edit Reminder"):
             )
             return
 
-        await self._refresh_parent(
+        refreshed_parent = await self._refresh_parent(
             interaction,
             result_message="Reminder updated.",
         )
+        if not self._should_send_followup_result(refreshed_parent):
+            return
+
         reminder_view = ReminderOutputView(
             job=updated_job,
             guild=interaction.guild,
@@ -373,14 +382,15 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         if self.destination_channel_label is not None:
             self.add_item(self.destination_channel_label)
 
-    async def _refresh_parent(self, interaction: discord.Interaction) -> None:
+    async def _refresh_parent(self, interaction: discord.Interaction) -> bool:
         refresh_method = getattr(self._parent_view, "refresh_message", None)
         if callable(refresh_method):
-            await refresh_method(
+            return await refresh_method(
                 interaction,
                 source_message=self._source_message,
                 jump_to_last_page=True,
             )
+        return False
 
     async def _apply_create(
         self,
@@ -610,14 +620,20 @@ class ReminderPingModal(discord.ui.Modal, title="Add Ping Users"):
         interaction: discord.Interaction,
         *,
         result_message: Optional[str] = None,
-    ) -> None:
+    ) -> bool:
         refresh_method = getattr(self._parent_view, "refresh_message", None)
         if callable(refresh_method):
-            await refresh_method(
+            return await refresh_method(
                 interaction,
                 source_message=self._source_message,
                 result_message=result_message,
             )
+        return False
+
+    def _should_send_followup_result(self, refreshed_parent: bool) -> bool:
+        return not (
+            refreshed_parent and isinstance(self._parent_view, ReminderOutputView)
+        )
 
     async def _apply_changes(
         self,
@@ -655,10 +671,13 @@ class ReminderPingModal(discord.ui.Modal, title="Add Ping Users"):
                 return
 
             result_message = "Reminder ping settings updated."
-            await self._refresh_parent(
+            refreshed_parent = await self._refresh_parent(
                 interaction,
                 result_message=result_message,
             )
+            if not self._should_send_followup_result(refreshed_parent):
+                return
+
             reminder_view = ReminderOutputView(
                 job=updated_job,
                 guild=interaction.guild or self._guild,

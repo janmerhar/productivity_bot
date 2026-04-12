@@ -64,21 +64,45 @@ class ReminderOutputView(discord.ui.View):
         source_message: Optional[discord.Message] = None,
         jump_to_last_page: bool = False,
         result_message: Optional[str] = None,
-    ) -> None:
+    ) -> bool:
         del jump_to_last_page
         if result_message is not None:
             self.result_message = result_message
 
         await self.refresh_state()
-        target_message = source_message or interaction.message or self.message
-        if target_message is None:
-            return
+        candidates = []
+        for candidate in (source_message, interaction.message, self.message):
+            if candidate is None:
+                continue
+            if any(
+                getattr(existing, "id", None) == getattr(candidate, "id", None)
+                for existing in candidates
+            ):
+                continue
+            candidates.append(candidate)
 
-        self.message = target_message
-        try:
-            await target_message.edit(**self.response_payload())
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-            return
+        payload = self.response_payload()
+        for candidate in candidates:
+            try:
+                await candidate.edit(**payload)
+                self.message = candidate
+                return True
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                continue
+
+        source_message_id = getattr(source_message, "id", None)
+        if source_message_id is not None:
+            try:
+                await interaction.followup.edit_message(
+                    source_message_id,
+                    **payload,
+                )
+                self.message = source_message
+                return True
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                pass
+
+        return False
 
     def _sync_button_state(self) -> None:
         has_job = self.job is not None
