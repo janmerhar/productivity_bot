@@ -59,6 +59,7 @@ class DailyTaskCog(commands.Cog):
             if ReminderFunctions.is_private_destination(job)
             else None
         )
+        guild = self.bot.get_guild(job.guild_id) if job.guild_id is not None else None
 
         for user_id in user_ids:
             if destination_user_id is not None and user_id == destination_user_id:
@@ -75,14 +76,15 @@ class DailyTaskCog(commands.Cog):
                 if job.type == "message":
                     reminder_view = ReminderOutputView(
                         job=job,
-                        guild=None,
+                        guild=guild,
                         result_message="Reminder triggered.",
                         ok=True,
+                        user_id=user_id,
                         response_ephemeral=False,
                     )
                     dm_payload = reminder_view.response_payload()
-                    dm_payload.pop("view", None)
-                    await user.send(**dm_payload)
+                    posted_message = await user.send(**dm_payload)
+                    reminder_view.message = posted_message
                     continue
 
                 dm_payload = dict(message_payload or {})
@@ -324,11 +326,24 @@ class DailyTaskCog(commands.Cog):
                     continue
 
                 if job.type == "message":
+                    reminder_guild = (
+                        getattr(channel, "guild", None)
+                        or (
+                            self.bot.get_guild(job.guild_id)
+                            if job.guild_id is not None
+                            else None
+                        )
+                    )
                     reminder_view = ReminderOutputView(
                         job=job,
-                        guild=getattr(channel, "guild", None),
+                        guild=reminder_guild,
                         result_message="Reminder triggered.",
                         ok=True,
+                        user_id=(
+                            ReminderFunctions.destination_user_id(job)
+                            if ReminderFunctions.is_private_destination(job)
+                            else None
+                        ),
                         response_ephemeral=False,
                     )
                     reminder_payload = reminder_view.response_payload()
