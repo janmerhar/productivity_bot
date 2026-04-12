@@ -1,5 +1,37 @@
 # https://www.youtube.com/watch?v=-D2CvmHTqbE
+import os
+import platform
+import sys
 import logging
+
+
+def _seed_windows_uname_cache() -> None:
+    # Work around a very slow stdlib WMI lookup inside platform.win32_ver(),
+    # which aiohttp triggers during import via platform.system().
+    if os.name != "nt" or getattr(platform, "_uname_cache", None) is not None:
+        return
+
+    try:
+        winver = sys.getwindowsversion()
+        version_tuple = getattr(winver, "platform_version", None) or tuple(winver[:3])
+        version = ".".join(str(part) for part in version_tuple)
+        release = str(
+            getattr(winver, "major", version_tuple[0] if version_tuple else "")
+        )
+        node = os.environ.get("COMPUTERNAME", "")
+        machine = (
+            os.environ.get("PROCESSOR_ARCHITEW6432")
+            or os.environ.get("PROCESSOR_ARCHITECTURE", "")
+        )
+        platform._uname_cache = platform.uname_result(
+            "Windows", node, release, version, machine
+        )
+    except Exception:
+        pass
+
+
+_seed_windows_uname_cache()
+
 import discord
 import asyncio
 from discord.ext import commands
