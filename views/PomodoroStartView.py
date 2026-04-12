@@ -2,6 +2,7 @@ import datetime
 from typing import List, Optional
 
 import discord
+from embeds.PomodoroEmbeds import PomodoroEmbeds
 
 _POMODORO_MODAL_SELECTS_SUPPORTED = True
 
@@ -270,9 +271,7 @@ class PomodoroStartView(discord.ui.View):
 
         if not self._voice_channel_select_enabled:
             self.select_voice_channel_button.disabled = True
-            self.select_voice_channel_button.label = (
-                "Select Voice Channel (Server only)"
-            )
+            self.select_voice_channel_button.label = "Voice (Server only)"
             self.select_voice_channel_button.style = discord.ButtonStyle.secondary
 
         self._sync_play_pause_button()
@@ -283,6 +282,14 @@ class PomodoroStartView(discord.ui.View):
     @staticmethod
     def _relative_timestamp(end_time: datetime.datetime) -> str:
         return f"<t:{int(end_time.timestamp())}:R>"
+
+    @staticmethod
+    def _mode_title(mode: str) -> str:
+        return mode.capitalize()
+
+    @classmethod
+    def _paused_title(cls, mode: str) -> str:
+        return f"{cls._mode_title(mode)} • Paused"
 
     @staticmethod
     def _with_updated_timer_fields(
@@ -329,13 +336,17 @@ class PomodoroStartView(discord.ui.View):
         embed: Optional[discord.Embed],
         mode: str,
         remaining_minutes: int,
+        remaining_seconds: Optional[int] = None,
     ) -> Optional[discord.Embed]:
         if embed is None:
             return None
 
         updated = embed.copy()
-        updated.title = "Pomodoro Paused"
-        updated.description = f"{mode.capitalize()} timer is paused."
+        updated.title = self._paused_title(mode)
+        updated.description = PomodoroEmbeds.paused_description(
+            remaining_seconds=remaining_seconds,
+            remaining_minutes=remaining_minutes,
+        )
         updated.color = discord.Colour.orange()
 
         for idx, field in enumerate(updated.fields):
@@ -367,14 +378,13 @@ class PomodoroStartView(discord.ui.View):
         if updated is None:
             return None
 
-        updated.title = "Pomodoro Resumed"
-        updated.description = f"{mode.capitalize()} timer resumed."
+        updated.title = self._mode_title(mode)
+        updated.description = PomodoroEmbeds.running_description(end_time)
         updated.color = discord.Colour.green()
         return updated
 
-    @discord.ui.button(label="Select Voice Channel", style=discord.ButtonStyle.primary)
-    async def select_voice_channel_button(
-        self, interaction: discord.Interaction, _: discord.ui.Button
+    async def _handle_select_voice_channel(
+        self, interaction: discord.Interaction
     ) -> None:
         global _POMODORO_MODAL_SELECTS_SUPPORTED
 
@@ -513,6 +523,7 @@ class PomodoroStartView(discord.ui.View):
             ),
             self._mode,
             remaining_minutes,
+            result.remaining_seconds,
         )
         if updated_embed is None:
             await interaction.response.send_message(
@@ -523,7 +534,13 @@ class PomodoroStartView(discord.ui.View):
 
         await interaction.response.edit_message(embed=updated_embed, view=self)
 
-    @discord.ui.button(label="Extend +5 min", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Voice", style=discord.ButtonStyle.primary)
+    async def select_voice_channel_button(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        await self._handle_select_voice_channel(interaction)
+
+    @discord.ui.button(label="+5 min", style=discord.ButtonStyle.secondary)
     async def extend_timer_button(
         self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
@@ -593,7 +610,7 @@ class PomodoroStartView(discord.ui.View):
                     content=fallback_message,
                 )
 
-    @discord.ui.button(label="Stop Pomodoro", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Stop", style=discord.ButtonStyle.danger)
     async def stop_button(
         self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:

@@ -167,6 +167,8 @@ class PomodoroCog(commands.Cog):
             if remaining_seconds > 0:
                 duration = str(max(1, math.ceil(remaining_seconds / 60)))
             selected_end_time = None
+        else:
+            remaining_seconds = 0
 
         user_raw = str(data.get("user", "")).strip()
         owner_id = int(user_raw) if user_raw.isdigit() else interaction.user.id
@@ -194,8 +196,11 @@ class PomodoroCog(commands.Cog):
         )
         embed = payload.get("embed")
         if is_paused and isinstance(embed, discord.Embed):
-            embed.title = "Pomodoro Paused"
-            embed.description = f"{mode.capitalize()} timer is paused."
+            embed.title = f"{mode.capitalize()} • Paused"
+            embed.description = PomodoroEmbeds.paused_description(
+                remaining_seconds=remaining_seconds if remaining_seconds > 0 else None,
+                remaining_minutes=duration,
+            )
             embed.color = discord.Colour.orange()
             for idx, field in enumerate(embed.fields):
                 if (field.name or "").strip().lower() == "ends":
@@ -417,8 +422,11 @@ class PomodoroCog(commands.Cog):
         )
         embed = payload.get("embed")
         if isinstance(embed, discord.Embed):
-            embed.title = "Pomodoro Paused"
-            embed.description = f"{mode.capitalize()} timer is paused."
+            embed.title = f"{mode.capitalize()} • Paused"
+            embed.description = PomodoroEmbeds.paused_description(
+                remaining_seconds=result.remaining_seconds,
+                remaining_minutes=remaining_minutes,
+            )
             embed.color = discord.Colour.orange()
             for idx, field in enumerate(embed.fields):
                 if (field.name or "").strip().lower() == "ends":
@@ -488,8 +496,8 @@ class PomodoroCog(commands.Cog):
         )
         embed = payload.get("embed")
         if isinstance(embed, discord.Embed):
-            embed.title = "Pomodoro Resumed"
-            embed.description = f"{mode.capitalize()} timer resumed."
+            embed.title = mode.capitalize()
+            embed.description = PomodoroEmbeds.running_description(result.end_time)
 
         join_url: Optional[str] = None
         if interaction.guild is not None:

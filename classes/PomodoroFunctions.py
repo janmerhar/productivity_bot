@@ -33,6 +33,7 @@ class PomodoroPauseResult:
     message: str
     mode: Optional[str] = None
     remaining_minutes: Optional[int] = None
+    remaining_seconds: Optional[int] = None
 
 
 @dataclass
@@ -383,6 +384,7 @@ class PomodoroFunctions:
             message=f"Paused with {remaining_minutes} minute(s) remaining.",
             mode=mode,
             remaining_minutes=remaining_minutes,
+            remaining_seconds=remaining_seconds,
         )
 
     @staticmethod
