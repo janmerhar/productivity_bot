@@ -353,7 +353,7 @@ class ReminderOutputView(discord.ui.View):
         )
 
     @discord.ui.button(
-        emoji="📣",
+        emoji="🔔",
         style=discord.ButtonStyle.primary,
         row=0,
     )
