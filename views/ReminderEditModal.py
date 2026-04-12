@@ -338,16 +338,6 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
             style=discord.TextStyle.short,
             default=_clamp_text(initial_reminder, 400),
         )
-        self.ping_select = discord.ui.UserSelect(
-            placeholder="Choose members to ping",
-            min_values=0,
-            max_values=25,
-            required=False,
-        )
-        self.ping_select_label = discord.ui.Label(
-            text="Ping",
-            component=self.ping_select,
-        )
         self.description = discord.ui.TextInput(
             label="Description",
             placeholder="Leave blank to clear",
@@ -377,7 +367,6 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
 
         self.add_item(self.reminder)
         self.add_item(self.schedule)
-        self.add_item(self.ping_select_label)
         self.add_item(self.description)
         if self.destination_channel_label is not None:
             self.add_item(self.destination_channel_label)
@@ -445,6 +434,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         raw_schedule = str(self.schedule.value or "").strip()
         raw_reminder = str(self.reminder.value or "").strip()
         raw_description = str(self.description.value or "").strip()
+        raw_ping = ""
 
         try:
             if self.destination_channel_select is not None:
