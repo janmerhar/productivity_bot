@@ -22,60 +22,28 @@ class PomodoroEmbeds:
         mode: str,
         duration_minutes: Union[int, str],
         end_time: Optional[datetime.datetime],
-        title: str = "Pomodoro Scheduled",
+        title: Optional[str] = None,
         description: Optional[str] = None,
-        mode_label: str = "Mode",
         duration_label: str = "Duration",
         ends_label: str = "Ends",
     ) -> dict:
+        resolved_title = (
+            title
+            if title is not None
+            else f"{mode.capitalize()} • {duration_minutes} min"
+        )
         resolved_description = (
             description
             if description is not None
-            else f"{mode.capitalize()} timer started."
+            else f"Ends {PomodoroEmbeds._format_relative_end_time(end_time)}"
         )
         embed = discord.Embed(
-            title=title,
+            title=resolved_title,
             description=resolved_description,
             color=discord.Colour.green(),
         )
-        embed.add_field(name=mode_label, value=mode.capitalize(), inline=True)
-        embed.add_field(
-            name=duration_label, value=f"{duration_minutes} minutes", inline=True
-        )
-        embed.add_field(
-            name=ends_label,
-            value=PomodoroEmbeds._format_relative_end_time(end_time),
-            inline=True,
-        )
 
         return {"embed": embed}
-
-    @staticmethod
-    def timer_complete_embed(
-        mode: str,
-        duration_minutes: Union[int, str],
-        end_time: Optional[datetime.datetime],
-        user_id: Optional[Union[int, str]],
-    ) -> dict:
-        embed = discord.Embed(
-            title="Pomodoro Complete",
-            description=f"{mode.capitalize()} timer finished.",
-            color=discord.Colour.green(),
-        )
-        embed.add_field(name="Mode", value=mode.capitalize(), inline=True)
-        embed.add_field(
-            name="Duration", value=f"{duration_minutes} minutes", inline=True
-        )
-        embed.add_field(
-            name="Ends at",
-            value=PomodoroEmbeds._format_end_time(end_time),
-            inline=True,
-        )
-
-        payload = {"embed": embed}
-        if user_id:
-            payload["content"] = f"<@{user_id}>"
-        return payload
 
     @staticmethod
     def timer_stopped_embed(
