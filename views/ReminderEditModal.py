@@ -332,7 +332,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         )
         self.reminder = discord.ui.TextInput(
             label="Reminder",
-            placeholder="Reminder text",
+            placeholder="Reminder name",
             required=True,
             max_length=400,
             style=discord.TextStyle.short,
@@ -375,8 +375,8 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
                 component=self.destination_channel_select,
             )
 
-        self.add_item(self.schedule)
         self.add_item(self.reminder)
+        self.add_item(self.schedule)
         self.add_item(self.ping_select_label)
         self.add_item(self.description)
         if self.destination_channel_label is not None:
