@@ -41,6 +41,71 @@ class DailyTaskCog(commands.Cog):
         self.bot = bot
         self._runner.start()
 
+    async def _send_reminder_ping_dms(
+        self,
+        job: DailyJob,
+        *,
+        message_payload: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if not ReminderFunctions.notify_ping_users_in_dm(job):
+            return
+
+        user_ids = ReminderFunctions.ping_user_ids(job)
+        if not user_ids:
+            return
+
+        destination_user_id = (
+            ReminderFunctions.destination_user_id(job)
+            if ReminderFunctions.is_private_destination(job)
+            else None
+        )
+        guild = self.bot.get_guild(job.guild_id) if job.guild_id is not None else None
+
+        for user_id in user_ids:
+            if destination_user_id is not None and user_id == destination_user_id:
+                continue
+
+            user = self.bot.get_user(user_id)
+            if user is None:
+                try:
+                    user = await self.bot.fetch_user(user_id)
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                    continue
+
+            try:
+                if job.type == "message":
+                    reminder_view = ReminderOutputView(
+                        job=job,
+                        guild=guild,
+                        result_message="Reminder triggered.",
+                        ok=True,
+                        user_id=user_id,
+                        response_ephemeral=False,
+                    )
+                    dm_payload = reminder_view.response_payload()
+                    posted_message = await user.send(**dm_payload)
+                    reminder_view.message = posted_message
+                    continue
+
+                dm_payload = dict(message_payload or {})
+                content = str(dm_payload.get("content") or "").strip()
+                if content:
+                    _, body_text = ReminderFunctions._split_message_content(content)
+                    if body_text:
+                        dm_payload["content"] = body_text
+                    else:
+                        dm_payload.pop("content", None)
+
+                if not dm_payload:
+                    continue
+
+                await user.send(**dm_payload)
+            except discord.HTTPException:
+                logging.getLogger(__name__).exception(
+                    "Failed to DM reminder recipient",
+                    extra={"user_id": user_id, "job_id": str(job.id)},
+                )
+
     @commands.Cog.listener()
     async def on_ready(self):
         print("DailyTaskCog cog loaded")
@@ -261,11 +326,24 @@ class DailyTaskCog(commands.Cog):
                     continue
 
                 if job.type == "message":
+                    reminder_guild = (
+                        getattr(channel, "guild", None)
+                        or (
+                            self.bot.get_guild(job.guild_id)
+                            if job.guild_id is not None
+                            else None
+                        )
+                    )
                     reminder_view = ReminderOutputView(
                         job=job,
-                        guild=getattr(channel, "guild", None),
+                        guild=reminder_guild,
                         result_message="Reminder triggered.",
                         ok=True,
+                        user_id=(
+                            ReminderFunctions.destination_user_id(job)
+                            if ReminderFunctions.is_private_destination(job)
+                            else None
+                        ),
                         response_ephemeral=False,
                     )
                     reminder_payload = reminder_view.response_payload()
@@ -275,10 +353,15 @@ class DailyTaskCog(commands.Cog):
 
                     posted_message = await channel.send(**reminder_payload)
                     reminder_view.message = posted_message
+                    await self._send_reminder_ping_dms(job)
                     continue
 
                 if payload:
                     await channel.send(**payload)
+                    await self._send_reminder_ping_dms(
+                        job,
+                        message_payload=payload,
+                    )
                 continue
             if not payload:
                 continue

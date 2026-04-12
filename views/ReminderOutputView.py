@@ -3,140 +3,33 @@ import datetime
 from typing import Optional
 
 import discord
-from discord.ext import commands
 
-from classes.DailyJobManager import DailyJobManager
 from classes.DailyJob import DailyJob
 from classes.ReminderFunctions import ReminderFunctions
 from services.discord_helpers import (
     format_reminder_mentions,
-    resolve_messageable_channel,
 )
 from services.error_reporting import ValidationError, handle_interaction_error
-from services.reminder_destination import (
-    build_reminder_destination_select_options,
-    parse_reminder_destination_value,
-)
+from services.reminder_destination import build_reminder_destination_select_options
 
 
-class ReminderChangeChannelModal(discord.ui.Modal, title="Change Reminder Channel"):
-    def __init__(
-        self,
-        view: "ReminderOutputView",
-        *,
-        channel_options: Optional[list[discord.SelectOption]] = None,
-    ) -> None:
-        super().__init__()
-        self._view = view
-        self.channel_select: Optional[discord.ui.Select] = None
-        self.channel_select_label: Optional[discord.ui.Label] = None
-        self.channel_input: Optional[discord.ui.TextInput] = None
-
-        if channel_options:
-            try:
-                self.channel_select = discord.ui.Select(
-                    placeholder="Choose a destination channel",
-                    min_values=1,
-                    max_values=1,
-                    options=channel_options[:25],
-                )
-                self.channel_select_label = discord.ui.Label(
-                    text="Destination channel",
-                    component=self.channel_select,
-                )
-                self.add_item(self.channel_select_label)
-            except Exception:
-                self.channel_select = None
-                self.channel_select_label = None
-
-        if self.channel_select is None:
-            default_channel = ReminderFunctions.destination_label(self._view.job)
-            self.channel_input = discord.ui.TextInput(
-                label="Destination channel",
-                placeholder="Use `Private`, a channel mention, or a channel id",
-                required=True,
-                max_length=64,
-                default=default_channel[:64],
+class ReminderDeleteConfirmModal(discord.ui.Modal):
+    def __init__(self, parent_view: "ReminderOutputView") -> None:
+        super().__init__(title="Delete Reminder")
+        self.parent_view = parent_view
+        reminder_name = "this reminder"
+        if parent_view.job is not None:
+            label = str(ReminderFunctions.reminder_label(parent_view.job) or "").strip()
+            if label:
+                reminder_name = f"`{label[:80]}`"
+        self.add_item(
+            discord.ui.TextDisplay(
+                f"This will permanently delete {reminder_name} (`{parent_view.job_id}`)."
             )
-            self.add_item(self.channel_input)
+        )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=self._view.response_ephemeral)
-
-        try:
-            if self.channel_select is not None:
-                raw_value = (
-                    self.channel_select.values[0] if self.channel_select.values else ""
-                )
-                destination_type, new_channel_id = parse_reminder_destination_value(raw_value)
-            else:
-                raw_value = (
-                    str(self.channel_input.value or "")
-                    if self.channel_input is not None
-                    else ""
-                )
-                destination_type, new_channel_id = parse_reminder_destination_value(raw_value)
-
-            bot = interaction.client
-            if not isinstance(bot, commands.Bot):
-                raise ValidationError(
-                    "Bot is not ready to change this reminder.",
-                    ephemeral=self._view.response_ephemeral,
-                )
-
-            if destination_type == "channel":
-                resolved_channel = await resolve_messageable_channel(bot, new_channel_id)
-                if resolved_channel is None:
-                    raise ValidationError(
-                        "I can't access that destination channel.",
-                        ephemeral=self._view.response_ephemeral,
-                    )
-
-                if self._view.guild_id is not None:
-                    channel_guild = getattr(resolved_channel, "guild", None)
-                    if channel_guild is None or channel_guild.id != self._view.guild_id:
-                        raise ValidationError(
-                            "Please choose a channel from the same server as this reminder.",
-                            ephemeral=self._view.response_ephemeral,
-                        )
-
-            manager = DailyJobManager()
-            updated_data = {
-                **(self._view.job.data or {}),
-                "destination_type": destination_type,
-            }
-            if destination_type == "private":
-                updated_data["user_id"] = interaction.user.id
-            else:
-                updated_data.pop("user_id", None)
-            updated = await asyncio.to_thread(
-                manager.update_job,
-                self._view.job_id,
-                new_channel_id=new_channel_id,
-                data=updated_data,
-                guild_id=self._view.guild_id,
-            )
-            if not updated:
-                raise ValidationError(
-                    "That reminder is no longer available.",
-                    ephemeral=self._view.response_ephemeral,
-                )
-        except Exception as exc:
-            await handle_interaction_error(
-                interaction,
-                exc,
-                ephemeral=self._view.response_ephemeral,
-            )
-            return
-
-        destination_label = "Private" if destination_type == "private" else f"<#{new_channel_id}>"
-        result_message = f"Updated reminder `{self._view.job_id}` to post in {destination_label}."
-        self._view.ok = True
-        await self._view.refresh_message(
-            interaction,
-            source_message=self._view.message or interaction.message,
-            result_message=result_message,
-        )
+        await self.parent_view._confirm_delete(interaction)
 
 
 class ReminderOutputView(discord.ui.View):
@@ -190,26 +83,50 @@ class ReminderOutputView(discord.ui.View):
         source_message: Optional[discord.Message] = None,
         jump_to_last_page: bool = False,
         result_message: Optional[str] = None,
-    ) -> None:
+    ) -> bool:
         del jump_to_last_page
         if result_message is not None:
             self.result_message = result_message
 
         await self.refresh_state()
-        target_message = source_message or interaction.message or self.message
-        if target_message is None:
-            return
+        candidates = []
+        for candidate in (source_message, interaction.message, self.message):
+            if candidate is None:
+                continue
+            if any(
+                getattr(existing, "id", None) == getattr(candidate, "id", None)
+                for existing in candidates
+            ):
+                continue
+            candidates.append(candidate)
 
-        self.message = target_message
-        try:
-            await target_message.edit(**self.response_payload())
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-            return
+        payload = self.response_payload()
+        for candidate in candidates:
+            try:
+                await candidate.edit(**payload)
+                self.message = candidate
+                return True
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                continue
+
+        source_message_id = getattr(source_message, "id", None)
+        if source_message_id is not None:
+            try:
+                await interaction.followup.edit_message(
+                    source_message_id,
+                    **payload,
+                )
+                self.message = source_message
+                return True
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                pass
+
+        return False
 
     def _sync_button_state(self) -> None:
         has_job = self.job is not None
         self.edit_this_reminder.disabled = not has_job
-        self.change_channel.disabled = not has_job
+        self.edit_ping_users.disabled = not has_job
         self.toggle_state.disabled = not has_job
         self.delete_reminder.disabled = not has_job
 
@@ -324,6 +241,12 @@ class ReminderOutputView(discord.ui.View):
         )
         if ping_value:
             embed.add_field(name="Ping", value=ping_value[:1024], inline=False)
+            if ReminderFunctions.notify_ping_users_in_dm(self.job):
+                embed.add_field(
+                    name="Ping DMs",
+                    value="Enabled",
+                    inline=True,
+                )
 
         description_value = str(values.get("description") or "").strip()
         if description_value:
@@ -341,7 +264,9 @@ class ReminderOutputView(discord.ui.View):
                 inline=False,
             )
 
-        expires_value = self._format_timestamp(values.get("expires_after") or "")
+        expires_value = self._format_timestamp(
+            values.get("expires") or values.get("until") or ""
+        )
         if expires_value:
             embed.add_field(
                 name="Expires",
@@ -430,15 +355,19 @@ class ReminderOutputView(discord.ui.View):
         )
 
     @discord.ui.button(
-        emoji="📣",
+        emoji="🔔",
         style=discord.ButtonStyle.primary,
         row=0,
     )
-    async def change_channel(
+    async def edit_ping_users(
         self,
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
+        from views.ReminderEditModal import (
+            ReminderPingModal,
+        )
+
         self.message = interaction.message
         if self.job is None:
             await interaction.response.send_message(
@@ -447,15 +376,16 @@ class ReminderOutputView(discord.ui.View):
             )
             return
 
-        channel_options = build_reminder_destination_select_options(
-            interaction.guild,
-            self.job.channel_id,
-            is_private_selected=ReminderFunctions.is_private_destination(self.job),
-        )
         await interaction.response.send_modal(
-            ReminderChangeChannelModal(
-                self,
-                channel_options=channel_options,
+            ReminderPingModal(
+                guild=interaction.guild or self.guild,
+                guild_id=self.guild_id,
+                default_channel_id=self.channel_id or interaction.channel_id,
+                response_ephemeral=self.response_ephemeral,
+                user_id=interaction.user.id,
+                job=self.job,
+                parent_view=self,
+                source_message=interaction.message,
             )
         )
 
@@ -551,8 +481,10 @@ class ReminderOutputView(discord.ui.View):
             )
             return
 
-        await interaction.response.defer(ephemeral=self.response_ephemeral)
+        await interaction.response.send_modal(ReminderDeleteConfirmModal(self))
 
+    async def _confirm_delete(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         try:
             deleted = await asyncio.to_thread(
                 ReminderFunctions.delete_reminder,
