@@ -504,6 +504,7 @@ class ReminderCog(commands.Cog):
         view = ReminderListView(
             reminders=reminders,
             scope_label=scope_label,
+            target_value=target_value,
             status_filter=status_value,
             guild_id=interaction.guild_id if interaction.guild_id is not None else None,
             channel_id=selected_channel_id,

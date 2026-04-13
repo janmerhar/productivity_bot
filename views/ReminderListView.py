@@ -8,7 +8,7 @@ import discord
 from classes.DailyJob import DailyJob
 from classes.ReminderFunctions import ReminderFunctions
 from services.channel_visibility import can_view_channel
-from services.error_reporting import UserVisibleError, handle_interaction_error
+from services.error_reporting import ValidationError, UserVisibleError, handle_interaction_error
 from views.ReminderOutputView import ReminderOutputView
 from views.ReminderEditModal import ReminderCreateModal
 
@@ -19,6 +19,7 @@ class ReminderListOptionsModal(discord.ui.Modal):
         *,
         parent_view: "ReminderListView",
         source_message: Optional[discord.Message],
+        interaction: discord.Interaction,
     ) -> None:
         modal_title = f"View Options - {parent_view.scope_label}"
         if len(modal_title) > 45:
@@ -62,6 +63,12 @@ class ReminderListOptionsModal(discord.ui.Modal):
                 ),
             ],
         )
+        self.channel_select = discord.ui.Select(
+            placeholder="Which channel or private destination to show",
+            min_values=1,
+            max_values=1,
+            options=parent_view._build_target_select_options(interaction)[:25],
+        )
 
         self.add_item(
             discord.ui.Label(
@@ -75,24 +82,37 @@ class ReminderListOptionsModal(discord.ui.Modal):
                 component=self.status_group,
             )
         )
+        self.add_item(
+            discord.ui.Label(
+                text="Channel",
+                component=self.channel_select,
+            )
+        )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
 
         sort_value = str(self.sort_group.value or "ascending")
         status_value = str(self.status_group.value or "all")
+        target_value = str(self.channel_select.values[0] or "").strip()
         if sort_value not in {"ascending", "descending"}:
             sort_value = "ascending"
         if status_value not in {"all", "active", "paused"}:
             status_value = "all"
 
-        self.parent_view.sort = sort_value
-        self.parent_view.status_filter = status_value
-        self.parent_view.page = 1
-
         try:
+            self.parent_view.sort = sort_value
+            self.parent_view.status_filter = status_value
+            self.parent_view._apply_target_value(interaction, target_value)
+            self.parent_view.page = 1
             await self.parent_view._reload_reminders(interaction)
             self.parent_view._build()
+        except (ValidationError, UserVisibleError) as exc:
+            await handle_interaction_error(
+                interaction,
+                exc,
+            )
+            return
         except Exception as exc:
             await handle_interaction_error(
                 interaction,
@@ -140,6 +160,7 @@ class ReminderListView(discord.ui.View):
         *,
         reminders: List[DailyJob],
         scope_label: str,
+        target_value: str,
         status_filter: str,
         guild_id: Optional[int],
         channel_id: Optional[int],
@@ -153,6 +174,7 @@ class ReminderListView(discord.ui.View):
         super().__init__(timeout=timeout)
         self.reminders = reminders
         self.scope_label = scope_label
+        self.target_value = target_value
         self.status_filter = (
             status_filter
             if status_filter in {"all", "active", "paused"}
@@ -212,6 +234,10 @@ class ReminderListView(discord.ui.View):
         return ReminderFunctions.destination_label(job)
 
     @staticmethod
+    def _default_target_value(guild_id: Optional[int]) -> str:
+        return "channel" if guild_id is not None else "private"
+
+    @staticmethod
     def _status_filter_label(status_filter: str) -> str:
         labels = {
             "all": "All",
@@ -227,6 +253,133 @@ class ReminderListView(discord.ui.View):
         if status_filter == "paused":
             return True
         return None
+
+    def _build_target_select_options(
+        self,
+        interaction: discord.Interaction,
+    ) -> List[discord.SelectOption]:
+        target_value = str(self.target_value or "").strip() or self._default_target_value(
+            self.guild_id
+        )
+        options: List[discord.SelectOption] = []
+
+        def add_option(label: str, value: str) -> None:
+            options.append(
+                discord.SelectOption(
+                    label=label[:100],
+                    value=value,
+                    default=value == target_value,
+                )
+            )
+
+        if interaction.guild is None:
+            add_option("Private option", "private")
+            return options
+
+        add_option("This Channel", "channel")
+        add_option("All Server Reminders", "all_server")
+        add_option("Private option", "private")
+
+        guild_channels = list(interaction.guild.text_channels)
+        selected_channel_id = self.channel_id if self.destination_type == "channel" else None
+        if selected_channel_id is not None:
+            selected_channel = interaction.guild.get_channel(selected_channel_id)
+            if isinstance(selected_channel, discord.TextChannel):
+                guild_channels = [
+                    selected_channel,
+                    *[
+                        channel
+                        for channel in guild_channels
+                        if channel.id != selected_channel.id
+                    ],
+                ]
+
+        for channel in guild_channels:
+            if len(options) >= 25:
+                break
+            if not channel.permissions_for(interaction.user).view_channel:
+                continue
+            add_option(f"#{channel.name}", f"channel:{channel.id}")
+
+        return options[:25]
+
+    def _apply_target_value(
+        self,
+        interaction: discord.Interaction,
+        target_value: str,
+    ) -> None:
+        resolved_value = str(target_value or "").strip()
+        if not resolved_value:
+            resolved_value = self._default_target_value(interaction.guild_id)
+
+        if interaction.guild is None:
+            if resolved_value != "private":
+                raise ValidationError(
+                    "Only `Private option` is available in DMs.",
+                    ephemeral=True,
+                )
+            self.target_value = "private"
+            self.channel_id = None
+            self.destination_type = "private"
+            self.scope_label = "Private option"
+            return
+
+        if resolved_value == "channel":
+            current_channel = interaction.channel
+            if not isinstance(current_channel, discord.TextChannel):
+                raise ValidationError(
+                    "This command must be used in a text channel for `This Channel`.",
+                    ephemeral=True,
+                )
+            self.target_value = "channel"
+            self.channel_id = current_channel.id
+            self.destination_type = "channel"
+            self.scope_label = f"#{current_channel.name}"
+            return
+
+        if resolved_value == "all_server":
+            self.target_value = "all_server"
+            self.channel_id = None
+            self.destination_type = "channel"
+            self.scope_label = "All Server Reminders"
+            return
+
+        if resolved_value == "private":
+            self.target_value = "private"
+            self.channel_id = None
+            self.destination_type = "private"
+            self.scope_label = "Private option"
+            return
+
+        if resolved_value.startswith("channel:"):
+            try:
+                channel_id = int(resolved_value.split(":", 1)[1])
+            except (TypeError, ValueError):
+                raise ValidationError(
+                    "Please select a valid channel.",
+                    ephemeral=True,
+                )
+            selected_channel = interaction.guild.get_channel(channel_id)
+            if not isinstance(selected_channel, discord.TextChannel):
+                raise ValidationError(
+                    "That channel is no longer available.",
+                    ephemeral=True,
+                )
+            if not selected_channel.permissions_for(interaction.user).view_channel:
+                raise ValidationError(
+                    "You can't view that channel.",
+                    ephemeral=True,
+                )
+            self.target_value = f"channel:{channel_id}"
+            self.channel_id = channel_id
+            self.destination_type = "channel"
+            self.scope_label = f"#{selected_channel.name}"
+            return
+
+        raise ValidationError(
+            "Please choose a valid channel option.",
+            ephemeral=True,
+        )
 
     @staticmethod
     def _datetime_label(raw_value: str) -> Optional[str]:
@@ -332,7 +485,11 @@ class ReminderListView(discord.ui.View):
         return None
 
     def _has_active_list_options(self) -> bool:
-        return self.status_filter != "all" or self.sort != "ascending"
+        return (
+            self.status_filter != "all"
+            or self.sort != "ascending"
+            or self.target_value != self._default_target_value(self.guild_id)
+        )
 
     @staticmethod
     def _can_view_reminder(
@@ -428,6 +585,7 @@ class ReminderListView(discord.ui.View):
             ReminderListOptionsModal(
                 parent_view=self,
                 source_message=source_message,
+                interaction=interaction,
             )
         )
 
