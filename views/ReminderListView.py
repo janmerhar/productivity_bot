@@ -27,6 +27,11 @@ class ReminderListOptionsModal(discord.ui.Modal):
         super().__init__(title=modal_title)
         self.parent_view = parent_view
         self.source_message = source_message
+        default_users = (
+            [discord.Object(id=user_id) for user_id in parent_view.ping_filter_user_ids[:25]]
+            if parent_view.ping_filter_user_ids
+            else []
+        )
 
         self.sort_group = discord.ui.RadioGroup(
             custom_id="reminder_list_options_sort",
@@ -63,6 +68,14 @@ class ReminderListOptionsModal(discord.ui.Modal):
                 ),
             ],
         )
+        self.ping_user_select = discord.ui.UserSelect(
+            custom_id="reminder_list_options_ping_user",
+            placeholder="Leave empty for all reminders",
+            min_values=0,
+            max_values=25,
+            required=False,
+            default_values=default_users,
+        )
         self.channel_select = discord.ui.Select(
             placeholder="Which channel or private destination to show",
             min_values=1,
@@ -84,6 +97,13 @@ class ReminderListOptionsModal(discord.ui.Modal):
         )
         self.add_item(
             discord.ui.Label(
+                text="Ping Users",
+                description="Shows reminders pinging any selected user.",
+                component=self.ping_user_select,
+            )
+        )
+        self.add_item(
+            discord.ui.Label(
                 text="Channel",
                 component=self.channel_select,
             )
@@ -101,8 +121,38 @@ class ReminderListOptionsModal(discord.ui.Modal):
             status_value = "all"
 
         try:
+            selected_users = list(self.ping_user_select.values)
+            ping_filter_user_ids: List[int] = []
+            ping_filter_label = "All"
+            if selected_users:
+                ping_filter_user_ids = [
+                    int(selected_user.id)
+                    for selected_user in selected_users
+                    if getattr(selected_user, "id", None) is not None
+                ]
+                if not ping_filter_user_ids:
+                    raise ValidationError(
+                        "That user selection could not be resolved.",
+                        ephemeral=True,
+                    )
+                selected_labels = [
+                    str(
+                        getattr(selected_user, "display_name", "")
+                        or getattr(selected_user, "name", "")
+                        or f"User {selected_user.id}"
+                    ).strip()
+                    for selected_user in selected_users
+                    if getattr(selected_user, "id", None) is not None
+                ]
+                if len(selected_labels) == 1:
+                    ping_filter_label = selected_labels[0][:100]
+                else:
+                    ping_filter_label = f"{len(selected_labels)} users"
+
             self.parent_view.sort = sort_value
             self.parent_view.status_filter = status_value
+            self.parent_view.ping_filter_user_ids = ping_filter_user_ids
+            self.parent_view.ping_filter_label = ping_filter_label
             self.parent_view._apply_target_value(interaction, target_value)
             self.parent_view.page = 1
             await self.parent_view._reload_reminders(interaction)
@@ -172,7 +222,8 @@ class ReminderListView(discord.ui.View):
         timeout: float = 300,
     ) -> None:
         super().__init__(timeout=timeout)
-        self.reminders = reminders
+        self._all_reminders = list(reminders)
+        self.reminders: List[DailyJob] = []
         self.scope_label = scope_label
         self.target_value = target_value
         self.status_filter = (
@@ -184,12 +235,15 @@ class ReminderListView(discord.ui.View):
         self.channel_id = channel_id
         self.destination_type = destination_type
         self.user_id = user_id
+        self.ping_filter_user_ids: List[int] = []
+        self.ping_filter_label = "All"
         self.sort = sort if sort in {"ascending", "descending"} else "ascending"
         self.message: Optional[discord.Message] = None
         self.response_ephemeral = bool(response_ephemeral)
         self.page_size = self.PAGE_SIZE
-        self.total_pages = max(1, math.ceil(len(self.reminders) / self.page_size))
-        self.page = max(1, min(page, self.total_pages))
+        self.total_pages = 1
+        self.page = max(1, page)
+        self._apply_filters()
         self._build()
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -253,6 +307,22 @@ class ReminderListView(discord.ui.View):
         if status_filter == "paused":
             return True
         return None
+
+    def _apply_filters(self) -> None:
+        filtered_reminders = list(self._all_reminders)
+        if self.ping_filter_user_ids:
+            filtered_reminders = [
+                reminder
+                for reminder in filtered_reminders
+                if any(
+                    user_id in ReminderFunctions.ping_user_ids(reminder)
+                    for user_id in self.ping_filter_user_ids
+                )
+            ]
+
+        self.reminders = filtered_reminders
+        self.total_pages = max(1, math.ceil(len(self.reminders) / self.page_size))
+        self.page = max(1, min(self.page, self.total_pages))
 
     def _build_target_select_options(
         self,
@@ -434,6 +504,7 @@ class ReminderListView(discord.ui.View):
             color=discord.Colour.blurple(),
         )
         status_label = self._status_filter_label(self.status_filter)
+        ping_label = str(self.ping_filter_label or "All").strip() or "All"
 
         page_items = self._page_slice()
         if not page_items:
@@ -442,7 +513,7 @@ class ReminderListView(discord.ui.View):
                 text=(
                     f"Page {self.page}/{self.total_pages} | Items: {len(self.reminders)} | "
                     f"Sort: {self.sort.title()} | Scope: {self.scope_label} | "
-                    f"Status: {status_label}"
+                    f"Status: {status_label} | Ping: {ping_label}"
                 )
             )
             return embed
@@ -470,7 +541,7 @@ class ReminderListView(discord.ui.View):
             text=(
                 f"Page {self.page}/{self.total_pages} | Items: {len(self.reminders)} | "
                 f"Sort: {self.sort.title()} | Scope: {self.scope_label} | "
-                f"Status: {status_label}"
+                f"Status: {status_label} | Ping: {ping_label}"
             )
         )
         return embed
@@ -488,6 +559,7 @@ class ReminderListView(discord.ui.View):
         return (
             self.status_filter != "all"
             or self.sort != "ascending"
+            or bool(self.ping_filter_user_ids)
             or self.target_value != self._default_target_value(self.guild_id)
         )
 
@@ -605,9 +677,8 @@ class ReminderListView(discord.ui.View):
             reminders = self._filter_visible_reminders(interaction, reminders)
         if self.sort == "descending":
             reminders.reverse()
-        self.reminders = reminders
-        self.total_pages = max(1, math.ceil(len(self.reminders) / self.page_size))
-        self.page = max(1, min(self.page, self.total_pages))
+        self._all_reminders = reminders
+        self._apply_filters()
 
     async def refresh_message(
         self,
