@@ -806,6 +806,7 @@ class TodoListOptionsModal(discord.ui.Modal):
         self,
         parent_view: "TodoListItemsView",
         source_message: Optional[discord.Message],
+        list_options: Optional[List[discord.SelectOption]] = None,
     ) -> None:
         list_name = (
             TodoFunctions.display_list_name(parent_view.todo_list, "List").strip()
@@ -817,6 +818,9 @@ class TodoListOptionsModal(discord.ui.Modal):
         super().__init__(title=modal_title)
         self.parent_view = parent_view
         self.source_message = source_message
+        self.list_select: Optional[discord.ui.Select] = None
+        self.list_select_label: Optional[discord.ui.Label] = None
+        self.list_input: Optional[discord.ui.TextInput] = None
 
         current_assignee_mode = parent_view._assignee_filter_mode()
         current_user_filter_id = (
@@ -930,6 +934,41 @@ class TodoListOptionsModal(discord.ui.Modal):
                 component=self.assignee_user_select,
             )
         )
+        if (
+            parent_view.view_scope == "list"
+            and parent_view.todo_list.get("_id") is not None
+        ):
+            current_list_name = (
+                TodoFunctions.display_list_name(parent_view.todo_list, "List").strip()
+                or "List"
+            )
+            if list_options:
+                try:
+                    self.list_select = discord.ui.Select(
+                        placeholder="Current list",
+                        min_values=1,
+                        max_values=1,
+                        options=list_options[:25],
+                    )
+                    self.list_select_label = discord.ui.Label(
+                        text="List",
+                        description="Optional unless you want to switch lists.",
+                        component=self.list_select,
+                    )
+                    self.add_item(self.list_select_label)
+                except Exception:
+                    self.list_select = None
+                    self.list_select_label = None
+
+            if self.list_select is None:
+                self.list_input = discord.ui.TextInput(
+                    label="List",
+                    placeholder="Existing list name or list ID",
+                    required=False,
+                    default=current_list_name[:80],
+                    max_length=80,
+                )
+                self.add_item(self.list_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
@@ -981,6 +1020,65 @@ class TodoListOptionsModal(discord.ui.Modal):
                 or getattr(selected_user, "name", "")
                 or f"User {assignee_filter_id}"
             ).strip()[:100]
+
+        current_list_id = str(self.parent_view.todo_list.get("_id") or "")
+        current_list_name = (
+            TodoFunctions.display_list_name(self.parent_view.todo_list, "List").strip()
+            or "List"
+        )
+        list_token = ""
+        if self.list_select is not None:
+            list_token = self.list_select.values[0] if self.list_select.values else ""
+        elif self.list_input is not None:
+            list_token = str(self.list_input.value or "").strip()
+            lowered_token = list_token.lower()
+            if lowered_token == "personal":
+                list_token = "__personal__"
+            elif lowered_token in {
+                "inbox",
+                TodoFunctions._SERVER_INBOX_DISPLAY_NAME.lower(),
+            }:
+                list_token = "__server_inbox__"
+
+        list_changed = False
+        if list_token:
+            if self.list_select is not None:
+                list_changed = list_token != current_list_id
+            else:
+                normalized_current_name = current_list_name.lower()
+                normalized_token = list_token.lower()
+                list_changed = (
+                    normalized_token != normalized_current_name
+                    and normalized_token != current_list_id.lower()
+                )
+
+        if list_changed and self.parent_view.view_scope == "list":
+            try:
+                target_list = await asyncio.to_thread(
+                    TodoFunctions.find_list_for_item_scope_by_token,
+                    self.parent_view._current_scope_item(interaction.user.id),
+                    list_token,
+                    interaction.user.id,
+                )
+            except ValueError as exc:
+                await handle_interaction_error(
+                    interaction,
+                    ValidationError(str(exc), ephemeral=True, cause=exc),
+                )
+                return
+            except Exception as exc:
+                await handle_interaction_error(
+                    interaction,
+                    UserVisibleError(
+                        "Something went wrong while switching lists.",
+                        ephemeral=True,
+                        cause=exc,
+                    ),
+                )
+                return
+
+            if target_list.get("_id") is not None:
+                self.parent_view.todo_list = target_list
 
         self.parent_view.sort = sort_value
         self.parent_view.status_filter = status_value
@@ -1138,12 +1236,56 @@ class TodoListItemsView(discord.ui.View):
             or self.assignee_filter_id is not None
         )
 
+    def _current_scope_item(self, acting_user_id: Optional[int] = None) -> Dict[str, Any]:
+        return {
+            "scope": str(self.todo_list.get("scope") or "channel"),
+            "guild_id": self.todo_list.get("guild_id"),
+            "channel_id": self.todo_list.get("channel_id"),
+            "user_id": self.todo_list.get("user_id")
+            or self.user_id
+            or acting_user_id,
+            "list_id": self.todo_list.get("_id"),
+            "list_name": TodoFunctions.display_list_name(self.todo_list, "List"),
+        }
+
     async def open_options_modal(
         self,
         interaction: discord.Interaction,
         *,
         source_message: Optional[discord.Message],
     ) -> None:
+        global _MODAL_SELECTS_SUPPORTED
+
+        list_options: List[discord.SelectOption] = []
+        if self.view_scope == "list" and self.todo_list.get("_id") is not None:
+            scope_item = self._current_scope_item(interaction.user.id)
+            try:
+                list_docs = await asyncio.to_thread(
+                    TodoFunctions.list_candidate_lists_for_item_scope,
+                    scope_item,
+                    interaction.user.id,
+                    25,
+                )
+                list_options = self._build_list_select_options(scope_item, list_docs)
+            except Exception:
+                list_options = []
+
+        if _MODAL_SELECTS_SUPPORTED:
+            try:
+                await interaction.response.send_modal(
+                    TodoListOptionsModal(
+                        parent_view=self,
+                        source_message=source_message,
+                        list_options=list_options,
+                    )
+                )
+                return
+            except discord.HTTPException as exc:
+                if exc.code == 50035 and "must be one of (4,)" in str(exc):
+                    _MODAL_SELECTS_SUPPORTED = False
+                else:
+                    raise
+
         await interaction.response.send_modal(
             TodoListOptionsModal(
                 parent_view=self,
@@ -1179,14 +1321,7 @@ class TodoListItemsView(discord.ui.View):
             interaction,
             {"assignees": []},
         )
-        scope_item = {
-            "scope": str(self.todo_list.get("scope") or "channel"),
-            "guild_id": self.todo_list.get("guild_id"),
-            "channel_id": self.todo_list.get("channel_id"),
-            "user_id": self.todo_list.get("user_id") or interaction.user.id,
-            "list_id": self.todo_list.get("_id"),
-            "list_name": TodoFunctions.display_list_name(self.todo_list, "List"),
-        }
+        scope_item = self._current_scope_item(interaction.user.id)
         list_options: List[discord.SelectOption] = []
         try:
             list_docs = await asyncio.to_thread(
