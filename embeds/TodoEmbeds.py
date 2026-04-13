@@ -806,6 +806,7 @@ class TodoListOptionsModal(discord.ui.Modal):
         self,
         parent_view: "TodoListItemsView",
         source_message: Optional[discord.Message],
+        assignee_options: Optional[List[discord.SelectOption]] = None,
         list_options: Optional[List[discord.SelectOption]] = None,
     ) -> None:
         list_name = (
@@ -818,21 +819,12 @@ class TodoListOptionsModal(discord.ui.Modal):
         super().__init__(title=modal_title)
         self.parent_view = parent_view
         self.source_message = source_message
+        self.assignee_select: Optional[discord.ui.Select] = None
+        self.assignee_select_label: Optional[discord.ui.Label] = None
+        self.assignee_input: Optional[discord.ui.TextInput] = None
         self.list_select: Optional[discord.ui.Select] = None
         self.list_select_label: Optional[discord.ui.Label] = None
         self.list_input: Optional[discord.ui.TextInput] = None
-
-        current_assignee_mode = parent_view._assignee_filter_mode()
-        current_user_filter_id = (
-            parent_view.assignee_filter_id
-            if current_assignee_mode == "user"
-            else None
-        )
-        default_users = (
-            [discord.Object(id=current_user_filter_id)]
-            if current_user_filter_id is not None
-            else []
-        )
 
         self.sort_group = discord.ui.RadioGroup(
             custom_id="todo_list_options_sort",
@@ -874,39 +866,6 @@ class TodoListOptionsModal(discord.ui.Modal):
                 ),
             ],
         )
-        self.assignee_group = discord.ui.RadioGroup(
-            custom_id="todo_list_options_assignee",
-            options=[
-                discord.RadioGroupOption(
-                    label="All tasks",
-                    value="all",
-                    default=current_assignee_mode == "all",
-                ),
-                discord.RadioGroupOption(
-                    label="Assigned to me",
-                    value="me",
-                    default=current_assignee_mode == "me",
-                ),
-                discord.RadioGroupOption(
-                    label="Unassigned",
-                    value="unassigned",
-                    default=current_assignee_mode == "unassigned",
-                ),
-                discord.RadioGroupOption(
-                    label="Specific user",
-                    value="user",
-                    default=current_assignee_mode == "user",
-                ),
-            ],
-        )
-        self.assignee_user_select = discord.ui.UserSelect(
-            custom_id="todo_list_options_user",
-            placeholder="Only used for 'Specific user'",
-            min_values=0,
-            max_values=1,
-            required=False,
-            default_values=default_users,
-        )
 
         self.add_item(
             discord.ui.Label(
@@ -920,20 +879,33 @@ class TodoListOptionsModal(discord.ui.Modal):
                 component=self.status_group,
             )
         )
-        self.add_item(
-            discord.ui.Label(
-                text="Assignee Filter",
-                description="Choose 'Specific user' to use the picker below.",
-                component=self.assignee_group,
+        if assignee_options:
+            try:
+                self.assignee_select = discord.ui.Select(
+                    placeholder="All tasks or choose assignees",
+                    min_values=1,
+                    max_values=max(1, min(len(assignee_options), 25)),
+                    options=assignee_options[:25],
+                )
+                self.add_item(
+                    discord.ui.Label(
+                        text="Assignee",
+                        description="Multiple selections use OR.",
+                        component=self.assignee_select,
+                    )
+                )
+            except Exception:
+                self.assignee_select = None
+
+        if self.assignee_select is None:
+            self.assignee_input = discord.ui.TextInput(
+                label="Assignee",
+                placeholder="all, me, unassigned, @user, ID (comma-separated OR)",
+                required=False,
+                default=parent_view.assignee_filter_input_value()[:200],
+                max_length=200,
             )
-        )
-        self.add_item(
-            discord.ui.Label(
-                text="User",
-                description="Optional unless 'Specific user' is selected.",
-                component=self.assignee_user_select,
-            )
-        )
+            self.add_item(self.assignee_input)
         if (
             parent_view.view_scope == "list"
             and parent_view.todo_list.get("_id") is not None
@@ -975,51 +947,30 @@ class TodoListOptionsModal(discord.ui.Modal):
 
         sort_value = str(self.sort_group.value or "ascending")
         status_value = str(self.status_group.value or "all")
-        assignee_mode = str(self.assignee_group.value or "all")
 
         if sort_value not in {"ascending", "descending"}:
             sort_value = "ascending"
         if status_value not in {"all", "todo", "in_progress", "done"}:
             status_value = "all"
 
-        assignee_filter_id: Optional[int] = None
+        assignee_filter_ids: List[int] = []
         assignee_filter_unassigned = False
         assignee_filter_label = "All"
-
-        if assignee_mode == "me":
-            assignee_filter_id = self.parent_view.user_id or interaction.user.id
-            assignee_filter_label = "Me"
-        elif assignee_mode == "unassigned":
-            assignee_filter_unassigned = True
-            assignee_filter_label = "Unassigned"
-        elif assignee_mode == "user":
-            selected_users = list(self.assignee_user_select.values)
-            if not selected_users:
-                await handle_interaction_error(
-                    interaction,
-                    ValidationError(
-                        "Pick a user or choose a different assignee filter.",
-                        ephemeral=True,
-                    ),
-                )
-                return
-            selected_user = selected_users[0]
-            selected_user_id = getattr(selected_user, "id", None)
-            if selected_user_id is None:
-                await handle_interaction_error(
-                    interaction,
-                    ValidationError(
-                        "That user selection could not be resolved.",
-                        ephemeral=True,
-                    ),
-                )
-                return
-            assignee_filter_id = int(selected_user_id)
-            assignee_filter_label = str(
-                getattr(selected_user, "display_name", "")
-                or getattr(selected_user, "name", "")
-                or f"User {assignee_filter_id}"
-            ).strip()[:100]
+        try:
+            assignee_filter_ids, assignee_filter_unassigned = (
+                self._resolve_assignee_filters(interaction)
+            )
+        except ValueError as exc:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(str(exc), ephemeral=True, cause=exc),
+            )
+            return
+        assignee_filter_label = self.parent_view.format_assignee_filter_label(
+            interaction,
+            assignee_filter_ids,
+            assignee_filter_unassigned,
+        )
 
         current_list_id = str(self.parent_view.todo_list.get("_id") or "")
         current_list_name = (
@@ -1083,8 +1034,9 @@ class TodoListOptionsModal(discord.ui.Modal):
         self.parent_view.sort = sort_value
         self.parent_view.status_filter = status_value
         self.parent_view.assignee_filter_unassigned = assignee_filter_unassigned
+        self.parent_view.assignee_filter_ids = assignee_filter_ids
         self.parent_view.assignee_filter_id = (
-            None if assignee_filter_unassigned else assignee_filter_id
+            assignee_filter_ids[0] if len(assignee_filter_ids) == 1 else None
         )
         self.parent_view.assignee_filter_label = assignee_filter_label
         self.parent_view.page = 1
@@ -1127,6 +1079,66 @@ class TodoListOptionsModal(discord.ui.Modal):
             )
             return
 
+    def _resolve_assignee_filters(
+        self,
+        interaction: discord.Interaction,
+    ) -> tuple[List[int], bool]:
+        user_ids: List[int] = []
+        seen_ids: set[int] = set()
+        include_unassigned = False
+
+        if self.assignee_select is not None:
+            selected_values = list(self.assignee_select.values)
+            if not selected_values or "__all__" in selected_values:
+                return [], False
+
+            for raw_value in selected_values:
+                token = str(raw_value or "").strip()
+                if token == "__me__":
+                    resolved_id = interaction.user.id
+                elif token == "__unassigned__":
+                    include_unassigned = True
+                    continue
+                else:
+                    resolved_id = TodoFunctions.parse_assignee_token(
+                        token,
+                        interaction.user.id,
+                    )
+                if resolved_id is None or resolved_id in seen_ids:
+                    continue
+                seen_ids.add(resolved_id)
+                user_ids.append(int(resolved_id))
+            return user_ids, include_unassigned
+
+        raw_input = str(self.assignee_input.value or "").strip() if self.assignee_input else ""
+        if not raw_input:
+            return [], False
+
+        tokens = [token.strip() for token in raw_input.split(",") if token.strip()]
+        if not tokens:
+            return [], False
+
+        all_tokens = {"all", "any", "*", "__all__"}
+        lowered_tokens = {token.lower() for token in tokens}
+        if lowered_tokens & all_tokens:
+            return [], False
+
+        for token in tokens:
+            lowered = token.lower()
+            if lowered in {"none", "unassign", "unassigned", "clear", "__none__"}:
+                include_unassigned = True
+                continue
+            resolved_id = TodoFunctions.parse_assignee_modal_input(
+                token,
+                interaction.user.id,
+            )
+            if resolved_id is None or resolved_id in seen_ids:
+                continue
+            seen_ids.add(resolved_id)
+            user_ids.append(int(resolved_id))
+
+        return user_ids, include_unassigned
+
 
 class TodoListItemsView(discord.ui.View):
     def __init__(
@@ -1136,6 +1148,7 @@ class TodoListItemsView(discord.ui.View):
         sort: str,
         status_filter: str = "all",
         assignee_filter_id: Optional[int] = None,
+        assignee_filter_ids: Optional[List[int]] = None,
         assignee_filter_unassigned: bool = False,
         user_id: Optional[int] = None,
         view_scope: str = "list",
@@ -1160,20 +1173,21 @@ class TodoListItemsView(discord.ui.View):
             else "all"
         )
         self.assignee_filter_unassigned = bool(assignee_filter_unassigned)
+        resolved_assignee_ids = [
+            int(value)
+            for value in (assignee_filter_ids or [])
+            if value is not None
+        ]
+        if not resolved_assignee_ids and assignee_filter_id is not None:
+            resolved_assignee_ids = [int(assignee_filter_id)]
+        self.assignee_filter_ids = list(dict.fromkeys(resolved_assignee_ids))
         self.assignee_filter_id = (
-            None if self.assignee_filter_unassigned else assignee_filter_id
+            self.assignee_filter_ids[0] if len(self.assignee_filter_ids) == 1 else None
         )
         self.user_id = user_id
         self.view_scope = view_scope
         self.guild_id = guild_id
-        self.assignee_filter_label = "All"
-        if self.assignee_filter_unassigned:
-            self.assignee_filter_label = "Unassigned"
-        elif self.assignee_filter_id is not None:
-            if self.user_id is not None and self.assignee_filter_id == self.user_id:
-                self.assignee_filter_label = "Me"
-            else:
-                self.assignee_filter_label = "Specific user"
+        self.assignee_filter_label = self._assignee_filter_summary_label()
         self.page_size = max(1, min(page_size, 5))
         self.total_pages = 1
         self.page = max(1, page)
@@ -1221,10 +1235,16 @@ class TodoListItemsView(discord.ui.View):
 
     def _assignee_filter_mode(self) -> str:
         if self.assignee_filter_unassigned:
+            if self.assignee_filter_ids:
+                return "mixed"
             return "unassigned"
-        if self.assignee_filter_id is None:
+        if not self.assignee_filter_ids:
             return "all"
-        if self.user_id is not None and self.assignee_filter_id == self.user_id:
+        if (
+            len(self.assignee_filter_ids) == 1
+            and self.user_id is not None
+            and self.assignee_filter_ids[0] == self.user_id
+        ):
             return "me"
         return "user"
 
@@ -1233,7 +1253,73 @@ class TodoListItemsView(discord.ui.View):
             self.sort != "ascending"
             or self.status_filter != "all"
             or self.assignee_filter_unassigned
-            or self.assignee_filter_id is not None
+            or bool(self.assignee_filter_ids)
+        )
+
+    def _assignee_filter_summary_label(self) -> str:
+        if not self.assignee_filter_ids and not self.assignee_filter_unassigned:
+            return "All"
+
+        labels: List[str] = []
+        if self.assignee_filter_ids:
+            if len(self.assignee_filter_ids) == 1 and self.user_id is not None:
+                if self.assignee_filter_ids[0] == self.user_id:
+                    labels.append("Me")
+                else:
+                    labels.append("1 user")
+            else:
+                labels.append(
+                    "Me"
+                    if self.user_id is not None
+                    and self.assignee_filter_ids == [self.user_id]
+                    else f"{len(self.assignee_filter_ids)} users"
+                )
+        if self.assignee_filter_unassigned:
+            labels.append("Unassigned")
+        return " + ".join(labels)[:100]
+
+    def assignee_filter_input_value(self) -> str:
+        if not self.assignee_filter_ids and not self.assignee_filter_unassigned:
+            return "all"
+
+        tokens: List[str] = []
+        for user_id in self.assignee_filter_ids:
+            if self.user_id is not None and user_id == self.user_id:
+                tokens.append("me")
+            else:
+                tokens.append(str(user_id))
+        if self.assignee_filter_unassigned:
+            tokens.append("unassigned")
+        return ", ".join(tokens)
+
+    def format_assignee_filter_label(
+        self,
+        interaction: discord.Interaction,
+        assignee_filter_ids: List[int],
+        assignee_filter_unassigned: bool,
+    ) -> str:
+        if not assignee_filter_ids and not assignee_filter_unassigned:
+            return "All"
+
+        labels: List[str] = []
+        guild = interaction.guild
+        for user_id in assignee_filter_ids:
+            if self.user_id is not None and user_id == self.user_id:
+                labels.append("Me")
+                continue
+            member = guild.get_member(user_id) if guild is not None else None
+            label = str(
+                getattr(member, "display_name", "")
+                or getattr(member, "name", "")
+                or f"User {user_id}"
+            ).strip()
+            labels.append(label[:30])
+        if assignee_filter_unassigned:
+            labels.append("Unassigned")
+        if len(labels) <= 2:
+            return " + ".join(labels)[:100]
+        return f"{len(assignee_filter_ids)} users" + (
+            " + Unassigned" if assignee_filter_unassigned else ""
         )
 
     def _current_scope_item(self, acting_user_id: Optional[int] = None) -> Dict[str, Any]:
@@ -1257,6 +1343,7 @@ class TodoListItemsView(discord.ui.View):
         global _MODAL_SELECTS_SUPPORTED
 
         list_options: List[discord.SelectOption] = []
+        assignee_options: List[discord.SelectOption] = []
         if self.view_scope == "list" and self.todo_list.get("_id") is not None:
             scope_item = self._current_scope_item(interaction.user.id)
             try:
@@ -1269,6 +1356,10 @@ class TodoListItemsView(discord.ui.View):
                 list_options = self._build_list_select_options(scope_item, list_docs)
             except Exception:
                 list_options = []
+        try:
+            assignee_options = self._build_assignee_filter_select_options(interaction)
+        except Exception:
+            assignee_options = []
 
         if _MODAL_SELECTS_SUPPORTED:
             try:
@@ -1276,6 +1367,7 @@ class TodoListItemsView(discord.ui.View):
                     TodoListOptionsModal(
                         parent_view=self,
                         source_message=source_message,
+                        assignee_options=assignee_options,
                         list_options=list_options,
                     )
                 )
@@ -1366,15 +1458,18 @@ class TodoListItemsView(discord.ui.View):
 
     def _apply_filters(self) -> None:
         filtered_items = list(self._all_items)
-        if self.assignee_filter_unassigned:
-            filtered_items = [
-                item for item in filtered_items if not (item.get("assignees") or [])
-            ]
-        elif self.assignee_filter_id is not None:
+        if self.assignee_filter_ids or self.assignee_filter_unassigned:
+            allowed_ids = set(self.assignee_filter_ids)
             filtered_items = [
                 item
                 for item in filtered_items
-                if self.assignee_filter_id in (item.get("assignees") or [])
+                if (
+                    bool(allowed_ids.intersection(item.get("assignees") or []))
+                    or (
+                        self.assignee_filter_unassigned
+                        and not (item.get("assignees") or [])
+                    )
+                )
             ]
         if self.status_filter != "all":
             filtered_items = [
@@ -1543,6 +1638,80 @@ class TodoListItemsView(discord.ui.View):
                     label=self._member_option_label(member),
                     value=value,
                     default=(current_assignee_id == member_id),
+                )
+            )
+            seen_values.add(value)
+            if len(options) >= 25:
+                break
+
+        return options[:25]
+
+    def _build_assignee_filter_select_options(
+        self,
+        interaction: discord.Interaction,
+    ) -> List[discord.SelectOption]:
+        selected_ids = list(self.assignee_filter_ids)
+        seen_values: set[str] = set()
+        options: List[discord.SelectOption] = [
+            discord.SelectOption(
+                label="All tasks",
+                value="__all__",
+                default=(
+                    not selected_ids and not self.assignee_filter_unassigned
+                ),
+            ),
+            discord.SelectOption(
+                label="Me",
+                value="__me__",
+                default=(
+                    self.user_id is not None and self.user_id in selected_ids
+                ),
+            ),
+            discord.SelectOption(
+                label="Unassigned",
+                value="__unassigned__",
+                default=self.assignee_filter_unassigned,
+            ),
+        ]
+        seen_values.update({"__all__", "__me__", "__unassigned__"})
+
+        current_user_id = self.user_id or interaction.user.id
+        for selected_id in selected_ids:
+            if selected_id == current_user_id:
+                continue
+            value = f"user:{selected_id}"
+            if value in seen_values:
+                continue
+            options.append(
+                discord.SelectOption(
+                    label=f"Current <@{selected_id}>"[:100],
+                    value=value,
+                    default=True,
+                )
+            )
+            seen_values.add(value)
+
+        guild = interaction.guild
+        members = []
+        if guild is not None:
+            members = list(
+                getattr(interaction.channel, "members", None) or guild.members
+            )
+
+        for member in members:
+            if getattr(member, "bot", False):
+                continue
+            member_id = getattr(member, "id", None)
+            if member_id is None:
+                continue
+            value = f"user:{member_id}"
+            if value in seen_values:
+                continue
+            options.append(
+                discord.SelectOption(
+                    label=self._member_option_label(member),
+                    value=value,
+                    default=(member_id in selected_ids),
                 )
             )
             seen_values.add(value)
