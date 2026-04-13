@@ -7,6 +7,7 @@ import discord
 
 from classes.DailyJob import DailyJob
 from classes.ReminderFunctions import ReminderFunctions
+from services.channel_visibility import can_view_channel
 from services.error_reporting import UserVisibleError, handle_interaction_error
 from views.ReminderOutputView import ReminderOutputView
 from views.ReminderEditModal import ReminderCreateModal
@@ -19,7 +20,7 @@ class ReminderListOptionsModal(discord.ui.Modal):
         parent_view: "ReminderListView",
         source_message: Optional[discord.Message],
     ) -> None:
-        modal_title = f"View Options • {parent_view.scope_label}"
+        modal_title = f"View Options - {parent_view.scope_label}"
         if len(modal_title) > 45:
             modal_title = modal_title[:42].rstrip() + "..."
         super().__init__(title=modal_title)
@@ -47,17 +48,17 @@ class ReminderListOptionsModal(discord.ui.Modal):
                 discord.RadioGroupOption(
                     label="All",
                     value="all",
-                    default=parent_view.status_label == "All",
+                    default=parent_view.status_filter == "all",
                 ),
                 discord.RadioGroupOption(
                     label="Active",
                     value="active",
-                    default=parent_view.status_label == "Active",
+                    default=parent_view.status_filter == "active",
                 ),
                 discord.RadioGroupOption(
                     label="Paused",
                     value="paused",
-                    default=parent_view.status_label == "Paused",
+                    default=parent_view.status_filter == "paused",
                 ),
             ],
         )
@@ -82,23 +83,15 @@ class ReminderListOptionsModal(discord.ui.Modal):
         status_value = str(self.status_group.value or "all")
         if sort_value not in {"ascending", "descending"}:
             sort_value = "ascending"
-        if status_value == "active":
-            paused_filter = False
-            status_label = "Active"
-        elif status_value == "paused":
-            paused_filter = True
-            status_label = "Paused"
-        else:
-            paused_filter = None
-            status_label = "All"
+        if status_value not in {"all", "active", "paused"}:
+            status_value = "all"
 
         self.parent_view.sort = sort_value
-        self.parent_view.paused_filter = paused_filter
-        self.parent_view.status_label = status_label
+        self.parent_view.status_filter = status_value
         self.parent_view.page = 1
 
         try:
-            await self.parent_view._reload_reminders()
+            await self.parent_view._reload_reminders(interaction)
             self.parent_view._build()
         except Exception as exc:
             await handle_interaction_error(
@@ -147,11 +140,10 @@ class ReminderListView(discord.ui.View):
         *,
         reminders: List[DailyJob],
         scope_label: str,
-        status_label: str,
+        status_filter: str,
         guild_id: Optional[int],
         channel_id: Optional[int],
         destination_type: Optional[str],
-        paused_filter: Optional[bool],
         user_id: Optional[int],
         sort: str = "ascending",
         response_ephemeral: bool = False,
@@ -161,11 +153,14 @@ class ReminderListView(discord.ui.View):
         super().__init__(timeout=timeout)
         self.reminders = reminders
         self.scope_label = scope_label
-        self.status_label = status_label
+        self.status_filter = (
+            status_filter
+            if status_filter in {"all", "active", "paused"}
+            else "all"
+        )
         self.guild_id = guild_id
         self.channel_id = channel_id
         self.destination_type = destination_type
-        self.paused_filter = paused_filter
         self.user_id = user_id
         self.sort = sort if sort in {"ascending", "descending"} else "ascending"
         self.message: Optional[discord.Message] = None
@@ -217,6 +212,23 @@ class ReminderListView(discord.ui.View):
         return ReminderFunctions.destination_label(job)
 
     @staticmethod
+    def _status_filter_label(status_filter: str) -> str:
+        labels = {
+            "all": "All",
+            "active": "Active",
+            "paused": "Paused",
+        }
+        return labels.get(str(status_filter or "").strip().lower(), "All")
+
+    @staticmethod
+    def _paused_filter_for_status(status_filter: str) -> Optional[bool]:
+        if status_filter == "active":
+            return False
+        if status_filter == "paused":
+            return True
+        return None
+
+    @staticmethod
     def _datetime_label(raw_value: str) -> Optional[str]:
         text = str(raw_value or "").strip()
         if not text:
@@ -265,9 +277,10 @@ class ReminderListView(discord.ui.View):
 
     def _embed(self) -> discord.Embed:
         embed = discord.Embed(
-            title=f"Reminders • {self.scope_label}",
+            title=f"Reminders - {self.scope_label}",
             color=discord.Colour.blurple(),
         )
+        status_label = self._status_filter_label(self.status_filter)
 
         page_items = self._page_slice()
         if not page_items:
@@ -276,7 +289,7 @@ class ReminderListView(discord.ui.View):
                 text=(
                     f"Page {self.page}/{self.total_pages} | Items: {len(self.reminders)} | "
                     f"Sort: {self.sort.title()} | Scope: {self.scope_label} | "
-                    f"Status: {self.status_label}"
+                    f"Status: {status_label}"
                 )
             )
             return embed
@@ -304,7 +317,7 @@ class ReminderListView(discord.ui.View):
             text=(
                 f"Page {self.page}/{self.total_pages} | Items: {len(self.reminders)} | "
                 f"Sort: {self.sort.title()} | Scope: {self.scope_label} | "
-                f"Status: {self.status_label}"
+                f"Status: {status_label}"
             )
         )
         return embed
@@ -319,7 +332,27 @@ class ReminderListView(discord.ui.View):
         return None
 
     def _has_active_list_options(self) -> bool:
-        return self.paused_filter is not None or self.sort != "ascending"
+        return self.status_filter != "all" or self.sort != "ascending"
+
+    @staticmethod
+    def _can_view_reminder(
+        interaction: discord.Interaction,
+        job: DailyJob,
+    ) -> bool:
+        if ReminderFunctions.is_private_destination(job):
+            return ReminderFunctions.destination_user_id(job) == interaction.user.id
+        return can_view_channel(interaction, job.channel_id)
+
+    def _filter_visible_reminders(
+        self,
+        interaction: discord.Interaction,
+        reminders: List[DailyJob],
+    ) -> List[DailyJob]:
+        return [
+            reminder
+            for reminder in reminders
+            if self._can_view_reminder(interaction, reminder)
+        ]
 
     async def _notify_missing_message(self, interaction: discord.Interaction) -> None:
         message = (
@@ -349,7 +382,7 @@ class ReminderListView(discord.ui.View):
             self.guild_id,
         )
         if current_job is None:
-            await self._reload_reminders()
+            await self._reload_reminders(interaction)
             self._build()
             await interaction.response.edit_message(view=self, **self.payload())
             return
@@ -398,15 +431,20 @@ class ReminderListView(discord.ui.View):
             )
         )
 
-    async def _reload_reminders(self) -> None:
+    async def _reload_reminders(
+        self,
+        interaction: Optional[discord.Interaction] = None,
+    ) -> None:
         reminders = await asyncio.to_thread(
             ReminderFunctions.list_reminders,
             self.guild_id,
-            self.paused_filter,
+            self._paused_filter_for_status(self.status_filter),
             self.channel_id,
             self.destination_type,
             self.user_id if self.destination_type == "private" else None,
         )
+        if interaction is not None:
+            reminders = self._filter_visible_reminders(interaction, reminders)
         if self.sort == "descending":
             reminders.reverse()
         self.reminders = reminders
@@ -420,7 +458,7 @@ class ReminderListView(discord.ui.View):
         source_message: Optional[discord.Message] = None,
         jump_to_last_page: bool = False,
     ) -> None:
-        await self._reload_reminders()
+        await self._reload_reminders(interaction)
         if jump_to_last_page and self.reminders:
             self.page = self.total_pages
         self._build()
