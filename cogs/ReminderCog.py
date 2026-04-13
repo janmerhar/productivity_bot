@@ -31,6 +31,10 @@ _REMINDER_LIST_STATUS_CHOICES = [
     app_commands.Choice(name="Active", value="active"),
     app_commands.Choice(name="Paused", value="paused"),
 ]
+_REMINDER_LIST_SORT_CHOICES = [
+    app_commands.Choice(name="Ascending", value="ascending"),
+    app_commands.Choice(name="Descending", value="descending"),
+]
 @app_commands.context_menu(name="Create Reminder")
 async def create_reminder_from_message(
     interaction: discord.Interaction,
@@ -438,10 +442,12 @@ class ReminderCog(commands.Cog):
     )
     @app_commands.describe(
         channel="Which channel or private destination to show",
+        sort="Sort order for reminders",
         status="Filter reminders by status",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
+        sort=_REMINDER_LIST_SORT_CHOICES,
         status=_REMINDER_LIST_STATUS_CHOICES,
         visibility=VISIBILITY_CHOICES,
     )
@@ -449,6 +455,7 @@ class ReminderCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         channel: Optional[str] = None,
+        sort: Optional[app_commands.Choice[str]] = None,
         status: Optional[app_commands.Choice[str]] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
@@ -469,7 +476,9 @@ class ReminderCog(commands.Cog):
             guild_default_visibility="public",
             dm_default_visibility="public",
         )
-        paused_filter, status_label = self._resolve_reminder_list_status(status)
+        status_value = status.value if status else "all"
+        paused_filter = self._resolve_reminder_list_status(status)
+        sort_value = sort.value if sort else "ascending"
 
         await interaction.response.defer(ephemeral=ephemeral)
 
@@ -489,30 +498,28 @@ class ReminderCog(commands.Cog):
                 cause=exc,
             )
         reminders = self._filter_visible_reminders(interaction, reminders)
+        if sort_value == "descending":
+            reminders.reverse()
 
         view = ReminderListView(
             reminders=reminders,
             scope_label=scope_label,
-            status_label=status_label,
+            target_value=target_value,
+            status_filter=status_value,
             guild_id=interaction.guild_id if interaction.guild_id is not None else None,
             channel_id=selected_channel_id,
             destination_type=destination_type,
-            paused_filter=paused_filter,
             user_id=interaction.user.id,
+            sort=sort_value,
             response_ephemeral=ephemeral,
         )
-        if not reminders:
-            await interaction.followup.send(
-                ephemeral=ephemeral,
-                **view.payload(),
-            )
-            return
-
-        await interaction.followup.send(
+        message = await interaction.followup.send(
             ephemeral=ephemeral,
             view=view,
+            wait=True,
             **view.payload(),
         )
+        view.message = message
 
     @reminder_group.command(
         name="remove",
@@ -850,13 +857,13 @@ class ReminderCog(commands.Cog):
     @staticmethod
     def _resolve_reminder_list_status(
         status: Optional[app_commands.Choice[str]],
-    ) -> tuple[Optional[bool], str]:
+    ) -> Optional[bool]:
         status_value = status.value if status else "all"
         if status_value == "active":
-            return False, "Active"
+            return False
         if status_value == "paused":
-            return True, "Paused"
-        return None, "All"
+            return True
+        return None
 
     async def _reminder_autocomplete(
         self,

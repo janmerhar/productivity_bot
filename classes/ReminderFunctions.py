@@ -7,6 +7,7 @@ import dateparser
 
 from classes.DailyJob import CronSchedule, DailyJob, OneTimeSchedule2, ScheduleConfig
 from classes.DailyJobManager import DailyJobManager
+from classes.OpenAIFunctions import OpenAIFunctions
 from services.cron_schedule import (
     CronConversionError,
     is_valid_cron_expression,
@@ -390,6 +391,49 @@ class ReminderFunctions:
         return expires_at
 
     @staticmethod
+    def _ai_resolve_schedule(
+        raw_schedule: str,
+        timezone: Optional[str],
+    ) -> Optional[Tuple[ScheduleConfig, str]]:
+        payload = OpenAIFunctions.parse_reminder_schedule(
+            raw_schedule,
+            timezone=timezone,
+        )
+        if not payload:
+            return None
+
+        kind = str(payload.get("kind") or "").strip().lower()
+        if kind == "cron":
+            cron_expression = str(payload.get("cron") or "").strip()
+            if not is_valid_cron_expression(cron_expression):
+                return None
+            return (
+                CronSchedule(expression=cron_expression, timezone=timezone),
+                f"`{raw_schedule}` (Cron: `{cron_expression}`)",
+            )
+
+        if kind != "datetime":
+            return None
+
+        raw_datetime = str(payload.get("datetime") or "").strip()
+        if not raw_datetime:
+            return None
+
+        try:
+            scheduled_dt = datetime.datetime.fromisoformat(raw_datetime)
+        except ValueError:
+            return None
+
+        scheduled_dt = scheduled_dt.replace(second=0, microsecond=0)
+        if scheduled_dt.tzinfo is not None:
+            scheduled_dt = scheduled_dt.astimezone().replace(tzinfo=None)
+
+        return (
+            OneTimeSchedule2(datetime=scheduled_dt.isoformat()),
+            f"`{scheduled_dt.strftime('%Y-%m-%d %H:%M')}`",
+        )
+
+    @staticmethod
     def _build_message_job_data(
         reminder: str,
         ping_text: Optional[str],
@@ -451,6 +495,30 @@ class ReminderFunctions:
                     timezone=timezone,
                 )
             except CronConversionError as exc:
+                ai_schedule = ReminderFunctions._ai_resolve_schedule(
+                    raw_schedule,
+                    timezone,
+                )
+                if ai_schedule is not None:
+                    schedule_config, schedule_label = ai_schedule
+                    if isinstance(schedule_config, CronSchedule):
+                        return schedule_config, schedule_label
+
+                    raw_datetime = str(schedule_config.datetime or "").strip()
+                    try:
+                        scheduled_dt = datetime.datetime.fromisoformat(raw_datetime)
+                    except ValueError:
+                        pass
+                    else:
+                        if expires_at is not None and expires_at <= scheduled_dt:
+                            raise ValidationError(
+                                "`expires` must be later than the reminder time.",
+                                ephemeral=ephemeral,
+                            )
+                        return (
+                            OneTimeSchedule2(datetime=scheduled_dt.isoformat()),
+                            schedule_label,
+                        )
                 raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
 
             return (
@@ -463,9 +531,37 @@ class ReminderFunctions:
             timezone=timezone,
         )
         if scheduled_dt is None:
+            ai_schedule = ReminderFunctions._ai_resolve_schedule(
+                raw_schedule,
+                timezone,
+            )
+            if ai_schedule is not None:
+                schedule_config, schedule_label = ai_schedule
+                if isinstance(schedule_config, CronSchedule):
+                    return schedule_config, schedule_label
+
+                raw_datetime = str(schedule_config.datetime or "").strip()
+                try:
+                    scheduled_dt = datetime.datetime.fromisoformat(raw_datetime)
+                except ValueError:
+                    scheduled_dt = None
+                else:
+                    if expires_at is not None and expires_at <= scheduled_dt:
+                        raise ValidationError(
+                            "`expires` must be later than the reminder time.",
+                            ephemeral=ephemeral,
+                        )
+                    return (
+                        OneTimeSchedule2(datetime=scheduled_dt.isoformat()),
+                        schedule_label,
+                    )
+
             raise ValidationError(
                 "I couldn't understand that schedule.",
-                hint="Try `08:30`, `8pm`, `every weekday at 9am`, or use a cron expression.",
+                hint=(
+                    "Try `08:30`, `tomorrow 8pm`, `every weekday at 9am`, "
+                    "or use a cron expression."
+                ),
                 ephemeral=ephemeral,
             )
         if expires_at is not None and expires_at <= scheduled_dt:
