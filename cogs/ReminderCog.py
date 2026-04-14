@@ -441,7 +441,7 @@ class ReminderCog(commands.Cog):
         description="View reminders.",
     )
     @app_commands.describe(
-        channel="Which channel or private destination to show",
+        destination="Which destination to show",
         sort="Sort order for reminders",
         status="Filter reminders by status",
         visibility=VISIBILITY_DESC,
@@ -454,7 +454,7 @@ class ReminderCog(commands.Cog):
     async def reminder_list(
         self,
         interaction: discord.Interaction,
-        channel: Optional[str] = None,
+        destination: Optional[str] = None,
         sort: Optional[app_commands.Choice[str]] = None,
         status: Optional[app_commands.Choice[str]] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
@@ -466,7 +466,7 @@ class ReminderCog(commands.Cog):
             scope_label,
         ) = self._resolve_reminder_list_target(
             interaction,
-            channel,
+            destination,
         )
         ephemeral = resolve_ephemeral_from_scope(
             interaction.guild_id,
@@ -794,9 +794,9 @@ class ReminderCog(commands.Cog):
     def _resolve_reminder_list_target(
         self,
         interaction: discord.Interaction,
-        channel: Optional[str],
+        destination: Optional[str],
     ) -> tuple[str, Optional[int], str, str]:
-        target_value = (channel or "").strip()
+        target_value = (destination or "").strip()
         if not target_value:
             target_value = "channel" if interaction.guild is not None else "private"
 
@@ -813,7 +813,7 @@ class ReminderCog(commands.Cog):
                 channel_id = int(target_value.split(":", 1)[1])
             except (ValueError, IndexError):
                 raise ValidationError(
-                    "Please select a valid channel from autocomplete.",
+                    "Please select a valid destination from autocomplete.",
                     ephemeral=True,
                 )
             selected_channel = interaction.guild.get_channel(channel_id)
@@ -842,7 +842,7 @@ class ReminderCog(commands.Cog):
 
         if target_value != "channel":
             raise ValidationError(
-                "Please select a valid list from autocomplete.",
+                "Please select a valid destination from autocomplete.",
                 ephemeral=True,
             )
 
@@ -919,7 +919,7 @@ class ReminderCog(commands.Cog):
     ) -> List[app_commands.Choice[str]]:
         return reminder_destination_autocomplete(interaction, current)
 
-    @reminder_list.autocomplete("channel")
+    @reminder_list.autocomplete("destination")
     async def reminder_list_target_autocomplete(
         self,
         interaction: discord.Interaction,

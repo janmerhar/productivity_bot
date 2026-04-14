@@ -83,8 +83,8 @@ class ReminderListOptionsModal(discord.ui.Modal):
             required=False,
             default_values=default_users,
         )
-        self.channel_select = discord.ui.Select(
-            placeholder="Which channel or private destination to show",
+        self.destination_select = discord.ui.Select(
+            placeholder="Which destination to show",
             min_values=1,
             max_values=1,
             options=parent_view._build_target_select_options(interaction)[:25],
@@ -112,8 +112,8 @@ class ReminderListOptionsModal(discord.ui.Modal):
         )
         self.add_item(
             discord.ui.Label(
-                text="Channel",
-                component=self.channel_select,
+                text="Destination",
+                component=self.destination_select,
             )
         )
 
@@ -123,7 +123,7 @@ class ReminderListOptionsModal(discord.ui.Modal):
         sort_value = str(self.sort_group.value or "ascending")
         status_value = str(self.status_group.value or "all")
         search_query = self.parent_view.normalize_search_query(self.search_input.value)
-        target_value = str(self.channel_select.values[0] or "").strip()
+        target_value = str(self.destination_select.values[0] or "").strip()
         if sort_value not in {"ascending", "descending"}:
             sort_value = "ascending"
         if status_value not in {"all", "active", "paused"}:
@@ -555,7 +555,7 @@ class ReminderListView(discord.ui.View):
             embed.set_footer(
                 text=(
                     f"Page {self.page}/{self.total_pages} | Items: {len(self.reminders)} | "
-                    f"Sort: {self.sort.title()} | Scope: {self.scope_label} | "
+                    f"Sort: {self.sort.title()} | Destination: {self.scope_label} | "
                     f"Status: {status_label} | Search: {search_label} | Ping: {ping_label}"
                 )
             )
@@ -583,7 +583,7 @@ class ReminderListView(discord.ui.View):
         embed.set_footer(
             text=(
                 f"Page {self.page}/{self.total_pages} | Items: {len(self.reminders)} | "
-                f"Sort: {self.sort.title()} | Scope: {self.scope_label} | "
+                f"Sort: {self.sort.title()} | Destination: {self.scope_label} | "
                 f"Status: {status_label} | Search: {search_label} | Ping: {ping_label}"
             )
         )
