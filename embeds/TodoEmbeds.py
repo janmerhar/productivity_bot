@@ -139,7 +139,6 @@ class TodoItemEditModal(discord.ui.Modal):
         self,
         parent_view: "TodoListItemsView",
         item: Dict[str, Any],
-        item_number: Any,
         source_message: Optional[discord.Message],
         source_interaction: Optional[discord.Interaction] = None,
         assignee_options: Optional[List[discord.SelectOption]] = None,
@@ -155,7 +154,6 @@ class TodoItemEditModal(discord.ui.Modal):
         super().__init__(title=modal_title)
         self.parent_view = parent_view
         self.item_id = str(item.get("_id") or "")
-        self.item_number = item_number
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.source_message = source_message
         self.source_interaction = source_interaction
@@ -2146,7 +2144,6 @@ class TodoAssignPickerView(discord.ui.View):
         super().__init__(timeout=180)
         self.todo_list = todo_list
         self.item_id = str(item.get("_id") or "")
-        self.item_number = item.get("item_no")
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.guild_id = item.get("guild_id")
         self.source_message = source_message
@@ -2447,7 +2444,6 @@ class TodoItemActionsView(discord.ui.View):
         super().__init__(timeout=900)
         self.todo_list = todo_list
         self.item_id = str(item.get("_id") or "")
-        self.item_number = item.get("item_no")
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.guild_id = item.get("guild_id")
 
@@ -2608,7 +2604,6 @@ class TodoItemActionsView(discord.ui.View):
         except Exception:
             list_options = []
 
-        modal_item_number = current_item.get("item_no") or self.item_number
         modal_locale = str(getattr(interaction, "locale", "") or "").strip()
         if not modal_locale:
             modal_locale = None
@@ -2625,7 +2620,6 @@ class TodoItemActionsView(discord.ui.View):
                     TodoItemEditModal(
                         parent_view=parent_view,
                         item=current_item,
-                        item_number=modal_item_number,
                         source_message=interaction.message,
                         source_interaction=interaction,
                         assignee_options=assignee_options,
@@ -2646,7 +2640,6 @@ class TodoItemActionsView(discord.ui.View):
             TodoItemEditModal(
                 parent_view=parent_view,
                 item=current_item,
-                item_number=modal_item_number,
                 source_message=interaction.message,
                 source_interaction=interaction,
                 refresh_source_as_item_embed=True,

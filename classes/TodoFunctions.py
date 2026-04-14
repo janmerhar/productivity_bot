@@ -439,18 +439,6 @@ class TodoFunctions:
         return todo_list
 
     @staticmethod
-    def fetch_item_on_list_or_error(
-        list_id: Any,
-        item_no: int,
-    ) -> Dict[str, Any]:
-        if item_no <= 0:
-            raise ValueError("Item number must be greater than 0.")
-        item = TodoFunctions.fetch_item_on_list(list_id, item_no)
-        if not item:
-            raise ValueError("Selected task was not found on that list.")
-        return item
-
-    @staticmethod
     def _implicit_list_name(
         channel_name: Optional[str],
         channel_id: Optional[int],
@@ -1173,14 +1161,11 @@ class TodoFunctions:
             existing_item = mongo_db["todos"].find_one({"_id": object_id})
             return TodoFunctions._item_with_list_context(existing_item, target_list)
 
-        next_item_no = TodoFunctions._next_item_number(target_list_id)
-
         updated = mongo_db["todos"].find_one_and_update(
             {"_id": object_id},
             {
                 "$set": {
                     "list_id": target_list_id,
-                    "item_no": next_item_no,
                     "updated_at": TodoFunctions._utc_now(),
                 }
             },
@@ -1274,19 +1259,6 @@ class TodoFunctions:
         return counts
 
     @staticmethod
-    def _next_item_number(list_id: ObjectId) -> int:
-        latest = (
-            mongo_db["todos"]
-            .find({"list_id": list_id}, {"item_no": 1})
-            .sort("item_no", -1)
-            .limit(1)
-        )
-        latest_doc = next(latest, None)
-        if not latest_doc:
-            return 1
-        return int(latest_doc.get("item_no", 0)) + 1
-
-    @staticmethod
     def add_item_to_list(
         todo_list: Dict[str, Any],
         user_id: int,
@@ -1307,7 +1279,6 @@ class TodoFunctions:
             timezone=timezone,
             locale_code=locale_code,
         )
-        item_no = TodoFunctions._next_item_number(list_id)
         title, body = TodoFunctions._split_item_text(cleaned_text)
         normalized_status = (status or "todo").strip().lower()
         if normalized_status not in TodoFunctions._ALLOWED_ITEM_STATUSES:
@@ -1317,7 +1288,6 @@ class TodoFunctions:
         document: Dict[str, Any] = {
             "status": normalized_status,
             "list_id": list_id,
-            "item_no": item_no,
             "title": title,
             "body": body,
             "assignee_id": assignee_id,
@@ -1345,7 +1315,7 @@ class TodoFunctions:
         cursor = (
             mongo_db["todos"]
             .find({"list_id": object_id})
-            .sort("item_no", sort_direction)
+            .sort("created_at", sort_direction)
         )
         return [
             TodoFunctions._item_with_list_context(item, todo_list) for item in cursor
@@ -1373,7 +1343,7 @@ class TodoFunctions:
         cursor = (
             mongo_db["todos"]
             .find({"list_id": {"$in": list(list_map)}})
-            .sort("_id", sort_direction)
+            .sort("created_at", sort_direction)
         )
         items = []
         for item in cursor:
@@ -1401,7 +1371,7 @@ class TodoFunctions:
         cursor = (
             mongo_db["todos"]
             .find({"list_id": {"$in": list(list_map)}})
-            .sort("_id", sort_direction)
+            .sort("created_at", sort_direction)
         )
         items = []
         for item in cursor:
@@ -1409,18 +1379,6 @@ class TodoFunctions:
             todo_list = list_map.get(list_id) if isinstance(list_id, ObjectId) else None
             items.append(TodoFunctions._item_with_list_context(item, todo_list))
         return items
-
-    @staticmethod
-    def fetch_item_on_list(
-        list_id: Any,
-        item_no: int,
-    ) -> Optional[Dict[str, Any]]:
-        object_id = TodoFunctions._coerce_object_id(list_id)
-        if object_id is None:
-            return None
-        item = mongo_db["todos"].find_one({"list_id": object_id, "item_no": item_no})
-        todo_list = mongo_db["todo_lists"].find_one({"_id": object_id})
-        return TodoFunctions._item_with_list_context(item, todo_list)
 
     @staticmethod
     def set_item_text(

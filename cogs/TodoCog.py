@@ -438,9 +438,7 @@ class TodoCog(commands.Cog):
         status = TodoFunctions.status_label(TodoFunctions.item_status(item))
         due_value = TodoFunctions.item_due(item)
         due_label = DueDateService.format_due(due_value) if due_value else "No due date"
-        item_no = item.get("item_no")
-        prefix = f"{item_no}. " if isinstance(item_no, int) and item_no > 0 else ""
-        return f"{list_name} / {prefix}{todo_name} [{status}] - {due_label}"[:100]
+        return f"{list_name} / {todo_name} [{status}] - {due_label}"[:100]
 
     @staticmethod
     def _format_list_confirmation_prompt(
@@ -1532,7 +1530,6 @@ class TodoCog(commands.Cog):
                 TodoItemEditModal(
                     parent_view=parent_view,
                     item=item,
-                    item_number=item.get("item_no"),
                     source_message=None,
                     assignee_options=assignee_options,
                     list_options=list_options,
@@ -1547,7 +1544,6 @@ class TodoCog(commands.Cog):
                     TodoItemEditModal(
                         parent_view=parent_view,
                         item=item,
-                        item_number=item.get("item_no"),
                         source_message=None,
                         return_item_embed=True,
                         locale_code=modal_locale,
