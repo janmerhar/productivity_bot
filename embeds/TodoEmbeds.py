@@ -3039,7 +3039,7 @@ class TodoEmbeds:
         todo: Dict[str, Any],
         todo_list: Optional[Dict[str, Any]] = None,
     ) -> dict:
-        user_id = todo.get("user_id")
+        user_id = todo.get("created_by_user_id") or todo.get("user_id")
         payload = TodoEmbeds.item_details_embed(
             todo_list or {"name": str(todo.get("list_name") or "List")},
             todo,
