@@ -190,6 +190,16 @@ class ReminderOutputView(discord.ui.View):
                 return formatted
         return f"`{schedule_text}`" if schedule_text else "unknown"
 
+    def _pause_until_value(self) -> Optional[str]:
+        if self.job is None or not ReminderFunctions.is_paused(self.job):
+            return None
+
+        pause_until = ReminderFunctions.pause_until_for_job(self.job)
+        if pause_until is None:
+            return None
+
+        return self._format_timestamp(pause_until.isoformat())
+
     def _embed(self) -> discord.Embed:
         embed = discord.Embed(
             title="Reminder",
@@ -224,6 +234,13 @@ class ReminderOutputView(discord.ui.View):
             value="paused" if ReminderFunctions.is_paused(self.job) else "active",
             inline=True,
         )
+        pause_until_value = self._pause_until_value()
+        if pause_until_value:
+            embed.add_field(
+                name="Paused Until",
+                value=pause_until_value,
+                inline=False,
+            )
         embed.add_field(
             name="Schedule",
             value=self._schedule_value(),

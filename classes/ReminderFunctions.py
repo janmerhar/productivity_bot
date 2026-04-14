@@ -66,7 +66,30 @@ class ReminderFunctions:
     def is_paused(job: Optional[DailyJob]) -> bool:
         if job is None:
             return False
-        return ReminderFunctions._as_bool((job.data or {}).get("paused"))
+        data = job.data or {}
+        if not ReminderFunctions._as_bool(data.get("paused")):
+            return False
+
+        pause_until = ReminderFunctions.pause_until_for_job(job)
+        if pause_until is None:
+            return True
+
+        now = datetime.datetime.now().replace(second=0, microsecond=0)
+        return pause_until.replace(second=0, microsecond=0) > now
+
+    @staticmethod
+    def pause_until_for_job(job: Optional[DailyJob]) -> Optional[datetime.datetime]:
+        if job is None:
+            return None
+
+        raw_value = str((job.data or {}).get("pause_until") or "").strip()
+        if not raw_value:
+            return None
+
+        try:
+            return datetime.datetime.fromisoformat(raw_value)
+        except ValueError:
+            return None
 
     @staticmethod
     def reminder_label(job: DailyJob) -> str:
@@ -159,6 +182,16 @@ class ReminderFunctions:
     @staticmethod
     def expiration_input_for_job(job: DailyJob) -> str:
         raw_value = str((job.data or {}).get("expires_at") or "").strip()
+        if not raw_value:
+            return ""
+        try:
+            return datetime.datetime.fromisoformat(raw_value).strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            return raw_value
+
+    @staticmethod
+    def pause_until_input_for_job(job: DailyJob) -> str:
+        raw_value = str((job.data or {}).get("pause_until") or "").strip()
         if not raw_value:
             return ""
         try:
@@ -279,12 +312,15 @@ class ReminderFunctions:
     def needs_timezone(
         schedule: str,
         expires: Optional[str] = None,
+        until: Optional[str] = None,
     ) -> bool:
         raw_schedule = schedule.strip()
         raw_expires = (expires or "").strip()
+        raw_until = (until or "").strip()
         return (
             not is_valid_cron_expression(raw_schedule)
             or bool(raw_expires)
+            or bool(raw_until)
         )
 
     @staticmethod
@@ -389,6 +425,36 @@ class ReminderFunctions:
             )
 
         return expires_at
+
+    @staticmethod
+    def _parse_pause_until(
+        until: Optional[str],
+        timezone: Optional[str],
+        ephemeral: bool,
+    ) -> Optional[datetime.datetime]:
+        raw_until = (until or "").strip()
+        if not raw_until:
+            return None
+
+        pause_until = ReminderFunctions._parse_datetime_string(
+            raw_until,
+            timezone=timezone,
+        )
+        if pause_until is None:
+            raise ValidationError(
+                "I couldn't understand `until`.",
+                hint="Try `tomorrow 9am` or a specific date/time.",
+                ephemeral=ephemeral,
+            )
+
+        now = datetime.datetime.now().replace(second=0, microsecond=0)
+        if pause_until <= now:
+            raise ValidationError(
+                "`until` needs to be in the future.",
+                ephemeral=ephemeral,
+            )
+
+        return pause_until
 
     @staticmethod
     def _ai_resolve_schedule(
@@ -672,6 +738,7 @@ class ReminderFunctions:
         for job in reminders:
             data = dict(job.data or {})
             data["paused"] = True
+            data.pop("pause_until", None)
             data["source"] = "reminder"
             updated = manager.update_job(
                 str(job.id),
@@ -687,6 +754,9 @@ class ReminderFunctions:
     def pause_reminder(
         reminder_id: str,
         guild_id: Optional[int],
+        until: Optional[str] = None,
+        timezone: Optional[str] = None,
+        ephemeral: bool = True,
     ) -> str:
         manager = DailyJobManager()
         normalized_id = reminder_id.strip()
@@ -701,10 +771,30 @@ class ReminderFunctions:
             raise ValidationError("That ID belongs to a scheduled job, not a reminder.")
 
         data = dict(job.data or {})
-        if ReminderFunctions._as_bool(data.get("paused")):
+        pause_until = ReminderFunctions._parse_pause_until(
+            until,
+            timezone,
+            ephemeral,
+        )
+        existing_pause_until = ReminderFunctions.pause_until_for_job(job)
+        pause_state_changed = not ReminderFunctions.is_paused(job)
+        pause_until_changed = (
+            pause_until is not None
+            and (
+                existing_pause_until is None
+                or existing_pause_until.replace(second=0, microsecond=0)
+                != pause_until.replace(second=0, microsecond=0)
+            )
+        )
+
+        if not pause_state_changed and not pause_until_changed:
             return "already_paused"
 
         data["paused"] = True
+        if pause_until is not None:
+            data["pause_until"] = pause_until.isoformat()
+        elif not ReminderFunctions.is_paused(job):
+            data.pop("pause_until", None)
         data["source"] = "reminder"
 
         updated = manager.update_job(
@@ -732,10 +822,12 @@ class ReminderFunctions:
             raise ValidationError("That ID belongs to a scheduled job, not a reminder.")
 
         data = dict(job.data or {})
-        if not ReminderFunctions._as_bool(data.get("paused")):
+        had_pause_until = bool(str(data.get("pause_until") or "").strip())
+        if not ReminderFunctions.is_paused(job) and not had_pause_until:
             return "already_resumed"
 
         data["paused"] = False
+        data.pop("pause_until", None)
         data["source"] = "reminder"
 
         updated = manager.update_job(
@@ -754,6 +846,7 @@ class ReminderFunctions:
         for job in reminders:
             data = dict(job.data or {})
             data["paused"] = False
+            data.pop("pause_until", None)
             data["source"] = "reminder"
             updated = manager.update_job(
                 str(job.id),

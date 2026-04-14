@@ -533,6 +533,17 @@ class ReminderListView(discord.ui.View):
         return ReminderListView._datetime_label(raw_value)
 
     @staticmethod
+    def _pause_until_label(job: DailyJob) -> Optional[str]:
+        if not ReminderFunctions.is_paused(job):
+            return None
+
+        pause_until = ReminderFunctions.pause_until_for_job(job)
+        if pause_until is None:
+            return None
+
+        return ReminderListView._datetime_label(pause_until.isoformat())
+
+    @staticmethod
     def _detail_text(job: DailyJob) -> Optional[str]:
         values = ReminderFunctions.reminder_edit_values(job)
         detail = str(values.get("description") or "").strip()
@@ -571,6 +582,9 @@ class ReminderListView(discord.ui.View):
             expires_label = self._expires_label(job)
             if expires_label:
                 value_lines.append(f"Expires: {expires_label}")
+            pause_until_label = self._pause_until_label(job)
+            if pause_until_label:
+                value_lines.append(f"Paused until: {pause_until_label}")
             detail_text = self._detail_text(job)
             if detail_text and detail_text.lower() != label.lower():
                 value_lines.insert(0, detail_text)
