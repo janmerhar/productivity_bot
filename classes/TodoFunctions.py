@@ -497,7 +497,7 @@ class TodoFunctions:
             "channel_id": channel_id,
             "user_id": user_id,
             "list_type": TodoFunctions._DEFAULT_LIST_TYPE,
-            "created_at": datetime.datetime.utcnow().isoformat(),
+            "created_at": TodoFunctions._utc_now(),
         }
 
         result = mongo_db["todo_lists"].insert_one(document)
@@ -554,7 +554,7 @@ class TodoFunctions:
             "channel_id": None,
             "user_id": user_id,
             "list_type": TodoFunctions._DEFAULT_LIST_TYPE,
-            "created_at": datetime.datetime.utcnow().isoformat(),
+            "created_at": TodoFunctions._utc_now(),
         }
         result = mongo_db["todo_lists"].insert_one(document)
         document["_id"] = result.inserted_id
@@ -617,7 +617,7 @@ class TodoFunctions:
             "channel_id": None,
             "user_id": user_id,
             "list_type": TodoFunctions._DEFAULT_LIST_TYPE,
-            "created_at": datetime.datetime.utcnow().isoformat(),
+            "created_at": TodoFunctions._utc_now(),
         }
         result = mongo_db["todo_lists"].insert_one(document)
         document["_id"] = result.inserted_id
@@ -881,7 +881,7 @@ class TodoFunctions:
             "channel_id": stored_channel_id,
             "user_id": user_id,
             "list_type": TodoFunctions._CUSTOM_LIST_TYPE,
-            "created_at": datetime.datetime.utcnow().isoformat(),
+            "created_at": TodoFunctions._utc_now(),
         }
 
         result = mongo_db["todo_lists"].insert_one(document)
