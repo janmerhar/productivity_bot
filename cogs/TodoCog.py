@@ -375,23 +375,6 @@ class TodoCog(commands.Cog):
 
         return options[:25]
 
-    async def _list_items_for_command_scope(
-        self,
-        interaction: discord.Interaction,
-    ) -> List[Dict[str, Any]]:
-        if interaction.guild_id is None:
-            return await asyncio.to_thread(
-                TodoFunctions.list_items_on_personal_scope,
-                interaction.user.id,
-                "ascending",
-            )
-
-        return await asyncio.to_thread(
-            TodoFunctions.list_items_on_guild,
-            interaction.guild_id,
-            "ascending",
-        )
-
     async def _resolve_scope_item(
         self,
         interaction: discord.Interaction,
@@ -1747,10 +1730,15 @@ class TodoCog(commands.Cog):
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
-        query = (current or "").strip().lower()
-
         try:
-            items = await self._list_items_for_command_scope(interaction)
+            items = await asyncio.to_thread(
+                TodoFunctions.autocomplete_items_for_scope,
+                interaction.guild_id,
+                interaction.user.id,
+                current,
+                25,
+                200,
+            )
         except Exception:
             return []
 
@@ -1758,17 +1746,6 @@ class TodoCog(commands.Cog):
         for item in items:
             item_id = str(item.get("_id") or "").strip()
             if not item_id:
-                continue
-
-            todo_name = TodoFunctions.task_name_from_item(item) or "Untitled"
-            list_name = str(item.get("list_name") or "").strip() or "List"
-            status = TodoFunctions.status_label(TodoFunctions.item_status(item))
-            due_value = TodoFunctions.item_due(item)
-            due_label = (
-                DueDateService.format_due(due_value) if due_value else "No due date"
-            )
-            search_text = f"{list_name} {todo_name} {status} {due_label}".lower()
-            if query and query not in search_text:
                 continue
 
             options.append(

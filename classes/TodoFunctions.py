@@ -1415,6 +1415,90 @@ class TodoFunctions:
         return items
 
     @staticmethod
+    def autocomplete_items_for_scope(
+        guild_id: Optional[int],
+        user_id: int,
+        query: str,
+        limit: int = 25,
+        candidate_limit: int = 200,
+    ) -> List[Dict[str, Any]]:
+        resolved_limit = max(1, min(limit, 25))
+        resolved_candidate_limit = max(resolved_limit, min(candidate_limit, 500))
+        normalized_query = (query or "").strip().lower()
+
+        if guild_id is None:
+            list_docs = list(
+                mongo_db["todo_lists"].find(
+                    {"scope": "personal", "user_id": user_id},
+                    {"_id": 1, "name": 1, "scope": 1, "list_type": 1, "user_id": 1},
+                )
+            )
+        else:
+            list_docs = list(
+                mongo_db["todo_lists"].find(
+                    {"guild_id": guild_id, "scope": "channel"},
+                    {
+                        "_id": 1,
+                        "name": 1,
+                        "channel_id": 1,
+                        "scope": 1,
+                        "list_type": 1,
+                        "guild_id": 1,
+                        "user_id": 1,
+                    },
+                )
+            )
+
+        list_map = TodoFunctions._list_map_by_id(list_docs)
+        if not list_map:
+            return []
+
+        cursor = (
+            mongo_db["todos"]
+            .find(
+                {"list_id": {"$in": list(list_map)}},
+                {
+                    "list_id": 1,
+                    "title": 1,
+                    "body": 1,
+                    "status": 1,
+                    "due_at": 1,
+                    "created_at": 1,
+                },
+            )
+            .sort("created_at", -1)
+            .limit(resolved_candidate_limit)
+        )
+
+        matches: List[Dict[str, Any]] = []
+        for item in cursor:
+            list_id = item.get("list_id")
+            todo_list = list_map.get(list_id) if isinstance(list_id, ObjectId) else None
+            enriched = TodoFunctions._item_with_list_context(item, todo_list)
+            if enriched is None:
+                continue
+
+            if normalized_query:
+                list_name = str(enriched.get("list_name") or "").strip() or "List"
+                todo_name = TodoFunctions.task_name_from_item(enriched) or "Untitled"
+                status = TodoFunctions.status_label(TodoFunctions.item_status(enriched))
+                due_value = TodoFunctions.item_due(enriched)
+                due_label = (
+                    DueDateService.format_due(due_value)
+                    if due_value
+                    else "No due date"
+                )
+                search_text = f"{list_name} {todo_name} {status} {due_label}".lower()
+                if normalized_query not in search_text:
+                    continue
+
+            matches.append(enriched)
+            if len(matches) >= resolved_limit:
+                break
+
+        return matches
+
+    @staticmethod
     def set_item_text(
         item_id: Any,
         text: str,
