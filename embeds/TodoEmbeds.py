@@ -825,6 +825,13 @@ class TodoListOptionsModal(discord.ui.Modal):
         self.list_select: Optional[discord.ui.Select] = None
         self.list_select_label: Optional[discord.ui.Label] = None
         self.list_input: Optional[discord.ui.TextInput] = None
+        self.search_input = discord.ui.TextInput(
+            label="Search",
+            placeholder="Task, description, list",
+            required=False,
+            default=parent_view.search_query,
+            max_length=100,
+        )
 
         self.sort_group = discord.ui.RadioGroup(
             custom_id="todo_list_options_sort",
@@ -879,6 +886,7 @@ class TodoListOptionsModal(discord.ui.Modal):
                 component=self.status_group,
             )
         )
+        self.add_item(self.search_input)
         if assignee_options:
             try:
                 self.assignee_select = discord.ui.Select(
@@ -947,6 +955,7 @@ class TodoListOptionsModal(discord.ui.Modal):
 
         sort_value = str(self.sort_group.value or "ascending")
         status_value = str(self.status_group.value or "all")
+        search_query = self.parent_view.normalize_search_query(self.search_input.value)
 
         if sort_value not in {"ascending", "descending"}:
             sort_value = "ascending"
@@ -1033,6 +1042,7 @@ class TodoListOptionsModal(discord.ui.Modal):
 
         self.parent_view.sort = sort_value
         self.parent_view.status_filter = status_value
+        self.parent_view.search_query = search_query
         self.parent_view.assignee_filter_unassigned = assignee_filter_unassigned
         self.parent_view.assignee_filter_ids = assignee_filter_ids
         self.parent_view.assignee_filter_id = (
@@ -1187,6 +1197,7 @@ class TodoListItemsView(discord.ui.View):
         self.user_id = user_id
         self.view_scope = view_scope
         self.guild_id = guild_id
+        self.search_query = ""
         self.assignee_filter_label = self._assignee_filter_summary_label()
         self.page_size = max(1, min(page_size, 5))
         self.total_pages = 1
@@ -1216,6 +1227,7 @@ class TodoListItemsView(discord.ui.View):
             status_counts=TodoEmbeds._status_counts(self.items),
             status_filter=self.status_filter,
             assignee_filter_label=self.assignee_filter_label,
+            search_filter_label=self.search_filter_label(),
         )
 
     async def _reload_items(self) -> None:
@@ -1252,9 +1264,22 @@ class TodoListItemsView(discord.ui.View):
         return (
             self.sort != "ascending"
             or self.status_filter != "all"
+            or bool(self.search_query)
             or self.assignee_filter_unassigned
             or bool(self.assignee_filter_ids)
         )
+
+    @staticmethod
+    def normalize_search_query(value: Optional[str]) -> str:
+        return str(value or "").strip()
+
+    def search_filter_label(self) -> str:
+        text = str(self.search_query or "").strip()
+        if not text:
+            return "All"
+        if len(text) <= 24:
+            return text
+        return f"{text[:21].rstrip()}..."
 
     def _assignee_filter_summary_label(self) -> str:
         if not self.assignee_filter_ids and not self.assignee_filter_unassigned:
@@ -1333,6 +1358,15 @@ class TodoListItemsView(discord.ui.View):
             "list_id": self.todo_list.get("_id"),
             "list_name": TodoFunctions.display_list_name(self.todo_list, "List"),
         }
+
+    @staticmethod
+    def _search_text(item: Dict[str, Any]) -> str:
+        parts = [
+            str(item.get("name") or ""),
+            TodoFunctions.item_text(item) or "",
+            str(item.get("list_name") or ""),
+        ]
+        return " ".join(str(part or "") for part in parts).lower()
 
     async def open_options_modal(
         self,
@@ -1458,6 +1492,13 @@ class TodoListItemsView(discord.ui.View):
 
     def _apply_filters(self) -> None:
         filtered_items = list(self._all_items)
+        if self.search_query:
+            normalized_query = self.search_query.lower()
+            filtered_items = [
+                item
+                for item in filtered_items
+                if normalized_query in self._search_text(item)
+            ]
         if self.assignee_filter_ids or self.assignee_filter_unassigned:
             allowed_ids = set(self.assignee_filter_ids)
             filtered_items = [
@@ -3150,6 +3191,7 @@ class TodoEmbeds:
         status_counts: Optional[Dict[str, int]] = None,
         status_filter: str = "all",
         assignee_filter_label: str = "All",
+        search_filter_label: str = "All",
     ) -> dict:
         embed = discord.Embed(
             title=TodoEmbeds._list_title(todo_list),
@@ -3163,7 +3205,7 @@ class TodoEmbeds:
                 text=(
                     f"Page {page}/{total_pages} | Items: {total_items} | "
                     f"Sort: {sort} | Status: {status_label} | "
-                    f"Assignee: {assignee_filter_label}"
+                    f"Search: {search_filter_label} | Assignee: {assignee_filter_label}"
                 )
             )
             return {"embed": embed}
@@ -3203,7 +3245,7 @@ class TodoEmbeds:
             text=(
                 f"Page {page}/{total_pages} | Items: {total_items} | "
                 f"Sort: {sort} | Status: {status_label} | "
-                f"Assignee: {assignee_filter_label}"
+                f"Search: {search_filter_label} | Assignee: {assignee_filter_label}"
             )
         )
         return {"embed": embed}
