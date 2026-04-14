@@ -15,6 +15,10 @@ def _ensure_todo_indexes() -> None:
         [("list_id", 1), ("created_at", -1)],
         name="todos_by_list_created_at",
     )
+    mongo_db["todos"].create_index(
+        [("list_id", 1), ("title_key", 1), ("created_at", -1)],
+        name="todos_autocomplete_title",
+    )
 
     mongo_db["todo_lists"].create_index(
         [("scope", 1), ("user_id", 1), ("name_key", 1)],
@@ -153,6 +157,10 @@ class TodoFunctions:
                 f"Description must be at most {TodoFunctions._MAX_ITEM_TEXT_LEN} characters."
             )
         return cleaned
+
+    @staticmethod
+    def _item_title_key(value: str) -> str:
+        return " ".join(str(value or "").strip().lower().split())
 
     @staticmethod
     def parse_assignee_modal_input(
@@ -1323,6 +1331,7 @@ class TodoFunctions:
             "status": normalized_status,
             "list_id": list_id,
             "title": title,
+            "title_key": TodoFunctions._item_title_key(title),
             "body": body,
             "assignee_id": assignee_id,
             "created_by_user_id": user_id,
@@ -1424,7 +1433,7 @@ class TodoFunctions:
     ) -> List[Dict[str, Any]]:
         resolved_limit = max(1, min(limit, 25))
         resolved_candidate_limit = max(resolved_limit, min(candidate_limit, 500))
-        normalized_query = (query or "").strip().lower()
+        normalized_query = TodoFunctions._item_title_key(query)
 
         if guild_id is None:
             list_docs = list(
@@ -1453,10 +1462,16 @@ class TodoFunctions:
         if not list_map:
             return []
 
+        mongo_query: Dict[str, Any] = {"list_id": {"$in": list(list_map)}}
+        query_limit = resolved_candidate_limit
+        if normalized_query:
+            mongo_query["title_key"] = {"$regex": f"^{re.escape(normalized_query)}"}
+            query_limit = resolved_limit
+
         cursor = (
             mongo_db["todos"]
             .find(
-                {"list_id": {"$in": list(list_map)}},
+                mongo_query,
                 {
                     "list_id": 1,
                     "title": 1,
@@ -1467,7 +1482,7 @@ class TodoFunctions:
                 },
             )
             .sort("created_at", -1)
-            .limit(resolved_candidate_limit)
+            .limit(query_limit)
         )
 
         matches: List[Dict[str, Any]] = []
@@ -1477,20 +1492,6 @@ class TodoFunctions:
             enriched = TodoFunctions._item_with_list_context(item, todo_list)
             if enriched is None:
                 continue
-
-            if normalized_query:
-                list_name = str(enriched.get("list_name") or "").strip() or "List"
-                todo_name = TodoFunctions.task_name_from_item(enriched) or "Untitled"
-                status = TodoFunctions.status_label(TodoFunctions.item_status(enriched))
-                due_value = TodoFunctions.item_due(enriched)
-                due_label = (
-                    DueDateService.format_due(due_value)
-                    if due_value
-                    else "No due date"
-                )
-                search_text = f"{list_name} {todo_name} {status} {due_label}".lower()
-                if normalized_query not in search_text:
-                    continue
 
             matches.append(enriched)
             if len(matches) >= resolved_limit:
@@ -1514,6 +1515,7 @@ class TodoFunctions:
             {
                 "$set": {
                     "title": title,
+                    "title_key": TodoFunctions._item_title_key(title),
                     "body": body,
                     "updated_at": TodoFunctions._utc_now(),
                 }
@@ -1554,6 +1556,7 @@ class TodoFunctions:
             {
                 "$set": {
                     "title": title,
+                    "title_key": TodoFunctions._item_title_key(title),
                     "body": cleaned_description,
                     "status": normalized_status,
                     "due_at": TodoFunctions._storage_datetime(due_value),
