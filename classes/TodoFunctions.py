@@ -10,6 +10,40 @@ from config.db import mongo_db
 from services.due_datetime import DueDateService
 
 
+def _ensure_todo_indexes() -> None:
+    mongo_db["todos"].create_index(
+        [("list_id", 1), ("created_at", -1)],
+        name="todos_by_list_created_at",
+    )
+
+    mongo_db["todo_lists"].create_index(
+        [("scope", 1), ("user_id", 1), ("name_key", 1)],
+        unique=True,
+        partialFilterExpression={"scope": "personal"},
+        name="todo_lists_personal_name_unique",
+    )
+    mongo_db["todo_lists"].create_index(
+        [("scope", 1), ("guild_id", 1), ("channel_id", 1), ("name_key", 1)],
+        unique=True,
+        partialFilterExpression={"scope": "channel"},
+        name="todo_lists_channel_name_unique",
+    )
+
+    mongo_db["todo_lists"].create_index(
+        [("scope", 1), ("user_id", 1), ("name", 1)],
+        partialFilterExpression={"scope": "personal"},
+        name="todo_lists_personal_browse",
+    )
+    mongo_db["todo_lists"].create_index(
+        [("scope", 1), ("guild_id", 1), ("name", 1)],
+        partialFilterExpression={"scope": "channel"},
+        name="todo_lists_channel_browse",
+    )
+
+
+_ensure_todo_indexes()
+
+
 class TodoFunctions:
     _MAX_LIST_NAME_LEN = 80
     _MAX_ITEM_TEXT_LEN = 800
