@@ -196,7 +196,44 @@ class TodoFunctions:
 
     @staticmethod
     def task_name_from_item(item: Dict[str, Any]) -> str:
-        return str(item["name"]).strip()
+        return str(item["title"]).strip()
+
+    @staticmethod
+    def item_body(item: Dict[str, Any]) -> str:
+        return str(item.get("body") or "").strip()
+
+    @staticmethod
+    def item_due(item: Dict[str, Any]) -> Optional[str]:
+        value = item.get("due_at")
+        if value is None:
+            return None
+        return str(value).strip() or None
+
+    @staticmethod
+    def item_assignee_id(item: Dict[str, Any]) -> Optional[int]:
+        value = item.get("assignee_id")
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def item_assignee_ids(item: Dict[str, Any]) -> List[int]:
+        assignee_id = TodoFunctions.item_assignee_id(item)
+        return [assignee_id] if assignee_id is not None else []
+
+    @staticmethod
+    def _split_item_text(text: str) -> Tuple[str, Optional[str]]:
+        cleaned_text = TodoFunctions._clean_item_text(text)
+        title = TodoFunctions._item_title_from_text(cleaned_text)
+        body = "\n".join(cleaned_text.splitlines()[1:]).strip()
+        return title, body or None
+
+    @staticmethod
+    def _utc_now_iso() -> str:
+        return datetime.datetime.utcnow().isoformat()
 
     @staticmethod
     def task_ref(task_name: str, limit: int = 80) -> str:
@@ -519,15 +556,17 @@ class TodoFunctions:
 
     @staticmethod
     def item_text(item: Dict[str, Any]) -> str:
-        value = item.get("text") or item.get("description") or item.get("name") or ""
-        return str(value).strip()
+        body = TodoFunctions.item_body(item)
+        if body:
+            return body
+        return TodoFunctions.task_name_from_item(item)
 
     @staticmethod
     def item_status(item: Dict[str, Any]) -> str:
         status = str(item.get("status") or "").strip().lower()
         if status in TodoFunctions._ALLOWED_ITEM_STATUSES:
             return status
-        return "done" if item.get("state") == "done" else "todo"
+        return "todo"
 
     @staticmethod
     def status_label(status: str) -> str:
@@ -586,16 +625,21 @@ class TodoFunctions:
         scope_value = TodoFunctions._normalize_scope(scope)
         stored_guild_id = None if scope_value == "personal" else guild_id
         stored_channel_id = None if scope_value == "personal" else channel_id
+        now_iso = TodoFunctions._utc_now_iso()
 
         document: Dict[str, Any] = {
             "guild_id": stored_guild_id,
             "user_id": user_id,
             "channel_id": stored_channel_id,
-            "name": cleaned_name,
-            "description": cleaned_description,
-            "due": due_dt.isoformat() if due_dt else None,
-            "state": "todo",
             "scope": scope_value,
+            "title": cleaned_name,
+            "body": cleaned_description,
+            "status": "todo",
+            "assignee_id": None,
+            "due_at": due_dt.isoformat() if due_dt else None,
+            "completed_at": None,
+            "created_at": now_iso,
+            "updated_at": now_iso,
         }
 
         result = mongo_db["todos"].insert_one(document)
@@ -615,14 +659,14 @@ class TodoFunctions:
             if user_id is None:
                 return []
             query: Dict[str, Any] = {
-                "state": "todo",
+                "status": {"$ne": "done"},
                 "scope": "personal",
                 "list_id": {"$exists": False},
             }
             query["user_id"] = user_id
         else:
             query = {
-                "state": "todo",
+                "status": {"$ne": "done"},
                 "guild_id": guild_id,
                 "scope": {"$ne": "personal"},
                 "list_id": {"$exists": False},
@@ -685,6 +729,7 @@ class TodoFunctions:
             object_id = ObjectId(todo_id)
         except Exception:
             return False
+        now_iso = TodoFunctions._utc_now_iso()
 
         if user_id is not None:
             result = mongo_db["todos"].update_one(
@@ -693,7 +738,13 @@ class TodoFunctions:
                     "user_id": user_id,
                     "scope": "personal",
                 },
-                {"$set": {"state": "done", "status": "done"}},
+                {
+                    "$set": {
+                        "status": "done",
+                        "completed_at": now_iso,
+                        "updated_at": now_iso,
+                    }
+                },
             )
             if result.modified_count > 0:
                 return True
@@ -707,7 +758,13 @@ class TodoFunctions:
                 "guild_id": guild_id,
                 "scope": {"$ne": "personal"},
             },
-            {"$set": {"state": "done", "status": "done"}},
+            {
+                "$set": {
+                    "status": "done",
+                    "completed_at": now_iso,
+                    "updated_at": now_iso,
+                }
+            },
         )
 
         return result.modified_count > 0
@@ -1043,6 +1100,7 @@ class TodoFunctions:
                     "scope": target_scope,
                     "guild_id": target_list.get("guild_id"),
                     "channel_id": target_list.get("channel_id"),
+                    "updated_at": TodoFunctions._utc_now_iso(),
                 }
             },
             return_document=ReturnDocument.AFTER,
@@ -1162,27 +1220,27 @@ class TodoFunctions:
             locale_code=locale_code,
         )
         item_no = TodoFunctions._next_item_number(list_id)
-        title = TodoFunctions._item_title_from_text(cleaned_text)
+        title, body = TodoFunctions._split_item_text(cleaned_text)
         normalized_status = (status or "todo").strip().lower()
         if normalized_status not in TodoFunctions._ALLOWED_ITEM_STATUSES:
             raise ValueError("Invalid status.")
-        state_value = "done" if normalized_status == "done" else "todo"
-        assignees = [assignee_id] if assignee_id is not None else []
+        now_iso = TodoFunctions._utc_now_iso()
 
         document: Dict[str, Any] = {
             "guild_id": todo_list.get("guild_id"),
             "channel_id": todo_list.get("channel_id"),
             "user_id": user_id,
             "scope": todo_list.get("scope", "channel"),
-            "state": state_value,
             "status": normalized_status,
             "list_id": list_id,
             "item_no": item_no,
-            "name": title,
-            "description": cleaned_text,
-            "text": cleaned_text,
-            "assignees": assignees,
-            "due": due_dt.isoformat() if due_dt else None,
+            "title": title,
+            "body": body,
+            "assignee_id": assignee_id,
+            "due_at": due_dt.isoformat() if due_dt else None,
+            "completed_at": now_iso if normalized_status == "done" else None,
+            "created_at": now_iso,
+            "updated_at": now_iso,
         }
         result = mongo_db["todos"].insert_one(document)
         document["_id"] = result.inserted_id
@@ -1299,16 +1357,15 @@ class TodoFunctions:
         if object_id is None:
             return None
 
-        cleaned_text = TodoFunctions._clean_item_text(text)
-        title = TodoFunctions._item_title_from_text(cleaned_text)
+        title, body = TodoFunctions._split_item_text(text)
 
         updated = mongo_db["todos"].find_one_and_update(
             {"_id": object_id},
             {
                 "$set": {
-                    "name": title,
-                    "description": cleaned_text,
-                    "text": cleaned_text,
+                    "title": title,
+                    "body": body,
+                    "updated_at": TodoFunctions._utc_now_iso(),
                 }
             },
             return_document=ReturnDocument.AFTER,
@@ -1331,28 +1388,24 @@ class TodoFunctions:
 
         title = TodoFunctions._clean_item_title(task_text)
         cleaned_description = TodoFunctions._clean_item_description(description)
-        combined_text = (
-            f"{title}\n{cleaned_description}" if cleaned_description else title
-        )
-        cleaned_text = TodoFunctions._clean_item_text(combined_text)
         normalized_status = TodoFunctions._normalize_item_status(status)
-        state_value = "done" if normalized_status == "done" else "todo"
         due_value = DueDateService.parse_due_input_value(
             due,
             timezone=timezone,
             locale_code=locale_code,
         )
+        now_iso = TodoFunctions._utc_now_iso()
 
         updated = mongo_db["todos"].find_one_and_update(
             {"_id": object_id},
             {
                 "$set": {
-                    "name": title,
-                    "description": cleaned_description,
-                    "text": cleaned_text,
+                    "title": title,
+                    "body": cleaned_description,
                     "status": normalized_status,
-                    "state": state_value,
-                    "due": due_value,
+                    "due_at": due_value,
+                    "completed_at": now_iso if normalized_status == "done" else None,
+                    "updated_at": now_iso,
                 }
             },
             return_document=ReturnDocument.AFTER,
@@ -1369,11 +1422,16 @@ class TodoFunctions:
             return None
 
         normalized = TodoFunctions._normalize_item_status(status)
-
-        state_value = "done" if normalized == "done" else "todo"
+        now_iso = TodoFunctions._utc_now_iso()
         updated = mongo_db["todos"].find_one_and_update(
             {"_id": object_id},
-            {"$set": {"status": normalized, "state": state_value}},
+            {
+                "$set": {
+                    "status": normalized,
+                    "completed_at": now_iso if normalized == "done" else None,
+                    "updated_at": now_iso,
+                }
+            },
             return_document=ReturnDocument.AFTER,
         )
         return updated
@@ -1399,7 +1457,12 @@ class TodoFunctions:
 
         updated = mongo_db["todos"].update_one(
             {"_id": object_id},
-            {"$addToSet": {"assignees": user_id}},
+            {
+                "$set": {
+                    "assignee_id": user_id,
+                    "updated_at": TodoFunctions._utc_now_iso(),
+                }
+            },
         )
         return updated.modified_count > 0
 
@@ -1413,8 +1476,13 @@ class TodoFunctions:
             return False
 
         updated = mongo_db["todos"].update_one(
-            {"_id": object_id},
-            {"$pull": {"assignees": user_id}},
+            {"_id": object_id, "assignee_id": user_id},
+            {
+                "$set": {
+                    "assignee_id": None,
+                    "updated_at": TodoFunctions._utc_now_iso(),
+                }
+            },
         )
         return updated.modified_count > 0
 
@@ -1427,10 +1495,14 @@ class TodoFunctions:
         if object_id is None:
             return None
 
-        assignees: List[int] = [user_id] if user_id is not None else []
         updated = mongo_db["todos"].find_one_and_update(
             {"_id": object_id},
-            {"$set": {"assignees": assignees}},
+            {
+                "$set": {
+                    "assignee_id": user_id,
+                    "updated_at": TodoFunctions._utc_now_iso(),
+                }
+            },
             return_document=ReturnDocument.AFTER,
         )
         return updated

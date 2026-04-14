@@ -259,7 +259,7 @@ class DailyTaskCog(commands.Cog):
             if job.type == "todo":
                 task_id = job.data.get("task_id")
                 todo = TodoFunctions.fetch_todo(task_id, job.guild_id)
-                if not todo or todo.get("state") != "todo":
+                if not todo or TodoFunctions.item_status(todo) == "done":
                     continue
                 todo_list = None
                 list_id = todo.get("list_id")

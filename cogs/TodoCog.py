@@ -434,9 +434,9 @@ class TodoCog(commands.Cog):
     @staticmethod
     def _scope_item_option_label(item: Dict[str, Any]) -> str:
         list_name = str(item.get("list_name") or "List").strip() or "List"
-        todo_name = str(item.get("name") or "").strip() or "Untitled"
+        todo_name = TodoFunctions.task_name_from_item(item) or "Untitled"
         status = TodoFunctions.status_label(TodoFunctions.item_status(item))
-        due_value = item.get("due")
+        due_value = TodoFunctions.item_due(item)
         due_label = DueDateService.format_due(due_value) if due_value else "No due date"
         item_no = item.get("item_no")
         prefix = f"{item_no}. " if isinstance(item_no, int) and item_no > 0 else ""
@@ -1764,10 +1764,10 @@ class TodoCog(commands.Cog):
             if not item_id:
                 continue
 
-            todo_name = str(item.get("name") or "").strip() or "Untitled"
+            todo_name = TodoFunctions.task_name_from_item(item) or "Untitled"
             list_name = str(item.get("list_name") or "").strip() or "List"
             status = TodoFunctions.status_label(TodoFunctions.item_status(item))
-            due_value = item.get("due")
+            due_value = TodoFunctions.item_due(item)
             due_label = (
                 DueDateService.format_due(due_value) if due_value else "No due date"
             )
