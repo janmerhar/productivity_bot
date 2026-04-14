@@ -944,12 +944,21 @@ class ReminderCog(commands.Cog):
                 options.append(all_choice)
 
         try:
-            reminders = await self._list_visible_reminders(
-                interaction,
+            reminders = await asyncio.to_thread(
+                ReminderFunctions.autocomplete_reminders,
+                interaction.guild_id if interaction.guild_id is not None else None,
+                interaction.user.id,
+                current,
                 paused=paused,
+                limit=25,
+                candidate_limit=200,
             )
         except UserVisibleError:
             return []
+        except Exception:
+            return []
+
+        reminders = self._filter_visible_reminders(interaction, reminders)
 
         for job in reminders:
             if len(options) >= 25:

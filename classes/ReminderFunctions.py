@@ -8,6 +8,7 @@ import dateparser
 from classes.DailyJob import CronSchedule, DailyJob, OneTimeSchedule2, ScheduleConfig
 from classes.DailyJobManager import DailyJobManager
 from classes.OpenAIFunctions import OpenAIFunctions
+from config.db import mongo_db
 from services.cron_schedule import (
     CronConversionError,
     is_valid_cron_expression,
@@ -15,6 +16,47 @@ from services.cron_schedule import (
 )
 from services.error_reporting import UserVisibleError, ValidationError
 from services.schedule_time import schedule_timezone_name
+
+
+def _ensure_reminder_indexes() -> None:
+    mongo_db["tasks"].create_index(
+        [("type", 1), ("guild_id", 1), ("data.source", 1), ("_id", -1)],
+        name="tasks_reminder_guild_recent",
+    )
+    mongo_db["tasks"].create_index(
+        [
+            ("type", 1),
+            ("guild_id", 1),
+            ("data.source", 1),
+            ("data.reminder_key", 1),
+            ("_id", -1),
+        ],
+        name="tasks_reminder_guild_autocomplete",
+    )
+    mongo_db["tasks"].create_index(
+        [
+            ("type", 1),
+            ("data.source", 1),
+            ("data.destination_type", 1),
+            ("data.user_id", 1),
+            ("_id", -1),
+        ],
+        name="tasks_reminder_private_recent",
+    )
+    mongo_db["tasks"].create_index(
+        [
+            ("type", 1),
+            ("data.source", 1),
+            ("data.destination_type", 1),
+            ("data.user_id", 1),
+            ("data.reminder_key", 1),
+            ("_id", -1),
+        ],
+        name="tasks_reminder_private_autocomplete",
+    )
+
+
+_ensure_reminder_indexes()
 
 
 class ReminderFunctions:
@@ -26,6 +68,10 @@ class ReminderFunctions:
         if len(cleaned) <= limit:
             return cleaned
         return f"{cleaned[: limit - 3]}..."
+
+    @staticmethod
+    def _reminder_key(value: str) -> str:
+        return " ".join(str(value or "").strip().lower().split())
 
     @staticmethod
     def _as_bool(value: Any) -> bool:
@@ -116,6 +162,10 @@ class ReminderFunctions:
                 return "Ping reminder"
 
         return "Untitled reminder"
+
+    @staticmethod
+    def _reminder_key_from_job(job: DailyJob) -> str:
+        return ReminderFunctions._reminder_key(ReminderFunctions.reminder_label(job))
 
     @staticmethod
     def _looks_like_mention_token(token: str) -> bool:
@@ -521,7 +571,10 @@ class ReminderFunctions:
         if not body and not (thumbnail_url or "").strip():
             message_lines.append(title)
 
-        payload: Dict[str, Any] = {"message": "\n".join(message_lines).strip()}
+        payload: Dict[str, Any] = {
+            "message": "\n".join(message_lines).strip(),
+            "reminder_key": ReminderFunctions._reminder_key(title),
+        }
 
         if body or (thumbnail_url or "").strip():
             embed_payload: Dict[str, Any] = {"title": title}
@@ -727,6 +780,75 @@ class ReminderFunctions:
                 continue
             reminders.append(job)
         reminders.sort(key=lambda job: str(job.id))
+        return reminders
+
+    @staticmethod
+    def autocomplete_reminders(
+        guild_id: Optional[int],
+        user_id: int,
+        query: str,
+        paused: Optional[bool] = None,
+        limit: int = 25,
+        candidate_limit: int = 200,
+    ) -> List[DailyJob]:
+        resolved_limit = max(1, min(limit, 25))
+        resolved_candidate_limit = max(resolved_limit, min(candidate_limit, 500))
+        normalized_query = ReminderFunctions._reminder_key(query)
+
+        mongo_query: Dict[str, Any] = {
+            "type": "message",
+            "data.source": "reminder",
+        }
+        if guild_id is None:
+            mongo_query["data.destination_type"] = "private"
+            mongo_query["data.user_id"] = user_id
+        else:
+            mongo_query["guild_id"] = guild_id
+
+        query_limit = resolved_candidate_limit
+        if normalized_query:
+            mongo_query["data.reminder_key"] = {
+                "$regex": f"^{re.escape(normalized_query)}"
+            }
+            query_limit = resolved_limit
+
+        cursor = (
+            mongo_db["tasks"]
+            .find(
+                mongo_query,
+                {
+                    "guild_id": 1,
+                    "channel_id": 1,
+                    "type": 1,
+                    "data": 1,
+                    "schedule": 1,
+                    "last_run": 1,
+                },
+            )
+            .sort("_id", -1)
+            .limit(query_limit)
+        )
+
+        reminders: List[DailyJob] = []
+        for doc in cursor:
+            job = DailyJob(
+                id=doc["_id"],
+                guild_id=doc.get("guild_id"),
+                channel_id=doc.get("channel_id"),
+                type=doc.get("type"),
+                data=dict(doc.get("data") or {}),
+                schedule=doc.get("schedule"),
+                last_run=doc.get("last_run"),
+            )
+            if guild_id is not None and ReminderFunctions.is_private_destination(job):
+                if ReminderFunctions.destination_user_id(job) != user_id:
+                    continue
+            if paused is not None and ReminderFunctions.is_paused(job) != paused:
+                continue
+            reminders.append(job)
+            if len(reminders) >= resolved_limit:
+                break
+
         return reminders
 
     @staticmethod
