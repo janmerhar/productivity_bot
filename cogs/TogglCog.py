@@ -100,6 +100,15 @@ class TogglCog(commands.Cog):
 
         await interaction.response.send_message(ephemeral=ephemeral, **payload)
 
+    @staticmethod
+    async def _defer_for_payload(
+        interaction: discord.Interaction,
+        ephemeral: bool,
+    ) -> None:
+        if interaction.response.is_done():
+            return
+        await interaction.response.defer(thinking=True, ephemeral=ephemeral)
+
     async def _execute_with_toggl_key(
         self,
         interaction: discord.Interaction,
@@ -112,6 +121,7 @@ class TogglCog(commands.Cog):
             followup_interaction: discord.Interaction,
             _api_key: str,
         ) -> None:
+            await self._defer_for_payload(followup_interaction, ephemeral)
             payload = await asyncio.to_thread(payload_builder)
             await self._send_payload(followup_interaction, payload, ephemeral)
 
@@ -123,6 +133,7 @@ class TogglCog(commands.Cog):
         if api_key is None:
             return
 
+        await self._defer_for_payload(interaction, ephemeral)
         payload = await asyncio.to_thread(payload_builder)
         await self._send_payload(interaction, payload, ephemeral)
 

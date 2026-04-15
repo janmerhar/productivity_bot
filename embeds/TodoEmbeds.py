@@ -60,7 +60,7 @@ class TodoListView(discord.ui.View):
 
             async def _callback(
                 interaction: discord.Interaction,
-                todo_name: str = str(todo.get("name") or "todo"),
+                todo_name: str = TodoFunctions.task_name_from_item(todo),
                 todo_object_id: str = todo_id,
             ) -> None:
                 await interaction.response.defer(ephemeral=True)
@@ -139,7 +139,6 @@ class TodoItemEditModal(discord.ui.Modal):
         self,
         parent_view: "TodoListItemsView",
         item: Dict[str, Any],
-        item_number: Any,
         source_message: Optional[discord.Message],
         source_interaction: Optional[discord.Interaction] = None,
         assignee_options: Optional[List[discord.SelectOption]] = None,
@@ -155,7 +154,6 @@ class TodoItemEditModal(discord.ui.Modal):
         super().__init__(title=modal_title)
         self.parent_view = parent_view
         self.item_id = str(item.get("_id") or "")
-        self.item_number = item_number
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.source_message = source_message
         self.source_interaction = source_interaction
@@ -164,22 +162,11 @@ class TodoItemEditModal(discord.ui.Modal):
         self.locale_code = DueDateService.normalize_locale_code(locale_code)
         self.timezone = timezone
 
-        current_task = str(item.get("name") or "").strip() or "Untitled"
-        current_text = TodoFunctions.item_text(item)
-        current_description = ""
-        if current_text:
-            prefix = f"{current_task}\n"
-            if current_text.startswith(prefix):
-                current_description = current_text[len(prefix) :].strip()
-            elif current_text.strip().lower() != current_task.lower():
-                current_description = current_text.strip()
-        if not current_description:
-            raw_description = str(item.get("description") or "").strip()
-            if raw_description and raw_description.lower() != current_task.lower():
-                current_description = raw_description
+        current_task = TodoFunctions.task_name_from_item(item) or "Untitled"
+        current_description = TodoFunctions.item_body(item)
 
         current_status = TodoFunctions.item_status(item)
-        due_value = item.get("due")
+        due_value = TodoFunctions.item_due(item)
         current_due = (
             ""
             if not due_value
@@ -198,8 +185,10 @@ class TodoItemEditModal(discord.ui.Modal):
             or TodoFunctions.display_list_name(parent_view.todo_list, "")
             or ""
         ).strip()
-        assignees = item.get("assignees") or []
-        current_assignee = f"<@{assignees[0]}>" if assignees else "none"
+        current_assignee_id = TodoFunctions.item_assignee_id(item)
+        current_assignee = (
+            f"<@{current_assignee_id}>" if current_assignee_id is not None else "none"
+        )
         self.assignee_select: Optional[discord.ui.Select] = None
         self.list_select: Optional[discord.ui.Select] = None
         self.assignee_select_label: Optional[discord.ui.Label] = None
@@ -825,6 +814,13 @@ class TodoListOptionsModal(discord.ui.Modal):
         self.list_select: Optional[discord.ui.Select] = None
         self.list_select_label: Optional[discord.ui.Label] = None
         self.list_input: Optional[discord.ui.TextInput] = None
+        self.search_input = discord.ui.TextInput(
+            label="Search",
+            placeholder="Task, description, list",
+            required=False,
+            default=parent_view.search_query,
+            max_length=100,
+        )
 
         self.sort_group = discord.ui.RadioGroup(
             custom_id="todo_list_options_sort",
@@ -879,6 +875,7 @@ class TodoListOptionsModal(discord.ui.Modal):
                 component=self.status_group,
             )
         )
+        self.add_item(self.search_input)
         if assignee_options:
             try:
                 self.assignee_select = discord.ui.Select(
@@ -947,6 +944,7 @@ class TodoListOptionsModal(discord.ui.Modal):
 
         sort_value = str(self.sort_group.value or "ascending")
         status_value = str(self.status_group.value or "all")
+        search_query = self.parent_view.normalize_search_query(self.search_input.value)
 
         if sort_value not in {"ascending", "descending"}:
             sort_value = "ascending"
@@ -1033,6 +1031,7 @@ class TodoListOptionsModal(discord.ui.Modal):
 
         self.parent_view.sort = sort_value
         self.parent_view.status_filter = status_value
+        self.parent_view.search_query = search_query
         self.parent_view.assignee_filter_unassigned = assignee_filter_unassigned
         self.parent_view.assignee_filter_ids = assignee_filter_ids
         self.parent_view.assignee_filter_id = (
@@ -1187,6 +1186,7 @@ class TodoListItemsView(discord.ui.View):
         self.user_id = user_id
         self.view_scope = view_scope
         self.guild_id = guild_id
+        self.search_query = ""
         self.assignee_filter_label = self._assignee_filter_summary_label()
         self.page_size = max(1, min(page_size, 5))
         self.total_pages = 1
@@ -1216,6 +1216,7 @@ class TodoListItemsView(discord.ui.View):
             status_counts=TodoEmbeds._status_counts(self.items),
             status_filter=self.status_filter,
             assignee_filter_label=self.assignee_filter_label,
+            search_filter_label=self.search_filter_label(),
         )
 
     async def _reload_items(self) -> None:
@@ -1252,9 +1253,22 @@ class TodoListItemsView(discord.ui.View):
         return (
             self.sort != "ascending"
             or self.status_filter != "all"
+            or bool(self.search_query)
             or self.assignee_filter_unassigned
             or bool(self.assignee_filter_ids)
         )
+
+    @staticmethod
+    def normalize_search_query(value: Optional[str]) -> str:
+        return str(value or "").strip()
+
+    def search_filter_label(self) -> str:
+        text = str(self.search_query or "").strip()
+        if not text:
+            return "All"
+        if len(text) <= 24:
+            return text
+        return f"{text[:21].rstrip()}..."
 
     def _assignee_filter_summary_label(self) -> str:
         if not self.assignee_filter_ids and not self.assignee_filter_unassigned:
@@ -1334,6 +1348,15 @@ class TodoListItemsView(discord.ui.View):
             "list_name": TodoFunctions.display_list_name(self.todo_list, "List"),
         }
 
+    @staticmethod
+    def _search_text(item: Dict[str, Any]) -> str:
+        parts = [
+            TodoFunctions.task_name_from_item(item),
+            TodoFunctions.item_text(item) or "",
+            str(item.get("list_name") or ""),
+        ]
+        return " ".join(str(part or "") for part in parts).lower()
+
     async def open_options_modal(
         self,
         interaction: discord.Interaction,
@@ -1411,7 +1434,7 @@ class TodoListItemsView(discord.ui.View):
 
         assignee_options = self._build_assignee_select_options(
             interaction,
-            {"assignees": []},
+            {"assignee_id": None},
         )
         scope_item = self._current_scope_item(interaction.user.id)
         list_options: List[discord.SelectOption] = []
@@ -1458,16 +1481,27 @@ class TodoListItemsView(discord.ui.View):
 
     def _apply_filters(self) -> None:
         filtered_items = list(self._all_items)
+        if self.search_query:
+            normalized_query = self.search_query.lower()
+            filtered_items = [
+                item
+                for item in filtered_items
+                if normalized_query in self._search_text(item)
+            ]
         if self.assignee_filter_ids or self.assignee_filter_unassigned:
             allowed_ids = set(self.assignee_filter_ids)
             filtered_items = [
                 item
                 for item in filtered_items
                 if (
-                    bool(allowed_ids.intersection(item.get("assignees") or []))
+                    bool(
+                        allowed_ids.intersection(
+                            TodoFunctions.item_assignee_ids(item)
+                        )
+                    )
                     or (
                         self.assignee_filter_unassigned
-                        and not (item.get("assignees") or [])
+                        and TodoFunctions.item_assignee_id(item) is None
                     )
                 )
             ]
@@ -1575,8 +1609,7 @@ class TodoListItemsView(discord.ui.View):
         interaction: discord.Interaction,
         item: Dict[str, Any],
     ) -> List[discord.SelectOption]:
-        assignees = item.get("assignees") or []
-        current_assignee_id = assignees[0] if assignees else None
+        current_assignee_id = TodoFunctions.item_assignee_id(item)
 
         options: List[discord.SelectOption] = []
         seen_values: set[str] = set()
@@ -2111,7 +2144,6 @@ class TodoAssignPickerView(discord.ui.View):
         super().__init__(timeout=180)
         self.todo_list = todo_list
         self.item_id = str(item.get("_id") or "")
-        self.item_number = item.get("item_no")
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.guild_id = item.get("guild_id")
         self.source_message = source_message
@@ -2146,8 +2178,7 @@ class TodoAssignPickerView(discord.ui.View):
         interaction: discord.Interaction,
         item: Dict[str, Any],
     ) -> List[discord.SelectOption]:
-        assignees = item.get("assignees") or []
-        current_assignee_id = assignees[0] if assignees else None
+        current_assignee_id = TodoFunctions.item_assignee_id(item)
 
         options: List[discord.SelectOption] = []
         seen_values: set[str] = set()
@@ -2413,7 +2444,6 @@ class TodoItemActionsView(discord.ui.View):
         super().__init__(timeout=900)
         self.todo_list = todo_list
         self.item_id = str(item.get("_id") or "")
-        self.item_number = item.get("item_no")
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.guild_id = item.get("guild_id")
 
@@ -2574,7 +2604,6 @@ class TodoItemActionsView(discord.ui.View):
         except Exception:
             list_options = []
 
-        modal_item_number = current_item.get("item_no") or self.item_number
         modal_locale = str(getattr(interaction, "locale", "") or "").strip()
         if not modal_locale:
             modal_locale = None
@@ -2591,7 +2620,6 @@ class TodoItemActionsView(discord.ui.View):
                     TodoItemEditModal(
                         parent_view=parent_view,
                         item=current_item,
-                        item_number=modal_item_number,
                         source_message=interaction.message,
                         source_interaction=interaction,
                         assignee_options=assignee_options,
@@ -2612,7 +2640,6 @@ class TodoItemActionsView(discord.ui.View):
             TodoItemEditModal(
                 parent_view=parent_view,
                 item=current_item,
-                item_number=modal_item_number,
                 source_message=interaction.message,
                 source_interaction=interaction,
                 refresh_source_as_item_embed=True,
@@ -3005,7 +3032,7 @@ class TodoEmbeds:
         todo: Dict[str, Any],
         todo_list: Optional[Dict[str, Any]] = None,
     ) -> dict:
-        user_id = todo.get("user_id")
+        user_id = todo.get("created_by_user_id") or todo.get("user_id")
         payload = TodoEmbeds.item_details_embed(
             todo_list or {"name": str(todo.get("list_name") or "List")},
             todo,
@@ -3041,9 +3068,9 @@ class TodoEmbeds:
         page_items = todos[start:end]
 
         for index, todo in enumerate(page_items, start=start + 1):
-            name = str(todo.get("name") or "Untitled")
-            description = todo.get("description")
-            due_raw = todo.get("due")
+            name = TodoFunctions.task_name_from_item(todo) or "Untitled"
+            description = TodoFunctions.item_body(todo)
+            due_raw = TodoFunctions.item_due(todo)
             lines = []
             if description:
                 lines.append(str(description))
@@ -3096,12 +3123,12 @@ class TodoEmbeds:
             items[: TodoEmbeds._MAX_LIST_ITEMS_PREVIEW], start=1
         ):
             number_emoji = TodoEmbeds._number_emoji(display_index)
-            item_name = str(item.get("name") or "Untitled")
+            item_name = TodoFunctions.task_name_from_item(item) or "Untitled"
             status = TodoFunctions.status_label(TodoFunctions.item_status(item))
             list_name = str(item.get("list_name") or "").strip()
             text = TodoFunctions.item_text(item) or ""
-            due_line = TodoEmbeds._due_line(item.get("due"))
-            assignees = item.get("assignees") or []
+            due_line = TodoEmbeds._due_line(TodoFunctions.item_due(item))
+            assignee_id = TodoFunctions.item_assignee_id(item)
             item_title = (
                 f"{number_emoji} {item_name} [{status}] | {list_name}"
                 if list_name
@@ -3113,9 +3140,8 @@ class TodoEmbeds:
                 value_lines.append(description_line)
             if due_line:
                 value_lines.append(due_line)
-            if assignees:
-                mentions = " ".join(f"<@{uid}>" for uid in assignees)
-                value_lines.append(f"👥 Assignees: {mentions}")
+            if assignee_id is not None:
+                value_lines.append(f"👤 Assignee: <@{assignee_id}>")
             if not value_lines:
                 value_lines.append("No details")
             embed.add_field(
@@ -3150,6 +3176,7 @@ class TodoEmbeds:
         status_counts: Optional[Dict[str, int]] = None,
         status_filter: str = "all",
         assignee_filter_label: str = "All",
+        search_filter_label: str = "All",
     ) -> dict:
         embed = discord.Embed(
             title=TodoEmbeds._list_title(todo_list),
@@ -3163,19 +3190,19 @@ class TodoEmbeds:
                 text=(
                     f"Page {page}/{total_pages} | Items: {total_items} | "
                     f"Sort: {sort} | Status: {status_label} | "
-                    f"Assignee: {assignee_filter_label}"
+                    f"Search: {search_filter_label} | Assignee: {assignee_filter_label}"
                 )
             )
             return {"embed": embed}
 
         for display_index, item in enumerate(items, start=1):
             number_emoji = TodoEmbeds._number_emoji(display_index)
-            item_name = str(item.get("name") or "Untitled")
+            item_name = TodoFunctions.task_name_from_item(item) or "Untitled"
             status = TodoFunctions.status_label(TodoFunctions.item_status(item))
             list_name = str(item.get("list_name") or "").strip()
             text = TodoFunctions.item_text(item) or ""
-            due_line = TodoEmbeds._due_line(item.get("due"))
-            assignees = item.get("assignees") or []
+            due_line = TodoEmbeds._due_line(TodoFunctions.item_due(item))
+            assignee_id = TodoFunctions.item_assignee_id(item)
             item_title = (
                 f"{number_emoji} {item_name} [{status}] | {list_name}"
                 if list_name
@@ -3187,9 +3214,8 @@ class TodoEmbeds:
                 value_lines.append(description_line)
             if due_line:
                 value_lines.append(due_line)
-            if assignees:
-                mentions = " ".join(f"<@{uid}>" for uid in assignees)
-                value_lines.append(f"👥 Assignees: {mentions}")
+            if assignee_id is not None:
+                value_lines.append(f"👤 Assignee: <@{assignee_id}>")
             if not value_lines:
                 value_lines.append("No details")
             embed.add_field(
@@ -3203,7 +3229,7 @@ class TodoEmbeds:
             text=(
                 f"Page {page}/{total_pages} | Items: {total_items} | "
                 f"Sort: {sort} | Status: {status_label} | "
-                f"Assignee: {assignee_filter_label}"
+                f"Search: {search_filter_label} | Assignee: {assignee_filter_label}"
             )
         )
         return {"embed": embed}
@@ -3319,9 +3345,9 @@ class TodoEmbeds:
         text = TodoFunctions.item_text(item) or "No text"
         task_name = TodoFunctions.task_name_from_item(item)
         status = TodoFunctions.status_label(TodoFunctions.item_status(item))
-        due_text = TodoEmbeds._due_relative(item.get("due")) or "Not set"
-        assignees = item.get("assignees") or []
-        mentions = " ".join(f"<@{uid}>" for uid in assignees) if assignees else "None"
+        due_text = TodoEmbeds._due_relative(TodoFunctions.item_due(item)) or "Not set"
+        assignee_id = TodoFunctions.item_assignee_id(item)
+        mention = f"<@{assignee_id}>" if assignee_id is not None else "None"
 
         embed = discord.Embed(
             title=f"{TodoFunctions.display_list_name(todo_list, 'List')} | {task_name}",
@@ -3330,7 +3356,7 @@ class TodoEmbeds:
         )
         embed.add_field(name="Status", value=status, inline=True)
         embed.add_field(name="Due", value=due_text, inline=True)
-        embed.add_field(name="Assignees", value=mentions, inline=False)
+        embed.add_field(name="Assignee", value=mention, inline=False)
 
         payload: Dict[str, Any] = {"embed": embed}
         if include_actions:

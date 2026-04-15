@@ -1,4 +1,6 @@
 import asyncio
+import time
+from collections import defaultdict
 from typing import Optional
 
 import discord
@@ -12,6 +14,7 @@ from classes.PriceAlertFunctions import (
     should_trigger,
 )
 from classes.StocksFunctions import StocksFunctions
+from config.env import env
 from embeds.CryptoEmbeds import CryptoEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
 from services.discord_helpers import resolve_alert_destination
@@ -20,6 +23,8 @@ from services.discord_helpers import resolve_alert_destination
 class AutomationCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self._alert_cleanup_interval_seconds = self._resolve_cleanup_interval_seconds()
+        self._next_cleanup_at: dict[str, float] = {}
         self._runner.start()
 
     @commands.Cog.listener()
@@ -36,17 +41,20 @@ class AutomationCog(commands.Cog):
         await self._run_crypto_alerts()
 
     async def _run_stock_alerts(self) -> None:
-        await asyncio.to_thread(delete_expired_alerts, "stock")
+        await self._cleanup_expired_alerts_if_due("stock")
         alerts = await asyncio.to_thread(
             fetch_active_alerts,
             "stock",
         )
 
+        grouped_alerts: dict[str, list[dict]] = defaultdict(list)
         for alert in alerts:
             symbol = str(alert.get("symbol", "")).strip().upper()
             if not symbol:
                 continue
+            grouped_alerts[symbol].append(alert)
 
+        for symbol, symbol_alerts in grouped_alerts.items():
             try:
                 quote = await asyncio.to_thread(StocksFunctions.fetch_price, symbol)
             except Exception:
@@ -56,56 +64,61 @@ class AutomationCog(commands.Cog):
             if current_price is None:
                 continue
 
-            if not should_trigger(alert, current_price):
-                continue
+            for alert in symbol_alerts:
+                if not should_trigger(alert, current_price):
+                    continue
 
-            destination = await resolve_alert_destination(
-                self.bot,
-                str(alert.get("destination_type") or "channel"),
-                alert.get("channel_id"),
-                alert.get("user_id"),
-            )
-            if destination is None:
-                continue
+                destination = await resolve_alert_destination(
+                    self.bot,
+                    str(alert.get("destination_type") or "channel"),
+                    alert.get("channel_id"),
+                    alert.get("user_id"),
+                )
+                if destination is None:
+                    continue
 
-            alert_currency = (
-                quote.get("currency") or alert.get("currency") or ""
-            ).upper()
-            current_label = (
-                f"{current_price:,.2f}{f' {alert_currency}' if alert_currency else ''}"
-            )
-            target_price = float(alert.get("target_price", 0))
-            target_label = (
-                f"{target_price:,.2f}{f' {alert_currency}' if alert_currency else ''}"
-            )
-            condition = alert.get("condition", "above")
-            destination_type = str(alert.get("destination_type") or "channel")
-            mention = ""
-            if destination_type == "channel" and alert.get("user_id"):
-                mention = f"<@{alert.get('user_id')}> "
-            embed = StocksEmbeds.stock_to_embed(quote)
-            message = (
-                f"{mention}stock alert: `{symbol}` is `{condition}` "
-                f"`{target_label}`. Current price: `{current_label}`."
-            )
+                alert_currency = (
+                    quote.get("currency") or alert.get("currency") or ""
+                ).upper()
+                current_label = (
+                    f"{current_price:,.2f}{f' {alert_currency}' if alert_currency else ''}"
+                )
+                target_price = float(alert.get("target_price", 0))
+                target_label = (
+                    f"{target_price:,.2f}{f' {alert_currency}' if alert_currency else ''}"
+                )
+                condition = alert.get("condition", "above")
+                destination_type = str(alert.get("destination_type") or "channel")
+                mention = ""
+                if destination_type == "channel" and alert.get("user_id"):
+                    mention = f"<@{alert.get('user_id')}> "
+                embed = StocksEmbeds.stock_to_embed(quote)
+                message = (
+                    f"{mention}stock alert: `{symbol}` is `{condition}` "
+                    f"`{target_label}`. Current price: `{current_label}`."
+                )
 
-            sent = await self._send_alert_message(
-                channel=destination,
-                content=message,
-                embed=embed,
-            )
-            if not sent:
-                continue
+                sent = await self._send_alert_message(
+                    channel=destination,
+                    content=message,
+                    embed=embed,
+                )
+                if not sent:
+                    continue
 
-            await self._close_alert(alert_id=alert["_id"], current_price=current_price)
+                await self._close_alert(
+                    alert_id=alert["_id"],
+                    current_price=current_price,
+                )
 
     async def _run_crypto_alerts(self) -> None:
-        await asyncio.to_thread(delete_expired_alerts, "crypto")
+        await self._cleanup_expired_alerts_if_due("crypto")
         alerts = await asyncio.to_thread(
             fetch_active_alerts,
             "crypto",
         )
 
+        grouped_alerts: dict[tuple[str, str], list[dict]] = defaultdict(list)
         for alert in alerts:
             coin_id = str(alert.get("symbol", "")).strip().lower()
             if not coin_id:
@@ -114,7 +127,9 @@ class AutomationCog(commands.Cog):
             currency = str(alert.get("currency") or "usd").strip().lower()
             if not currency:
                 currency = "usd"
+            grouped_alerts[(coin_id, currency)].append(alert)
 
+        for (coin_id, currency), coin_alerts in grouped_alerts.items():
             try:
                 results = await asyncio.to_thread(
                     CryptoFunctions.fetch_prices,
@@ -133,40 +148,68 @@ class AutomationCog(commands.Cog):
             if current_price is None:
                 continue
 
-            if not should_trigger(alert, current_price):
-                continue
+            for alert in coin_alerts:
+                if not should_trigger(alert, current_price):
+                    continue
 
-            destination = await resolve_alert_destination(
-                self.bot,
-                str(alert.get("destination_type") or "channel"),
-                alert.get("channel_id"),
-                alert.get("user_id"),
-            )
-            if destination is None:
-                continue
+                destination = await resolve_alert_destination(
+                    self.bot,
+                    str(alert.get("destination_type") or "channel"),
+                    alert.get("channel_id"),
+                    alert.get("user_id"),
+                )
+                if destination is None:
+                    continue
 
-            target_price = float(alert.get("target_price", 0))
-            condition = alert.get("condition", "above")
-            destination_type = str(alert.get("destination_type") or "channel")
-            mention = ""
-            if destination_type == "channel" and alert.get("user_id"):
-                mention = f"<@{alert.get('user_id')}> "
-            embed = CryptoEmbeds.coin_embed(coin, currency).get("embed")
-            message = (
-                f"{mention}crypto alert: `{coin.get('name') or coin_id}` "
-                f"is `{condition}` `{target_price:,.6f} {currency.upper()}`. "
-                f"Current price: `{current_price:,.6f} {currency.upper()}`."
-            )
+                target_price = float(alert.get("target_price", 0))
+                condition = alert.get("condition", "above")
+                destination_type = str(alert.get("destination_type") or "channel")
+                mention = ""
+                if destination_type == "channel" and alert.get("user_id"):
+                    mention = f"<@{alert.get('user_id')}> "
+                embed = CryptoEmbeds.coin_embed(coin, currency).get("embed")
+                message = (
+                    f"{mention}crypto alert: `{coin.get('name') or coin_id}` "
+                    f"is `{condition}` `{target_price:,.6f} {currency.upper()}`. "
+                    f"Current price: `{current_price:,.6f} {currency.upper()}`."
+                )
 
-            sent = await self._send_alert_message(
-                channel=destination,
-                content=message,
-                embed=embed,
-            )
-            if not sent:
-                continue
+                sent = await self._send_alert_message(
+                    channel=destination,
+                    content=message,
+                    embed=embed,
+                )
+                if not sent:
+                    continue
 
-            await self._close_alert(alert_id=alert["_id"], current_price=current_price)
+                await self._close_alert(
+                    alert_id=alert["_id"],
+                    current_price=current_price,
+                )
+
+    @staticmethod
+    def _resolve_cleanup_interval_seconds() -> int:
+        raw_minutes = env.get("ALERT_EXPIRY_CLEANUP_MINUTES")
+        if raw_minutes is None:
+            return 15 * 60
+
+        try:
+            minutes = max(1, int(str(raw_minutes).strip()))
+        except ValueError:
+            return 15 * 60
+
+        return minutes * 60
+
+    async def _cleanup_expired_alerts_if_due(self, asset_type: str) -> None:
+        now = time.monotonic()
+        next_cleanup_at = self._next_cleanup_at.get(asset_type, 0.0)
+        if now < next_cleanup_at:
+            return
+
+        self._next_cleanup_at[asset_type] = (
+            now + self._alert_cleanup_interval_seconds
+        )
+        await asyncio.to_thread(delete_expired_alerts, asset_type)
 
     async def _send_alert_message(
         self,

@@ -8,6 +8,7 @@ import dateparser
 from classes.DailyJob import CronSchedule, DailyJob, OneTimeSchedule2, ScheduleConfig
 from classes.DailyJobManager import DailyJobManager
 from classes.OpenAIFunctions import OpenAIFunctions
+from config.db import mongo_db
 from services.cron_schedule import (
     CronConversionError,
     is_valid_cron_expression,
@@ -15,6 +16,47 @@ from services.cron_schedule import (
 )
 from services.error_reporting import UserVisibleError, ValidationError
 from services.schedule_time import schedule_timezone_name
+
+
+def _ensure_reminder_indexes() -> None:
+    mongo_db["tasks"].create_index(
+        [("type", 1), ("guild_id", 1), ("data.source", 1), ("_id", -1)],
+        name="tasks_reminder_guild_recent",
+    )
+    mongo_db["tasks"].create_index(
+        [
+            ("type", 1),
+            ("guild_id", 1),
+            ("data.source", 1),
+            ("data.reminder_key", 1),
+            ("_id", -1),
+        ],
+        name="tasks_reminder_guild_autocomplete",
+    )
+    mongo_db["tasks"].create_index(
+        [
+            ("type", 1),
+            ("data.source", 1),
+            ("data.destination_type", 1),
+            ("data.user_id", 1),
+            ("_id", -1),
+        ],
+        name="tasks_reminder_private_recent",
+    )
+    mongo_db["tasks"].create_index(
+        [
+            ("type", 1),
+            ("data.source", 1),
+            ("data.destination_type", 1),
+            ("data.user_id", 1),
+            ("data.reminder_key", 1),
+            ("_id", -1),
+        ],
+        name="tasks_reminder_private_autocomplete",
+    )
+
+
+_ensure_reminder_indexes()
 
 
 class ReminderFunctions:
@@ -26,6 +68,10 @@ class ReminderFunctions:
         if len(cleaned) <= limit:
             return cleaned
         return f"{cleaned[: limit - 3]}..."
+
+    @staticmethod
+    def _reminder_key(value: str) -> str:
+        return " ".join(str(value or "").strip().lower().split())
 
     @staticmethod
     def _as_bool(value: Any) -> bool:
@@ -66,7 +112,30 @@ class ReminderFunctions:
     def is_paused(job: Optional[DailyJob]) -> bool:
         if job is None:
             return False
-        return ReminderFunctions._as_bool((job.data or {}).get("paused"))
+        data = job.data or {}
+        if not ReminderFunctions._as_bool(data.get("paused")):
+            return False
+
+        pause_until = ReminderFunctions.pause_until_for_job(job)
+        if pause_until is None:
+            return True
+
+        now = datetime.datetime.now().replace(second=0, microsecond=0)
+        return pause_until.replace(second=0, microsecond=0) > now
+
+    @staticmethod
+    def pause_until_for_job(job: Optional[DailyJob]) -> Optional[datetime.datetime]:
+        if job is None:
+            return None
+
+        raw_value = str((job.data or {}).get("pause_until") or "").strip()
+        if not raw_value:
+            return None
+
+        try:
+            return datetime.datetime.fromisoformat(raw_value)
+        except ValueError:
+            return None
 
     @staticmethod
     def reminder_label(job: DailyJob) -> str:
@@ -93,6 +162,10 @@ class ReminderFunctions:
                 return "Ping reminder"
 
         return "Untitled reminder"
+
+    @staticmethod
+    def _reminder_key_from_job(job: DailyJob) -> str:
+        return ReminderFunctions._reminder_key(ReminderFunctions.reminder_label(job))
 
     @staticmethod
     def _looks_like_mention_token(token: str) -> bool:
@@ -159,6 +232,16 @@ class ReminderFunctions:
     @staticmethod
     def expiration_input_for_job(job: DailyJob) -> str:
         raw_value = str((job.data or {}).get("expires_at") or "").strip()
+        if not raw_value:
+            return ""
+        try:
+            return datetime.datetime.fromisoformat(raw_value).strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            return raw_value
+
+    @staticmethod
+    def pause_until_input_for_job(job: DailyJob) -> str:
+        raw_value = str((job.data or {}).get("pause_until") or "").strip()
         if not raw_value:
             return ""
         try:
@@ -279,12 +362,15 @@ class ReminderFunctions:
     def needs_timezone(
         schedule: str,
         expires: Optional[str] = None,
+        until: Optional[str] = None,
     ) -> bool:
         raw_schedule = schedule.strip()
         raw_expires = (expires or "").strip()
+        raw_until = (until or "").strip()
         return (
             not is_valid_cron_expression(raw_schedule)
             or bool(raw_expires)
+            or bool(raw_until)
         )
 
     @staticmethod
@@ -391,6 +477,36 @@ class ReminderFunctions:
         return expires_at
 
     @staticmethod
+    def _parse_pause_until(
+        until: Optional[str],
+        timezone: Optional[str],
+        ephemeral: bool,
+    ) -> Optional[datetime.datetime]:
+        raw_until = (until or "").strip()
+        if not raw_until:
+            return None
+
+        pause_until = ReminderFunctions._parse_datetime_string(
+            raw_until,
+            timezone=timezone,
+        )
+        if pause_until is None:
+            raise ValidationError(
+                "I couldn't understand `until`.",
+                hint="Try `tomorrow 9am` or a specific date/time.",
+                ephemeral=ephemeral,
+            )
+
+        now = datetime.datetime.now().replace(second=0, microsecond=0)
+        if pause_until <= now:
+            raise ValidationError(
+                "`until` needs to be in the future.",
+                ephemeral=ephemeral,
+            )
+
+        return pause_until
+
+    @staticmethod
     def _ai_resolve_schedule(
         raw_schedule: str,
         timezone: Optional[str],
@@ -455,7 +571,10 @@ class ReminderFunctions:
         if not body and not (thumbnail_url or "").strip():
             message_lines.append(title)
 
-        payload: Dict[str, Any] = {"message": "\n".join(message_lines).strip()}
+        payload: Dict[str, Any] = {
+            "message": "\n".join(message_lines).strip(),
+            "reminder_key": ReminderFunctions._reminder_key(title),
+        }
 
         if body or (thumbnail_url or "").strip():
             embed_payload: Dict[str, Any] = {"title": title}
@@ -664,6 +783,75 @@ class ReminderFunctions:
         return reminders
 
     @staticmethod
+    def autocomplete_reminders(
+        guild_id: Optional[int],
+        user_id: int,
+        query: str,
+        paused: Optional[bool] = None,
+        limit: int = 25,
+        candidate_limit: int = 200,
+    ) -> List[DailyJob]:
+        resolved_limit = max(1, min(limit, 25))
+        resolved_candidate_limit = max(resolved_limit, min(candidate_limit, 500))
+        normalized_query = ReminderFunctions._reminder_key(query)
+
+        mongo_query: Dict[str, Any] = {
+            "type": "message",
+            "data.source": "reminder",
+        }
+        if guild_id is None:
+            mongo_query["data.destination_type"] = "private"
+            mongo_query["data.user_id"] = user_id
+        else:
+            mongo_query["guild_id"] = guild_id
+
+        query_limit = resolved_candidate_limit
+        if normalized_query:
+            mongo_query["data.reminder_key"] = {
+                "$regex": f"^{re.escape(normalized_query)}"
+            }
+            query_limit = resolved_limit
+
+        cursor = (
+            mongo_db["tasks"]
+            .find(
+                mongo_query,
+                {
+                    "guild_id": 1,
+                    "channel_id": 1,
+                    "type": 1,
+                    "data": 1,
+                    "schedule": 1,
+                    "last_run": 1,
+                },
+            )
+            .sort("_id", -1)
+            .limit(query_limit)
+        )
+
+        reminders: List[DailyJob] = []
+        for doc in cursor:
+            job = DailyJob(
+                id=doc["_id"],
+                guild_id=doc.get("guild_id"),
+                channel_id=doc.get("channel_id"),
+                type=doc.get("type"),
+                data=dict(doc.get("data") or {}),
+                schedule=doc.get("schedule"),
+                last_run=doc.get("last_run"),
+            )
+            if guild_id is not None and ReminderFunctions.is_private_destination(job):
+                if ReminderFunctions.destination_user_id(job) != user_id:
+                    continue
+            if paused is not None and ReminderFunctions.is_paused(job) != paused:
+                continue
+            reminders.append(job)
+            if len(reminders) >= resolved_limit:
+                break
+
+        return reminders
+
+    @staticmethod
     def pause_all_reminders(guild_id: Optional[int]) -> int:
         manager = DailyJobManager()
         reminders = ReminderFunctions.list_reminders(guild_id, paused=False)
@@ -672,6 +860,7 @@ class ReminderFunctions:
         for job in reminders:
             data = dict(job.data or {})
             data["paused"] = True
+            data.pop("pause_until", None)
             data["source"] = "reminder"
             updated = manager.update_job(
                 str(job.id),
@@ -687,6 +876,9 @@ class ReminderFunctions:
     def pause_reminder(
         reminder_id: str,
         guild_id: Optional[int],
+        until: Optional[str] = None,
+        timezone: Optional[str] = None,
+        ephemeral: bool = True,
     ) -> str:
         manager = DailyJobManager()
         normalized_id = reminder_id.strip()
@@ -701,10 +893,30 @@ class ReminderFunctions:
             raise ValidationError("That ID belongs to a scheduled job, not a reminder.")
 
         data = dict(job.data or {})
-        if ReminderFunctions._as_bool(data.get("paused")):
+        pause_until = ReminderFunctions._parse_pause_until(
+            until,
+            timezone,
+            ephemeral,
+        )
+        existing_pause_until = ReminderFunctions.pause_until_for_job(job)
+        pause_state_changed = not ReminderFunctions.is_paused(job)
+        pause_until_changed = (
+            pause_until is not None
+            and (
+                existing_pause_until is None
+                or existing_pause_until.replace(second=0, microsecond=0)
+                != pause_until.replace(second=0, microsecond=0)
+            )
+        )
+
+        if not pause_state_changed and not pause_until_changed:
             return "already_paused"
 
         data["paused"] = True
+        if pause_until is not None:
+            data["pause_until"] = pause_until.isoformat()
+        elif not ReminderFunctions.is_paused(job):
+            data.pop("pause_until", None)
         data["source"] = "reminder"
 
         updated = manager.update_job(
@@ -732,10 +944,12 @@ class ReminderFunctions:
             raise ValidationError("That ID belongs to a scheduled job, not a reminder.")
 
         data = dict(job.data or {})
-        if not ReminderFunctions._as_bool(data.get("paused")):
+        had_pause_until = bool(str(data.get("pause_until") or "").strip())
+        if not ReminderFunctions.is_paused(job) and not had_pause_until:
             return "already_resumed"
 
         data["paused"] = False
+        data.pop("pause_until", None)
         data["source"] = "reminder"
 
         updated = manager.update_job(
@@ -754,6 +968,7 @@ class ReminderFunctions:
         for job in reminders:
             data = dict(job.data or {})
             data["paused"] = False
+            data.pop("pause_until", None)
             data["source"] = "reminder"
             updated = manager.update_job(
                 str(job.id),

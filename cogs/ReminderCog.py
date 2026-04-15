@@ -1,5 +1,5 @@
 import asyncio
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import discord
 from discord import app_commands
@@ -173,7 +173,8 @@ class ReminderCog(commands.Cog):
         interaction: discord.Interaction,
         *,
         paused: bool,
-        action_fn: Callable[[str, Optional[int]], str],
+        action_fn: Callable[..., str],
+        action_kwargs: Optional[Dict[str, Any]] = None,
         success_result: str,
         empty_message: str,
         success_message: str,
@@ -196,6 +197,7 @@ class ReminderCog(commands.Cog):
                 action_fn,
                 str(job.id),
                 interaction.guild_id,
+                **(action_kwargs or {}),
             )
             if result == success_result:
                 changed_count += 1
@@ -218,7 +220,8 @@ class ReminderCog(commands.Cog):
         interaction: discord.Interaction,
         *,
         reminder: str,
-        action_fn: Callable[[str, Optional[int]], str],
+        action_fn: Callable[..., str],
+        action_kwargs: Optional[Dict[str, Any]] = None,
         already_result: str,
         success_message: str,
         already_message: str,
@@ -234,6 +237,7 @@ class ReminderCog(commands.Cog):
             action_fn,
             reminder,
             interaction.guild_id,
+            **(action_kwargs or {}),
         )
 
         if result == "missing":
@@ -266,7 +270,8 @@ class ReminderCog(commands.Cog):
         *,
         reminder: str,
         list_paused: bool,
-        action_fn: Callable[[str, Optional[int]], str],
+        action_fn: Callable[..., str],
+        action_kwargs: Optional[Dict[str, Any]] = None,
         success_result: str,
         already_result: str,
         success_message: str,
@@ -281,6 +286,7 @@ class ReminderCog(commands.Cog):
                 interaction,
                 paused=list_paused,
                 action_fn=action_fn,
+                action_kwargs=action_kwargs,
                 success_result=success_result,
                 empty_message=empty_bulk_message,
                 success_message=bulk_success_message,
@@ -292,10 +298,43 @@ class ReminderCog(commands.Cog):
             interaction,
             reminder=reminder,
             action_fn=action_fn,
+            action_kwargs=action_kwargs,
             already_result=already_result,
             success_message=success_message,
             already_message=already_message,
             missing_message=missing_message,
+            ephemeral=ephemeral,
+        )
+
+    async def _pause_reminder_from_options(
+        self,
+        interaction: discord.Interaction,
+        *,
+        reminder: str,
+        until: Optional[str],
+        ephemeral: bool,
+        timezone: Optional[str],
+    ) -> None:
+        action_kwargs: Dict[str, Any] = {}
+        until_value = (until or "").strip()
+        if until_value:
+            action_kwargs["until"] = until_value
+            action_kwargs["timezone"] = timezone
+            action_kwargs["ephemeral"] = ephemeral
+
+        await self._apply_reminder_action(
+            interaction,
+            reminder=reminder.strip(),
+            list_paused=False,
+            action_fn=ReminderFunctions.pause_reminder,
+            action_kwargs=action_kwargs,
+            success_result="paused",
+            already_result="already_paused",
+            success_message="Paused reminder `{reminder}`.",
+            already_message="Reminder `{reminder}` is already paused.",
+            empty_bulk_message="No active reminders found that you can pause.",
+            bulk_success_message="Paused",
+            missing_message="No reminder found with that ID in this server.",
             ephemeral=ephemeral,
         )
 
@@ -441,7 +480,7 @@ class ReminderCog(commands.Cog):
         description="View reminders.",
     )
     @app_commands.describe(
-        channel="Which channel or private destination to show",
+        destination="Which destination to show",
         sort="Sort order for reminders",
         status="Filter reminders by status",
         visibility=VISIBILITY_DESC,
@@ -454,7 +493,7 @@ class ReminderCog(commands.Cog):
     async def reminder_list(
         self,
         interaction: discord.Interaction,
-        channel: Optional[str] = None,
+        destination: Optional[str] = None,
         sort: Optional[app_commands.Choice[str]] = None,
         status: Optional[app_commands.Choice[str]] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
@@ -466,7 +505,7 @@ class ReminderCog(commands.Cog):
             scope_label,
         ) = self._resolve_reminder_list_target(
             interaction,
-            channel,
+            destination,
         )
         ephemeral = resolve_ephemeral_from_scope(
             interaction.guild_id,
@@ -644,6 +683,7 @@ class ReminderCog(commands.Cog):
     )
     @app_commands.describe(
         reminder="Reminder ID",
+        until="Optional: resume automatically at this time",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -651,23 +691,42 @@ class ReminderCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         reminder: str,
+        until: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         ephemeral = resolve_visibility(visibility, default="public")
+        until_value = (until or "").strip() or None
+
+        async def _continue_with_timezone(
+            followup_interaction: discord.Interaction,
+            resolved_timezone: str,
+        ) -> None:
+            await self._pause_reminder_from_options(
+                followup_interaction,
+                reminder=reminder,
+                until=until_value,
+                ephemeral=ephemeral,
+                timezone=resolved_timezone,
+            )
+
+        timezone = None
+        if until_value:
+            timezone = await ensure_user_timezone(
+                interaction,
+                _continue_with_timezone,
+                continue_message="Timezone saved as `{timezone}`. Continuing `/reminder pause`.",
+                response_ephemeral=ephemeral,
+            )
+            if timezone is None:
+                return
+
         await interaction.response.defer(ephemeral=ephemeral)
-        await self._apply_reminder_action(
+        await self._pause_reminder_from_options(
             interaction,
-            reminder=reminder.strip(),
-            list_paused=False,
-            action_fn=ReminderFunctions.pause_reminder,
-            success_result="paused",
-            already_result="already_paused",
-            success_message="Paused reminder `{reminder}`.",
-            already_message="Reminder `{reminder}` is already paused.",
-            empty_bulk_message="No active reminders found that you can pause.",
-            bulk_success_message="Paused",
-            missing_message="No reminder found with that ID in this server.",
+            reminder=reminder,
+            until=until_value,
             ephemeral=ephemeral,
+            timezone=timezone,
         )
 
     @reminder_group.command(
@@ -794,9 +853,9 @@ class ReminderCog(commands.Cog):
     def _resolve_reminder_list_target(
         self,
         interaction: discord.Interaction,
-        channel: Optional[str],
+        destination: Optional[str],
     ) -> tuple[str, Optional[int], str, str]:
-        target_value = (channel or "").strip()
+        target_value = (destination or "").strip()
         if not target_value:
             target_value = "channel" if interaction.guild is not None else "private"
 
@@ -813,7 +872,7 @@ class ReminderCog(commands.Cog):
                 channel_id = int(target_value.split(":", 1)[1])
             except (ValueError, IndexError):
                 raise ValidationError(
-                    "Please select a valid channel from autocomplete.",
+                    "Please select a valid destination from autocomplete.",
                     ephemeral=True,
                 )
             selected_channel = interaction.guild.get_channel(channel_id)
@@ -842,7 +901,7 @@ class ReminderCog(commands.Cog):
 
         if target_value != "channel":
             raise ValidationError(
-                "Please select a valid list from autocomplete.",
+                "Please select a valid destination from autocomplete.",
                 ephemeral=True,
             )
 
@@ -885,12 +944,21 @@ class ReminderCog(commands.Cog):
                 options.append(all_choice)
 
         try:
-            reminders = await self._list_visible_reminders(
-                interaction,
+            reminders = await asyncio.to_thread(
+                ReminderFunctions.autocomplete_reminders,
+                interaction.guild_id if interaction.guild_id is not None else None,
+                interaction.user.id,
+                current,
                 paused=paused,
+                limit=25,
+                candidate_limit=200,
             )
         except UserVisibleError:
             return []
+        except Exception:
+            return []
+
+        reminders = self._filter_visible_reminders(interaction, reminders)
 
         for job in reminders:
             if len(options) >= 25:
@@ -919,7 +987,7 @@ class ReminderCog(commands.Cog):
     ) -> List[app_commands.Choice[str]]:
         return reminder_destination_autocomplete(interaction, current)
 
-    @reminder_list.autocomplete("channel")
+    @reminder_list.autocomplete("destination")
     async def reminder_list_target_autocomplete(
         self,
         interaction: discord.Interaction,

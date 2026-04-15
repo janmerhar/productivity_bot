@@ -30,7 +30,24 @@ ScheduleConfig = Union[OneTimeSchedule2, CronSchedule]
 
 class DailyJob:
     @staticmethod
-    def _is_paused(data: Optional[Mapping[str, Any]]) -> bool:
+    def _parse_data_datetime(
+        data: Optional[Mapping[str, Any]],
+        key: str,
+    ) -> Optional[datetime.datetime]:
+        raw_value = str((data or {}).get(key) or "").strip()
+        if not raw_value:
+            return None
+
+        try:
+            return datetime.datetime.fromisoformat(raw_value)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _is_paused(
+        data: Optional[Mapping[str, Any]],
+        check_datetime: Optional[datetime.datetime] = None,
+    ) -> bool:
         paused_value = (data or {}).get("paused")
         if isinstance(paused_value, str):
             paused_value = paused_value.strip().lower() in (
@@ -39,18 +56,22 @@ class DailyJob:
                 "yes",
                 "on",
             )
-        return bool(paused_value)
+        if not bool(paused_value):
+            return False
+
+        pause_until = DailyJob._parse_data_datetime(data, "pause_until")
+        if pause_until is None:
+            return True
+
+        pause_check = (check_datetime or datetime.datetime.now()).replace(
+            second=0,
+            microsecond=0,
+        )
+        return pause_until.replace(second=0, microsecond=0) > pause_check
 
     @staticmethod
     def _parse_expiration(data: Optional[Mapping[str, Any]]) -> Optional[datetime.datetime]:
-        raw_value = str((data or {}).get("expires_at") or "").strip()
-        if not raw_value:
-            return None
-
-        try:
-            return datetime.datetime.fromisoformat(raw_value)
-        except ValueError:
-            return None
+        return DailyJob._parse_data_datetime(data, "expires_at")
 
     def __init__(
         self,
@@ -189,7 +210,7 @@ class DailyJob:
             ):
                 return False
 
-        if self._is_paused(self.data):
+        if self._is_paused(self.data, check_datetime):
             return False
 
         schedule = self.schedule

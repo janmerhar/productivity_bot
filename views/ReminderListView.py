@@ -68,6 +68,13 @@ class ReminderListOptionsModal(discord.ui.Modal):
                 ),
             ],
         )
+        self.search_input = discord.ui.TextInput(
+            label="Search",
+            placeholder="Name, description, schedule, ID",
+            required=False,
+            default=parent_view.search_query,
+            max_length=100,
+        )
         self.ping_user_select = discord.ui.UserSelect(
             custom_id="reminder_list_options_ping_user",
             placeholder="Leave empty for all reminders",
@@ -76,8 +83,8 @@ class ReminderListOptionsModal(discord.ui.Modal):
             required=False,
             default_values=default_users,
         )
-        self.channel_select = discord.ui.Select(
-            placeholder="Which channel or private destination to show",
+        self.destination_select = discord.ui.Select(
+            placeholder="Which destination to show",
             min_values=1,
             max_values=1,
             options=parent_view._build_target_select_options(interaction)[:25],
@@ -95,6 +102,7 @@ class ReminderListOptionsModal(discord.ui.Modal):
                 component=self.status_group,
             )
         )
+        self.add_item(self.search_input)
         self.add_item(
             discord.ui.Label(
                 text="Ping Users",
@@ -104,8 +112,8 @@ class ReminderListOptionsModal(discord.ui.Modal):
         )
         self.add_item(
             discord.ui.Label(
-                text="Channel",
-                component=self.channel_select,
+                text="Destination",
+                component=self.destination_select,
             )
         )
 
@@ -114,7 +122,8 @@ class ReminderListOptionsModal(discord.ui.Modal):
 
         sort_value = str(self.sort_group.value or "ascending")
         status_value = str(self.status_group.value or "all")
-        target_value = str(self.channel_select.values[0] or "").strip()
+        search_query = self.parent_view.normalize_search_query(self.search_input.value)
+        target_value = str(self.destination_select.values[0] or "").strip()
         if sort_value not in {"ascending", "descending"}:
             sort_value = "ascending"
         if status_value not in {"all", "active", "paused"}:
@@ -151,6 +160,7 @@ class ReminderListOptionsModal(discord.ui.Modal):
 
             self.parent_view.sort = sort_value
             self.parent_view.status_filter = status_value
+            self.parent_view.search_query = search_query
             self.parent_view.ping_filter_user_ids = ping_filter_user_ids
             self.parent_view.ping_filter_label = ping_filter_label
             self.parent_view._apply_target_value(interaction, target_value)
@@ -235,6 +245,7 @@ class ReminderListView(discord.ui.View):
         self.channel_id = channel_id
         self.destination_type = destination_type
         self.user_id = user_id
+        self.search_query = ""
         self.ping_filter_user_ids: List[int] = []
         self.ping_filter_label = "All"
         self.sort = sort if sort in {"ascending", "descending"} else "ascending"
@@ -308,8 +319,39 @@ class ReminderListView(discord.ui.View):
             return True
         return None
 
+    @staticmethod
+    def normalize_search_query(value: Optional[str]) -> str:
+        return str(value or "").strip()
+
+    @staticmethod
+    def format_search_filter_label(value: Optional[str]) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return "All"
+        if len(text) <= 24:
+            return text
+        return f"{text[:21].rstrip()}..."
+
+    @staticmethod
+    def _search_text(job: DailyJob) -> str:
+        parts = [
+            ReminderFunctions.reminder_label(job),
+            ReminderListView._detail_text(job) or "",
+            ReminderListView._schedule_label(job),
+            ReminderListView._destination_label(job),
+            str(job.id),
+        ]
+        return " ".join(str(part or "") for part in parts).lower()
+
     def _apply_filters(self) -> None:
         filtered_reminders = list(self._all_reminders)
+        if self.search_query:
+            normalized_query = self.search_query.lower()
+            filtered_reminders = [
+                reminder
+                for reminder in filtered_reminders
+                if normalized_query in self._search_text(reminder)
+            ]
         if self.ping_filter_user_ids:
             filtered_reminders = [
                 reminder
@@ -491,6 +533,17 @@ class ReminderListView(discord.ui.View):
         return ReminderListView._datetime_label(raw_value)
 
     @staticmethod
+    def _pause_until_label(job: DailyJob) -> Optional[str]:
+        if not ReminderFunctions.is_paused(job):
+            return None
+
+        pause_until = ReminderFunctions.pause_until_for_job(job)
+        if pause_until is None:
+            return None
+
+        return ReminderListView._datetime_label(pause_until.isoformat())
+
+    @staticmethod
     def _detail_text(job: DailyJob) -> Optional[str]:
         values = ReminderFunctions.reminder_edit_values(job)
         detail = str(values.get("description") or "").strip()
@@ -504,6 +557,7 @@ class ReminderListView(discord.ui.View):
             color=discord.Colour.blurple(),
         )
         status_label = self._status_filter_label(self.status_filter)
+        search_label = self.format_search_filter_label(self.search_query)
         ping_label = str(self.ping_filter_label or "All").strip() or "All"
 
         page_items = self._page_slice()
@@ -512,8 +566,8 @@ class ReminderListView(discord.ui.View):
             embed.set_footer(
                 text=(
                     f"Page {self.page}/{self.total_pages} | Items: {len(self.reminders)} | "
-                    f"Sort: {self.sort.title()} | Scope: {self.scope_label} | "
-                    f"Status: {status_label} | Ping: {ping_label}"
+                    f"Sort: {self.sort.title()} | Destination: {self.scope_label} | "
+                    f"Status: {status_label} | Search: {search_label} | Ping: {ping_label}"
                 )
             )
             return embed
@@ -528,6 +582,9 @@ class ReminderListView(discord.ui.View):
             expires_label = self._expires_label(job)
             if expires_label:
                 value_lines.append(f"Expires: {expires_label}")
+            pause_until_label = self._pause_until_label(job)
+            if pause_until_label:
+                value_lines.append(f"Paused until: {pause_until_label}")
             detail_text = self._detail_text(job)
             if detail_text and detail_text.lower() != label.lower():
                 value_lines.insert(0, detail_text)
@@ -540,8 +597,8 @@ class ReminderListView(discord.ui.View):
         embed.set_footer(
             text=(
                 f"Page {self.page}/{self.total_pages} | Items: {len(self.reminders)} | "
-                f"Sort: {self.sort.title()} | Scope: {self.scope_label} | "
-                f"Status: {status_label} | Ping: {ping_label}"
+                f"Sort: {self.sort.title()} | Destination: {self.scope_label} | "
+                f"Status: {status_label} | Search: {search_label} | Ping: {ping_label}"
             )
         )
         return embed
@@ -559,6 +616,7 @@ class ReminderListView(discord.ui.View):
         return (
             self.status_filter != "all"
             or self.sort != "ascending"
+            or bool(self.search_query)
             or bool(self.ping_filter_user_ids)
             or self.target_value != self._default_target_value(self.guild_id)
         )
