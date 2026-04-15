@@ -1,16 +1,101 @@
 import logging
 import logging.handlers
+from pathlib import Path
+
+from config.env import env
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+APP_LOGGER_PREFIXES = (
+    "__main__",
+    "main",
+    "abstract",
+    "classes",
+    "cogs",
+    "cli_args",
+    "config",
+    "embeds",
+    "services",
+    "views",
+)
+DEFAULT_APP_LOG_FILE = "discord.log"
+DEFAULT_DEPENDENCY_LOG_FILE = "discord.deps.log"
+DEFAULT_APP_LOG_LEVEL = "INFO"
+DEFAULT_LIBRARY_LOG_LEVEL = "WARNING"
+DEFAULT_CONSOLE_LOG_LEVEL = "INFO"
+DEFAULT_LOG_MAX_BYTES = 32 * 1024 * 1024
+DEFAULT_LOG_BACKUP_COUNT = 5
+
+
+def _parse_log_level(name: str, default: str) -> int:
+    raw_value = str(env.get(name, default) or default).strip().upper()
+    parsed_level = logging._nameToLevel.get(raw_value)
+    if parsed_level is not None:
+        return parsed_level
+    return logging._nameToLevel.get(default.upper(), logging.INFO)
+
+
+def _parse_int_env(name: str, default: int) -> int:
+    raw_value = env.get(name)
+    if raw_value is None:
+        return default
+
+    try:
+        return max(1, int(str(raw_value).strip()))
+    except ValueError:
+        return default
+
+
+def _is_project_path(pathname: str) -> bool:
+    if not pathname:
+        return False
+
+    try:
+        resolved_path = Path(pathname).resolve()
+    except (OSError, RuntimeError):
+        return False
+
+    try:
+        relative_path = resolved_path.relative_to(PROJECT_ROOT)
+    except ValueError:
+        return False
+
+    return ".venv" not in relative_path.parts
+
+
+def _is_app_record(record: logging.LogRecord) -> bool:
+    if _is_project_path(getattr(record, "pathname", "")):
+        return True
+
+    logger_name = getattr(record, "name", "") or ""
+    return any(
+        logger_name == prefix or logger_name.startswith(f"{prefix}.")
+        for prefix in APP_LOGGER_PREFIXES
+    )
+
+
+def _record_source(record: logging.LogRecord) -> str:
+    if _is_app_record(record):
+        return "BOT"
+    if record.name == "discord" or record.name.startswith("discord."):
+        return "DISCORD"
+    return "LIB"
+
+
+class AppOnlyFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return _is_app_record(record)
+
+
+class DependencyOnlyFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not _is_app_record(record)
 
 
 class SourceFilter(logging.Filter):
     """Adds a `source` attribute so formatters can highlight library logs."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.source = (
-            "DISCORD"
-            if record.name == "discord" or record.name.startswith("discord.")
-            else "BOT"
-        )
+        record.source = _record_source(record)
         return True
 
 
@@ -37,27 +122,58 @@ class ColourFormatter(logging.Formatter):
 def setup_logging() -> None:
     dt_fmt = "%Y-%m-%d %H:%M:%S"
     fmt = "[{asctime}] [{levelname:<8}] [{source:<7}] {name}: {message}"
+    app_log_level = _parse_log_level("APP_LOG_LEVEL", DEFAULT_APP_LOG_LEVEL)
+    library_log_level = _parse_log_level(
+        "LIB_LOG_LEVEL",
+        DEFAULT_LIBRARY_LOG_LEVEL,
+    )
+    console_log_level = _parse_log_level(
+        "CONSOLE_LOG_LEVEL",
+        DEFAULT_CONSOLE_LOG_LEVEL,
+    )
+    app_log_filename = str(env.get("APP_LOG_FILE") or DEFAULT_APP_LOG_FILE)
+    dependency_log_filename = str(
+        env.get("DEPENDENCY_LOG_FILE") or DEFAULT_DEPENDENCY_LOG_FILE
+    )
+    log_max_bytes = _parse_int_env("LOG_MAX_BYTES", DEFAULT_LOG_MAX_BYTES)
+    log_backup_count = _parse_int_env(
+        "LOG_BACKUP_COUNT",
+        DEFAULT_LOG_BACKUP_COUNT,
+    )
 
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
+    root_logger.setLevel(min(app_log_level, library_log_level, console_log_level))
 
     # Remove any pre-existing handlers to avoid duplicate logs.
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    file_handler = logging.handlers.RotatingFileHandler(
-        filename="discord.log",
+    app_file_handler = logging.handlers.RotatingFileHandler(
+        filename=app_log_filename,
         encoding="utf-8",
-        maxBytes=32 * 1024 * 1024,
-        backupCount=5,
+        maxBytes=log_max_bytes,
+        backupCount=log_backup_count,
     )
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(logging.Formatter(fmt, dt_fmt, style="{"))
-    file_handler.addFilter(SourceFilter())
-    root_logger.addHandler(file_handler)
+    app_file_handler.setLevel(app_log_level)
+    app_file_handler.setFormatter(logging.Formatter(fmt, dt_fmt, style="{"))
+    app_file_handler.addFilter(SourceFilter())
+    app_file_handler.addFilter(AppOnlyFilter())
+    root_logger.addHandler(app_file_handler)
+
+    dependency_file_handler = logging.handlers.RotatingFileHandler(
+        filename=dependency_log_filename,
+        encoding="utf-8",
+        maxBytes=log_max_bytes,
+        backupCount=log_backup_count,
+    )
+    dependency_file_handler.setLevel(library_log_level)
+    dependency_file_handler.setFormatter(logging.Formatter(fmt, dt_fmt, style="{"))
+    dependency_file_handler.addFilter(SourceFilter())
+    dependency_file_handler.addFilter(DependencyOnlyFilter())
+    root_logger.addHandler(dependency_file_handler)
 
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(console_log_level)
     console_formatter = ColourFormatter(
         fmt,
         dt_fmt,
@@ -67,7 +183,21 @@ def setup_logging() -> None:
     console_handler.addFilter(SourceFilter())
     root_logger.addHandler(console_handler)
 
-    discord_logger = logging.getLogger("discord")
-    discord_logger.setLevel(logging.DEBUG)
-    logging.getLogger("discord.http").setLevel(logging.WARNING)
+    minimum_noisy_library_level = max(library_log_level, logging.WARNING)
+    noisy_loggers = (
+        "asyncio",
+        "discord",
+        "discord.client",
+        "discord.gateway",
+        "discord.http",
+        "httpcore",
+        "httpx",
+        "openai",
+        "peewee",
+        "pymongo",
+        "urllib3",
+        "yfinance",
+    )
+    for logger_name in noisy_loggers:
+        logging.getLogger(logger_name).setLevel(minimum_noisy_library_level)
 
