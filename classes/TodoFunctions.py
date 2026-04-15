@@ -163,6 +163,17 @@ class TodoFunctions:
         return " ".join(str(value or "").strip().lower().split())
 
     @staticmethod
+    def _item_autocomplete_search_text(item: Dict[str, Any]) -> str:
+        list_name = str(item.get("list_name") or "List").strip() or "List"
+        todo_name = TodoFunctions.task_name_from_item(item) or "Untitled"
+        status = TodoFunctions.status_label(TodoFunctions.item_status(item))
+        due_value = TodoFunctions.item_due(item)
+        due_label = DueDateService.format_due(due_value) if due_value else "No due date"
+        return TodoFunctions._item_title_key(
+            f"{list_name} {todo_name} {status} {due_label}"
+        )
+
+    @staticmethod
     def parse_assignee_modal_input(
         assignee: str,
         acting_user_id: int,
@@ -1462,40 +1473,65 @@ class TodoFunctions:
         if not list_map:
             return []
 
-        mongo_query: Dict[str, Any] = {"list_id": {"$in": list(list_map)}}
-        query_limit = resolved_candidate_limit
-        if normalized_query:
-            mongo_query["title_key"] = {"$regex": f"^{re.escape(normalized_query)}"}
-            query_limit = resolved_limit
-
-        cursor = (
-            mongo_db["todos"]
-            .find(
-                mongo_query,
-                {
-                    "list_id": 1,
-                    "title": 1,
-                    "body": 1,
-                    "status": 1,
-                    "due_at": 1,
-                    "created_at": 1,
-                },
-            )
-            .sort("created_at", -1)
-            .limit(query_limit)
-        )
-
+        projection = {
+            "list_id": 1,
+            "title": 1,
+            "body": 1,
+            "status": 1,
+            "due_at": 1,
+            "created_at": 1,
+        }
         matches: List[Dict[str, Any]] = []
-        for item in cursor:
-            list_id = item.get("list_id")
-            todo_list = list_map.get(list_id) if isinstance(list_id, ObjectId) else None
-            enriched = TodoFunctions._item_with_list_context(item, todo_list)
-            if enriched is None:
-                continue
+        seen_ids: set[ObjectId] = set()
 
-            matches.append(enriched)
-            if len(matches) >= resolved_limit:
-                break
+        def append_matches(cursor: Any) -> None:
+            for item in cursor:
+                item_id = item.get("_id")
+                if isinstance(item_id, ObjectId):
+                    if item_id in seen_ids:
+                        continue
+                    seen_ids.add(item_id)
+
+                list_id = item.get("list_id")
+                todo_list = list_map.get(list_id) if isinstance(list_id, ObjectId) else None
+                enriched = TodoFunctions._item_with_list_context(item, todo_list)
+                if enriched is None:
+                    continue
+
+                if (
+                    normalized_query
+                    and normalized_query
+                    not in TodoFunctions._item_autocomplete_search_text(enriched)
+                ):
+                    continue
+
+                matches.append(enriched)
+                if len(matches) >= resolved_limit:
+                    return
+
+        if normalized_query:
+            append_matches(
+                mongo_db["todos"]
+                .find(
+                    {
+                        "list_id": {"$in": list(list_map)},
+                        "title_key": {"$regex": f"^{re.escape(normalized_query)}"},
+                    },
+                    projection,
+                )
+                .sort("created_at", -1)
+                .limit(resolved_limit)
+            )
+
+        if len(matches) >= resolved_limit:
+            return matches
+
+        append_matches(
+            mongo_db["todos"]
+            .find({"list_id": {"$in": list(list_map)}}, projection)
+            .sort("created_at", -1)
+            .limit(resolved_candidate_limit)
+        )
 
         return matches
 
