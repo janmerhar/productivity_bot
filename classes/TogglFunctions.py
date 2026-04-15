@@ -1,20 +1,89 @@
 from ast import List
 from typing import Dict, Optional, Tuple, Union
+import threading
 import requests
 from dateutil import parser
 import datetime
 import time
 import json
 from bson.objectid import ObjectId
+from cachetools import TTLCache
 
 from config.env import env
 from config.db import mongo_db
 
 
 class TogglFunctions:
+    _thread_local = threading.local()
+    _metadata_cache = TTLCache(maxsize=256, ttl=60.0)
+    _metadata_cache_lock = threading.RLock()
+
     def __init__(self, API_KEY: str, workspace_id: Optional[int] = None):
         self.auth = (API_KEY, "api_token")
         self._workspace_id = workspace_id
+
+    @classmethod
+    def _session(cls) -> requests.Session:
+        session = getattr(cls._thread_local, "session", None)
+        if session is None:
+            session = requests.Session()
+            cls._thread_local.session = session
+        return session
+
+    def _metadata_cache_key(
+        self,
+        kind: str,
+        workspace_id: Optional[int],
+    ) -> tuple[str, str, Optional[int]]:
+        return (kind, str(self.auth[0] or "").strip(), workspace_id)
+
+    def _get_cached_metadata(
+        self,
+        kind: str,
+        workspace_id: Optional[int],
+    ) -> Optional[list[dict]]:
+        key = self._metadata_cache_key(kind, workspace_id)
+        with TogglFunctions._metadata_cache_lock:
+            cached = TogglFunctions._metadata_cache.get(key)
+        if cached is None:
+            return None
+        return [dict(item) for item in cached]
+
+    def _put_cached_metadata(
+        self,
+        kind: str,
+        workspace_id: Optional[int],
+        items: list[dict],
+    ) -> None:
+        key = self._metadata_cache_key(kind, workspace_id)
+        with TogglFunctions._metadata_cache_lock:
+            TogglFunctions._metadata_cache[key] = [dict(item) for item in items]
+
+    def _invalidate_cached_metadata(
+        self,
+        kind: str,
+        workspace_id: Optional[int],
+    ) -> None:
+        key = self._metadata_cache_key(kind, workspace_id)
+        with TogglFunctions._metadata_cache_lock:
+            TogglFunctions._metadata_cache.pop(key, None)
+
+    def _invalidate_cached_metadata_prefix(
+        self,
+        kind_prefix: str,
+        workspace_id: Optional[int],
+    ) -> None:
+        auth_key = str(self.auth[0] or "").strip()
+        with TogglFunctions._metadata_cache_lock:
+            stale_keys = [
+                key
+                for key in TogglFunctions._metadata_cache.keys()
+                if key[0].startswith(kind_prefix)
+                and key[1] == auth_key
+                and key[2] == workspace_id
+            ]
+            for key in stale_keys:
+                TogglFunctions._metadata_cache.pop(key, None)
 
     @property
     def workspace_id(self):
@@ -55,7 +124,7 @@ class TogglFunctions:
     #
 
     def aboutMe(self):
-        res = requests.get("https://api.track.toggl.com/api/v9/me", auth=self.auth)
+        res = self._session().get("https://api.track.toggl.com/api/v9/me", auth=self.auth)
         try:
             payload = res.json()
         except ValueError:
@@ -98,7 +167,7 @@ class TogglFunctions:
             "start": start_date,
         }
 
-        res = requests.post(
+        res = self._session().post(
             f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries",
             json=json_data,
             auth=self.auth,
@@ -106,7 +175,7 @@ class TogglFunctions:
         return res.json()
 
     def getCurrentTimeEntry(self):
-        res = requests.get(
+        res = self._session().get(
             "https://api.track.toggl.com/api/v9/me/time_entries/current",
             headers={"Content-Type": "application/json"},
             auth=self.auth,
@@ -125,7 +194,7 @@ class TogglFunctions:
         if time_entry_id is None or workspace_id is None:
             return currentTask
 
-        res = requests.patch(
+        res = self._session().patch(
             f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}/stop",
             headers={"Content-Type": "application/json"},
             auth=self.auth,
@@ -166,7 +235,7 @@ class TogglFunctions:
             "workspace_id": workspace_id,
         }
 
-        res = requests.put(
+        res = self._session().put(
             f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}",
             json=json_data,
             headers={"Content-Type": "application/json"},
@@ -175,7 +244,7 @@ class TogglFunctions:
         return res.json()
 
     def deleteTimeEntry(self, workspace_id, time_entry_id):
-        res = requests.delete(
+        res = self._session().delete(
             f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}",
             headers={"Content-Type": "application/json"},
             auth=self.auth,
@@ -231,7 +300,7 @@ class TogglFunctions:
             "workspace_id": workspace_id,
         }
 
-        res = requests.post(
+        res = self._session().post(
             f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries",
             json=json_data,
             auth=self.auth,
@@ -251,7 +320,7 @@ class TogglFunctions:
             "end_date": end_date,
         }
 
-        res = requests.get(
+        res = self._session().get(
             "https://api.track.toggl.com/api/v9/me/time_entries",
             params=params,
             headers={"Content-Type": "application/json"},
@@ -268,7 +337,7 @@ class TogglFunctions:
             raise ValueError("Toggl returned an invalid response for time entry history.") from exc
 
     def getLastNTimeEntryHistory(self, n) -> List:
-        res = requests.get(
+        res = self._session().get(
             "https://api.track.toggl.com/api/v9/me/time_entries",
             headers={"Content-Type": "application/json"},
             auth=self.auth,
@@ -461,7 +530,7 @@ class TogglFunctions:
     #
 
     def getWorkspaces(self):
-        res = requests.get(
+        res = self._session().get(
             "https://api.track.toggl.com/api/v9/workspaces",
             headers={"Content-Type": "application/json"},
             auth=self.auth,
@@ -469,12 +538,13 @@ class TogglFunctions:
         return res.json()
 
     def createTag(self, workspace_id, name: str):
-        res = requests.post(
+        res = self._session().post(
             f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/tags",
             json={"name": name},
             headers={"Content-Type": "application/json"},
             auth=self.auth,
         )
+        self._invalidate_cached_metadata("tags", workspace_id)
         return res.json()
 
     @staticmethod
@@ -488,12 +558,18 @@ class TogglFunctions:
         return []
 
     def getTagsByWorkspace(self, workspace_id) -> list[dict]:
-        res = requests.get(
+        cached = self._get_cached_metadata("tags", workspace_id)
+        if cached is not None:
+            return cached
+
+        res = self._session().get(
             f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/tags",
             headers={"Content-Type": "application/json"},
             auth=self.auth,
         )
-        return self._normalize_tags_response(res.json())
+        tags = self._normalize_tags_response(res.json())
+        self._put_cached_metadata("tags", workspace_id, tags)
+        return tags
 
     def findTagsLike(
         self,
@@ -573,28 +649,43 @@ class TogglFunctions:
             "template": template,
         }
 
-        res = requests.post(
+        res = self._session().post(
             f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects",
             json=json_data,
             auth=self.auth,
         )
+        self._invalidate_cached_metadata("projects_all", None)
+        self._invalidate_cached_metadata("projects", workspace_id)
+        self._invalidate_cached_metadata_prefix("projects_search:", workspace_id)
         return res.json()
 
     def getAllProjects(self):
-        res = requests.get(
+        cached = self._get_cached_metadata("projects_all", None)
+        if cached is not None:
+            return cached
+
+        res = self._session().get(
             "https://api.track.toggl.com/api/v9/me/projects",
             headers={"Content-Type": "application/json"},
             auth=self.auth,
         )
-        return res.json()
+        projects = self._normalize_projects_response(res.json())
+        self._put_cached_metadata("projects_all", None, projects)
+        return projects
 
     def getProjectsByWorkspace(self, workspace_id):
-        res = requests.get(
+        cached = self._get_cached_metadata("projects", workspace_id)
+        if cached is not None:
+            return cached
+
+        res = self._session().get(
             f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects",
             headers={"Content-Type": "application/json"},
             auth=self.auth,
         )
-        return res.json()
+        projects = self._normalize_projects_response(res.json())
+        self._put_cached_metadata("projects", workspace_id, projects)
+        return projects
 
     @staticmethod
     def _normalize_projects_response(response) -> list[dict]:
@@ -617,21 +708,31 @@ class TogglFunctions:
         start: int = 0,
         is_active: bool = True,
     ) -> list[dict]:
+        search_name = str(name or "").strip().lower()
+        cache_kind = (
+            f"projects_search:{search_name}:{int(page_size)}:{int(start)}:{int(bool(is_active))}"
+        )
+        cached = self._get_cached_metadata(cache_kind, workspace_id)
+        if cached is not None:
+            return cached
+
         json_data = {
             "page_size": page_size,
             "start": start,
             "is_active": is_active,
         }
-        if name:
+        if search_name:
             json_data["name"] = name
 
-        res = requests.post(
+        res = self._session().post(
             f"https://api.track.toggl.com/reports/api/v3/workspace/{workspace_id}/search/projects",
             json=json_data,
             headers={"Content-Type": "application/json"},
             auth=self.auth,
         )
-        return self._normalize_projects_response(res.json())
+        projects = self._normalize_projects_response(res.json())
+        self._put_cached_metadata(cache_kind, workspace_id, projects)
+        return projects
 
     def findProjectsLike(
         self,
@@ -686,7 +787,7 @@ class TogglFunctions:
         self, project_id: int, workspace_id: Optional[int] = None
     ) -> Union[None, dict]:
         if workspace_id is not None:
-            res = requests.get(
+            res = self._session().get(
                 f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects/{project_id}",
                 headers={"Content-Type": "application/json"},
                 auth=self.auth,
