@@ -17,7 +17,7 @@ class TogglTimerView(discord.ui.View):
         user_id: int,
         timer_data: dict[str, Any],
         is_active: bool,
-        timeout: float = 3600,
+        timeout: float | None = None,
     ) -> None:
         super().__init__(timeout=timeout)
         self.guild_id = guild_id
@@ -26,7 +26,75 @@ class TogglTimerView(discord.ui.View):
         self.is_active = bool(is_active)
         self.is_terminal = False
         self.is_deleted = False
-        self._sync_button_state()
+        self._refresh_state_from_timer_data()
+
+    @staticmethod
+    def _coerce_int(value: object) -> Optional[int]:
+        try:
+            return int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _is_active_timer(timer_data: dict[str, Any]) -> bool:
+        stop_value = timer_data.get("stop")
+        duration_value = TogglTimerView._coerce_int(timer_data.get("duration"))
+        return stop_value in (None, "") and duration_value is not None and duration_value < 0
+
+    @staticmethod
+    def _create_toggl(user_id: int) -> Optional[TogglFunctions]:
+        api_key = UserSettingsFunctions.get_toggl_api_key(user_id)
+        if not api_key:
+            return None
+        workspace_id = UserSettingsFunctions.get_toggl_workspace_id(user_id)
+        return TogglFunctions(api_key, workspace_id=workspace_id)
+
+    @classmethod
+    async def from_dynamic_reference(
+        cls,
+        *,
+        guild_id: Optional[int],
+        user_id: int,
+        workspace_id: Optional[int],
+        time_entry_id: Optional[int],
+        is_active_hint: bool,
+    ) -> Optional["TogglTimerView"]:
+        toggl = cls._create_toggl(user_id)
+        if toggl is None:
+            return None
+
+        current_timer: Optional[dict[str, Any]] = None
+        if is_active_hint or time_entry_id is None:
+            current_timer = await asyncio.to_thread(toggl.getCurrentTimeEntry)
+            if isinstance(current_timer, dict):
+                current_timer_id = cls._coerce_int(current_timer.get("id"))
+                if current_timer_id is not None and (
+                    time_entry_id is None or current_timer_id == time_entry_id
+                ):
+                    return cls(
+                        guild_id=guild_id,
+                        user_id=user_id,
+                        timer_data=current_timer,
+                        is_active=cls._is_active_timer(current_timer),
+                    )
+
+        if workspace_id is None or time_entry_id is None:
+            return None
+
+        timer_data = await asyncio.to_thread(
+            toggl.getTimeEntry,
+            workspace_id,
+            time_entry_id,
+        )
+        if not isinstance(timer_data, dict) or timer_data.get("id") is None:
+            return None
+
+        return cls(
+            guild_id=guild_id,
+            user_id=user_id,
+            timer_data=timer_data,
+            is_active=cls._is_active_timer(timer_data),
+        )
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.user_id:
@@ -38,20 +106,67 @@ class TogglTimerView(discord.ui.View):
         return False
 
     def _sync_button_state(self) -> None:
-        self.play_pause_button.disabled = self.is_terminal or self.is_deleted
-        self.stop_button.disabled = self.is_terminal or self.is_deleted or not self.is_active
-        self.edit_button.disabled = self.is_deleted
-        self.delete_button.disabled = self.is_deleted
-        self.list_timers_button.disabled = False
+        self._build()
 
-        self.play_pause_button.label = None
-        if self.is_active:
-            self.play_pause_button.emoji = "⏸️"
-            self.play_pause_button.style = discord.ButtonStyle.secondary
-            return
+    def _build(self) -> None:
+        self.clear_items()
 
-        self.play_pause_button.emoji = "▶️"
-        self.play_pause_button.style = discord.ButtonStyle.success
+        from views.toggl_dynamic_items import (
+            TogglDeleteButton,
+            TogglEditButton,
+            TogglListTimersButton,
+            TogglPlayPauseButton,
+            TogglStopButton,
+        )
+
+        guild_id = int(self.guild_id or 0)
+        workspace_id = int(self._workspace_id() or 0)
+        time_entry_id = int(self._time_entry_id() or 0)
+
+        self.add_item(
+            TogglPlayPauseButton(
+                guild_id=guild_id,
+                user_id=self.user_id,
+                workspace_id=workspace_id,
+                time_entry_id=time_entry_id,
+                is_active=self.is_active,
+                disabled=self.is_terminal or self.is_deleted,
+            )
+        )
+        self.add_item(
+            TogglStopButton(
+                guild_id=guild_id,
+                user_id=self.user_id,
+                workspace_id=workspace_id,
+                time_entry_id=time_entry_id,
+                is_active=self.is_active,
+                disabled=self.is_terminal or self.is_deleted or not self.is_active,
+            )
+        )
+        self.add_item(
+            TogglEditButton(
+                guild_id=guild_id,
+                user_id=self.user_id,
+                workspace_id=workspace_id,
+                time_entry_id=time_entry_id,
+                disabled=self.is_deleted,
+            )
+        )
+        self.add_item(
+            TogglDeleteButton(
+                guild_id=guild_id,
+                user_id=self.user_id,
+                workspace_id=workspace_id,
+                time_entry_id=time_entry_id,
+                disabled=self.is_deleted,
+            )
+        )
+        self.add_item(
+            TogglListTimersButton(
+                guild_id=guild_id,
+                user_id=self.user_id,
+            )
+        )
 
     @staticmethod
     def _extract_start_params(timer_data: dict[str, Any]) -> dict[str, Any]:
@@ -65,34 +180,19 @@ class TogglTimerView(discord.ui.View):
         }
 
     def _get_toggl(self) -> Optional[TogglFunctions]:
-        api_key = UserSettingsFunctions.get_toggl_api_key(self.user_id)
-        if not api_key:
-            return None
-        workspace_id = UserSettingsFunctions.get_toggl_workspace_id(self.user_id)
-        return TogglFunctions(api_key, workspace_id=workspace_id)
+        return self._create_toggl(self.user_id)
 
     def _time_entry_id(self) -> Optional[int]:
-        value = self.timer_data.get("id")
-        try:
-            return int(value) if value is not None else None
-        except (TypeError, ValueError):
-            return None
+        return self._coerce_int(self.timer_data.get("id"))
 
     def _workspace_id(self) -> Optional[int]:
-        value = self.timer_data.get("workspace_id") or self.timer_data.get("wid")
-        try:
-            return int(value) if value is not None else None
-        except (TypeError, ValueError):
-            return None
+        return self._coerce_int(
+            self.timer_data.get("workspace_id") or self.timer_data.get("wid")
+        )
 
     def _refresh_state_from_timer_data(self) -> None:
-        stop_value = self.timer_data.get("stop")
-        duration_value = self.timer_data.get("duration")
-        try:
-            parsed_duration = int(duration_value)
-        except (TypeError, ValueError):
-            parsed_duration = None
-        self.is_active = stop_value in (None, "") and parsed_duration is not None and parsed_duration < 0
+        if self.timer_data:
+            self.is_active = self._is_active_timer(self.timer_data)
         self._sync_button_state()
 
     async def _send_error(
@@ -155,6 +255,7 @@ class TogglTimerView(discord.ui.View):
             color=color,
         )
         updated_embed = self._preserve_extra_fields(current_embed, updated_embed)
+        self._build()
         await interaction.response.edit_message(embed=updated_embed, view=self)
 
     async def _refresh_message(
@@ -183,6 +284,7 @@ class TogglTimerView(discord.ui.View):
             color=color,
         )
         updated_embed = self._preserve_extra_fields(current_embed, updated_embed)
+        self._build()
         try:
             await source_message.edit(embed=updated_embed, view=self)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
@@ -197,6 +299,8 @@ class TogglTimerView(discord.ui.View):
         source_message: Optional[discord.Message],
     ) -> None:
         self.timer_data = dict(updated_timer or {})
+        self.is_terminal = False
+        self.is_deleted = False
         self._refresh_state_from_timer_data()
         refreshed = await self._refresh_message(
             source_message,
@@ -210,12 +314,7 @@ class TogglTimerView(discord.ui.View):
                 content="Timer updated.",
             )
 
-    @discord.ui.button(emoji="⏸️", style=discord.ButtonStyle.secondary, row=0)
-    async def play_pause_button(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
+    async def _handle_play_pause(self, interaction: discord.Interaction) -> None:
         try:
             toggl = self._get_toggl()
         except Exception:
@@ -231,24 +330,35 @@ class TogglTimerView(discord.ui.View):
         try:
             if self.is_active:
                 current_timer = await asyncio.to_thread(toggl.getCurrentTimeEntry)
-                if current_timer is not None:
-                    stopped_timer = await asyncio.to_thread(toggl.stopCurrentTimeEntry)
-                    if (
-                        not isinstance(stopped_timer, dict)
-                        or stopped_timer.get("id") is None
-                    ):
-                        await self._send_error(
-                            interaction,
-                            "Toggl rejected that timer stop request.",
-                        )
-                        return
-                    self.timer_data = stopped_timer
-                self.is_active = False
-                self._sync_button_state()
+                current_timer_id = self._coerce_int(
+                    current_timer.get("id") if isinstance(current_timer, dict) else None
+                )
+                if current_timer_id != self._time_entry_id():
+                    await self._send_error(
+                        interaction,
+                        "That timer is no longer running. Reopen it and try again.",
+                    )
+                    return
+
+                stopped_timer = await asyncio.to_thread(toggl.stopCurrentTimeEntry)
+                if (
+                    not isinstance(stopped_timer, dict)
+                    or stopped_timer.get("id") is None
+                ):
+                    await self._send_error(
+                        interaction,
+                        "Toggl rejected that timer stop request.",
+                    )
+                    return
+
+                self.timer_data = stopped_timer
+                self.is_terminal = False
+                self.is_deleted = False
+                self._refresh_state_from_timer_data()
                 await self._render_message(
                     interaction,
                     title=":stopwatch: Toggl Timer Paused",
-                    description="Timer paused. Use ▶️ to start a new timer with the same details.",
+                    description="Timer paused. Use \u25b6\ufe0f to start a new timer with the same details.",
                     color="#c96a40",
                 )
                 return
@@ -281,10 +391,9 @@ class TogglTimerView(discord.ui.View):
                 return
 
             self.timer_data = started_timer
-            self.is_active = True
             self.is_terminal = False
             self.is_deleted = False
-            self._sync_button_state()
+            self._refresh_state_from_timer_data()
             await self._render_message(
                 interaction,
                 title=":stopwatch: Toggl Timer Started",
@@ -296,12 +405,7 @@ class TogglTimerView(discord.ui.View):
                 "I couldn't update that Toggl timer right now. Please try again.",
             )
 
-    @discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger, row=0)
-    async def stop_button(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
+    async def _handle_stop(self, interaction: discord.Interaction) -> None:
         try:
             toggl = self._get_toggl()
         except Exception:
@@ -316,22 +420,28 @@ class TogglTimerView(discord.ui.View):
 
         try:
             current_timer = await asyncio.to_thread(toggl.getCurrentTimeEntry)
-            if current_timer is not None:
-                stopped_timer = await asyncio.to_thread(toggl.stopCurrentTimeEntry)
-                if (
-                    not isinstance(stopped_timer, dict)
-                    or stopped_timer.get("id") is None
-                ):
-                    await self._send_error(
-                        interaction,
-                        "Toggl rejected that timer stop request.",
-                    )
-                    return
-                self.timer_data = stopped_timer
+            current_timer_id = self._coerce_int(
+                current_timer.get("id") if isinstance(current_timer, dict) else None
+            )
+            if current_timer_id != self._time_entry_id():
+                await self._send_error(
+                    interaction,
+                    "That timer is no longer running. Reopen it and try again.",
+                )
+                return
 
-            self.is_active = False
+            stopped_timer = await asyncio.to_thread(toggl.stopCurrentTimeEntry)
+            if not isinstance(stopped_timer, dict) or stopped_timer.get("id") is None:
+                await self._send_error(
+                    interaction,
+                    "Toggl rejected that timer stop request.",
+                )
+                return
+
+            self.timer_data = stopped_timer
             self.is_terminal = True
-            self._sync_button_state()
+            self.is_deleted = False
+            self._refresh_state_from_timer_data()
             await self._render_message(
                 interaction,
                 title=":stopwatch: Toggl Timer Stopped",
@@ -344,12 +454,7 @@ class TogglTimerView(discord.ui.View):
                 "I couldn't stop that Toggl timer right now. Please try again.",
             )
 
-    @discord.ui.button(emoji="✏️", style=discord.ButtonStyle.primary, row=0)
-    async def edit_button(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
+    async def _handle_edit(self, interaction: discord.Interaction) -> None:
         try:
             toggl = self._get_toggl()
         except Exception:
@@ -404,12 +509,7 @@ class TogglTimerView(discord.ui.View):
             )
         )
 
-    @discord.ui.button(emoji="🗑️", style=discord.ButtonStyle.danger, row=0)
-    async def delete_button(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
+    async def _handle_delete(self, interaction: discord.Interaction) -> None:
         try:
             toggl = self._get_toggl()
         except Exception:
@@ -462,12 +562,7 @@ class TogglTimerView(discord.ui.View):
                 "I couldn't delete that Toggl timer right now. Please try again.",
             )
 
-    @discord.ui.button(emoji="📋", style=discord.ButtonStyle.secondary, row=0)
-    async def list_timers_button(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
+    async def _handle_list_timers(self, interaction: discord.Interaction) -> None:
         from embeds.TogglEmbeds import TogglEmbeds
         from views.TogglTimerHistoryView import TogglTimerHistoryView
 

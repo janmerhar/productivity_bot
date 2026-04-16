@@ -201,6 +201,20 @@ class TogglFunctions:
         )
         return res.json()
 
+    def getTimeEntry(self, workspace_id, time_entry_id):
+        res = self._session().get(
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/time_entries/{time_entry_id}",
+            headers={"Content-Type": "application/json"},
+            auth=self.auth,
+        )
+        if res.status_code == 404:
+            return None
+        try:
+            payload = res.json()
+        except ValueError:
+            return None
+        return payload if isinstance(payload, dict) else None
+
     def updateTimeEntry(
         self,
         workspace_id,
