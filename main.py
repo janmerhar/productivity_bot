@@ -12,6 +12,7 @@ from services.error_reporting import handle_app_command_error
 from views.habit_dynamic_items import register_habit_dynamic_items
 from views.pomodoro_dynamic_items import register_pomodoro_dynamic_items
 from views.reminder_dynamic_items import register_reminder_dynamic_items
+from views.stock_alert_dynamic_items import register_stock_alert_dynamic_items
 
 tick_disabled = env.get("TICK_DISABLED") == "true"
 alias_disabled = env.get("ALIAS_DISABLED") == "true"
@@ -165,6 +166,7 @@ async def main():
     await register_habit_dynamic_items(bot)
     await register_pomodoro_dynamic_items(bot)
     await register_reminder_dynamic_items(bot)
+    await register_stock_alert_dynamic_items(bot)
     await bot.start(env["DISCORD_TOKEN"])
 
 
