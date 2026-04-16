@@ -145,6 +145,7 @@ class TodoListShowButton(
             view_scope="list",
             guild_id=interaction.guild_id,
         )
+        await items_view.ensure_session()
         await interaction.response.send_message(
             ephemeral=True,
             view=items_view,

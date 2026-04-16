@@ -623,6 +623,7 @@ class TodoCog(commands.Cog):
             view_scope="list",
             guild_id=interaction.guild_id,
         )
+        await view.ensure_session()
         await interaction.followup.send(
             ephemeral=ephemeral,
             view=view,
@@ -939,6 +940,7 @@ class TodoCog(commands.Cog):
             view_scope="overview",
             guild_id=interaction.guild_id,
         )
+        await view.ensure_session()
         await interaction.followup.send(
             ephemeral=ephemeral,
             view=view,
