@@ -552,6 +552,7 @@ class ReminderCog(commands.Cog):
             sort=sort_value,
             response_ephemeral=ephemeral,
         )
+        await view.ensure_session()
         message = await interaction.followup.send(
             ephemeral=ephemeral,
             view=view,
