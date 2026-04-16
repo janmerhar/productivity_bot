@@ -3,6 +3,7 @@ import asyncio
 import discord
 
 from classes.HabitFunctions import HabitFunctions
+from embeds.HabitEmbeds import HabitEmbeds
 
 
 class HabitActionView(discord.ui.View):
@@ -12,61 +13,73 @@ class HabitActionView(discord.ui.View):
         habit_name: str,
         user_id: int,
         *,
-        timeout: float = 3600,
+        timeout: float | None = None,
     ) -> None:
         super().__init__(timeout=timeout)
         self.habit_id = habit_id
         self.habit_name = habit_name
         self.user_id = user_id
+        self._rebuild_items()
 
-    async def _record(self, interaction: discord.Interaction, mode: str) -> None:
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                ephemeral=True,
-                content="Only the habit owner can update this habit.",
+    def _rebuild_items(self, *, disabled: bool = False) -> None:
+        from views.habit_dynamic_items import (
+            HabitCompleteButton,
+            HabitIncompleteButton,
+            HabitSkipButton,
+        )
+
+        self.clear_items()
+        self.add_item(
+            HabitCompleteButton(
+                self.habit_id,
+                self.user_id,
+                disabled=disabled,
             )
-            return
+        )
+        self.add_item(
+            HabitSkipButton(
+                self.habit_id,
+                self.user_id,
+                disabled=disabled,
+            )
+        )
+        self.add_item(
+            HabitIncompleteButton(
+                self.habit_id,
+                self.user_id,
+                disabled=disabled,
+            )
+        )
 
-        await interaction.response.defer(ephemeral=True)
-        updated = await asyncio.to_thread(
-            HabitFunctions.add_completion,
+    async def refresh_message(self, interaction: discord.Interaction) -> bool:
+        habit = await asyncio.to_thread(
+            HabitFunctions.fetch_habit,
             self.habit_id,
             interaction.guild_id,
-            mode,
         )
 
-        if not updated:
-            await interaction.followup.send(
-                ephemeral=True,
-                content=f"Couldn't update '{self.habit_name}'.",
+        if habit is None:
+            self._rebuild_items(disabled=True)
+            embed = discord.Embed(
+                title=self.habit_name or "Habit",
+                description="This habit is no longer available.",
+                color=discord.Colour.red(),
             )
-            return
+        else:
+            self.habit_name = str(habit.get("name") or self.habit_name or "Habit")
+            self._rebuild_items()
+            payload = HabitEmbeds.habit_item_embed(
+                habit,
+                HabitFunctions.today_status(habit),
+                HabitFunctions.recent_progress(habit, days=5),
+            )
+            embed = payload["embed"]
 
-        await interaction.followup.send(
-            ephemeral=True,
-            content=f"Marked '{self.habit_name}' as {mode}.",
-        )
+        if interaction.message is None:
+            return False
 
-    @discord.ui.button(label="complete", style=discord.ButtonStyle.success)
-    async def complete_button(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        await self._record(interaction, "complete")
-
-    @discord.ui.button(label="skip", style=discord.ButtonStyle.secondary)
-    async def skip_button(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        await self._record(interaction, "skip")
-
-    @discord.ui.button(label="incomplete", style=discord.ButtonStyle.danger)
-    async def incomplete_button(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        await self._record(interaction, "incomplete")
+        try:
+            await interaction.message.edit(embed=embed, view=self)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return False
+        return True
