@@ -15,6 +15,9 @@ from views.reminder_dynamic_items import register_reminder_dynamic_items
 from views.stock_list_dynamic_items import register_stock_list_dynamic_items
 from views.scheduled_job_dynamic_items import register_scheduled_job_dynamic_items
 from views.stock_alert_dynamic_items import register_stock_alert_dynamic_items
+from views.todo_list_directory_dynamic_items import (
+    register_todo_list_directory_dynamic_items,
+)
 
 tick_disabled = env.get("TICK_DISABLED") == "true"
 alias_disabled = env.get("ALIAS_DISABLED") == "true"
@@ -171,6 +174,7 @@ async def main():
     await register_stock_list_dynamic_items(bot)
     await register_scheduled_job_dynamic_items(bot)
     await register_stock_alert_dynamic_items(bot)
+    await register_todo_list_directory_dynamic_items(bot)
     await bot.start(env["DISCORD_TOKEN"])
 
 

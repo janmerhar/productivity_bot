@@ -844,6 +844,7 @@ class TodoCog(commands.Cog):
             channel_name=getattr(interaction.channel, "name", None),
             user_id=interaction.user.id,
         )
+        await directory_view.ensure_session()
         try:
             await interaction.edit_original_response(
                 view=directory_view,
