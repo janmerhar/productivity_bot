@@ -9,6 +9,7 @@ from discord.ext import commands
 from config.env import env
 from config.logger import setup_logging
 from services.error_reporting import handle_app_command_error
+from views.pomodoro_dynamic_items import register_pomodoro_dynamic_items
 
 tick_disabled = env.get("TICK_DISABLED") == "true"
 alias_disabled = env.get("ALIAS_DISABLED") == "true"
@@ -159,6 +160,7 @@ async def load():
 
 async def main():
     await load()
+    await register_pomodoro_dynamic_items(bot)
     await bot.start(env["DISCORD_TOKEN"])
 
 
