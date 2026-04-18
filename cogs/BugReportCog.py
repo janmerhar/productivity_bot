@@ -8,7 +8,11 @@ from discord.ext import commands
 from classes.BugReportFunctions import BugReportFunctions
 from embeds.BugReportEmbeds import BugReportEmbeds
 from services.error_reporting import UserVisibleError, ValidationError
-from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from services.visibility import (
+    VISIBILITY_CHOICES,
+    VISIBILITY_DESC,
+    resolve_visibility_for_context,
+)
 
 
 class BugReportCog(commands.Cog):
@@ -38,7 +42,11 @@ class BugReportCog(commands.Cog):
         link: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
+        ephemeral = resolve_visibility_for_context(
+            interaction.guild_id,
+            visibility,
+            guild_default="private",
+        )
         if not bug.strip():
             raise ValidationError("Bug report cannot be empty.", ephemeral=ephemeral)
 
