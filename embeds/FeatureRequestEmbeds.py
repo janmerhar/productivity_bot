@@ -30,6 +30,15 @@ class FeatureRequestEmbeds:
                 inline=False,
             )
 
+        attachment_url = document.get("attachment_url")
+        if attachment_url:
+            embed.add_field(
+                name="Attachment",
+                value=f"[View attachment]({attachment_url})",
+                inline=False,
+            )
+            embed.set_image(url=str(attachment_url))
+
         request_id = document.get("_id")
         if request_id:
             embed.set_footer(text=f"Request id: {request_id}")

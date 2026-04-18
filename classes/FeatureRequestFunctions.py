@@ -12,6 +12,7 @@ class FeatureRequestFunctions:
         channel_id: int,
         request: str,
         link: Optional[str] = None,
+        attachment_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         cleaned_request = request.strip()
         if not cleaned_request:
@@ -21,12 +22,17 @@ class FeatureRequestFunctions:
         if cleaned_link == "":
             cleaned_link = None
 
+        cleaned_attachment_url = attachment_url.strip() if attachment_url else None
+        if cleaned_attachment_url == "":
+            cleaned_attachment_url = None
+
         document: Dict[str, Any] = {
             "guild_id": guild_id,
             "user_id": user_id,
             "channel_id": channel_id,
             "request": cleaned_request,
             "link": cleaned_link,
+            "attachment_url": cleaned_attachment_url,
             "created_at": datetime.datetime.utcnow().isoformat(),
         }
 
