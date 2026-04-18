@@ -254,7 +254,7 @@ class PomodoroStoppedView(discord.ui.View):
                     resolved_target_channel = member.voice.channel
 
             if resolved_target_channel is None:
-                voice_error = "Not in a voice channel — audio is off."
+                voice_error = "Audio off — not in a voice channel."
             else:
                 voice_error = await PomodoroVoiceManager.start_session(
                     interaction.guild,

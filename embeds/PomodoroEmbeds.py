@@ -81,8 +81,9 @@ class PomodoroEmbeds:
             description=resolved_description,
             color=discord.Colour.green(),
         )
-        embed.set_footer(text=f"{duration_minutes} min")
+        embed.set_footer(text=f"Total duration: {duration_minutes} min")
 
+        embed.set_footer(text=f"Total: {duration_minutes} min")
         return {"embed": embed}
 
     @staticmethod

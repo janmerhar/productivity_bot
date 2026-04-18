@@ -1,5 +1,5 @@
 # PomodoroVoiceManager.py
-
+import asyncio
 import datetime
 import logging
 from dataclasses import dataclass
@@ -81,17 +81,41 @@ class PomodoroVoiceManager:
         try:
             if voice_client is None or not voice_client.is_connected():
                 voice_client = await voice_channel.connect()
-            elif voice_client.channel.id != voice_channel.id:
+            elif (
+                not isinstance(voice_client.channel, discord.VoiceChannel)
+                or voice_client.channel.id != voice_channel.id
+            ):
                 await voice_client.move_to(voice_channel)
         except (discord.Forbidden, discord.HTTPException, discord.ClientException):
             logger.exception("Failed to connect to voice channel %s", voice_channel.id)
             return "I couldn't join that voice channel. Check my permissions."
 
-        if voice_client.is_playing() or voice_client.is_paused():
-            voice_client.stop()
+        for _ in range(20):
+            current_voice_client = guild.voice_client or voice_client
+            if current_voice_client is not None and current_voice_client.is_connected():
+                voice_client = current_voice_client
+                break
+            await asyncio.sleep(0.25)
+        else:
+            return "I couldn't keep the voice connection alive. Please try again."
 
-        source = cls._build_audio_source(audio_path)
-        voice_client.play(source)
+        try:
+            if voice_client.is_playing() or voice_client.is_paused():
+                voice_client.stop()
+
+            source = cls._build_audio_source(audio_path)
+            voice_client.play(source)
+        except Exception:
+            logger.exception("Failed to start audio playback for guild %s", guild.id)
+            try:
+                if voice_client.is_connected():
+                    await voice_client.disconnect(force=True)
+            except (discord.Forbidden, discord.HTTPException, discord.ClientException):
+                logger.exception(
+                    "Failed to disconnect voice client after playback error for guild %s",
+                    guild.id,
+                )
+            return "I joined the voice channel, but audio playback could not start."
 
         existing = cls.sessions.get(guild.id)
         session_end_time = end_time

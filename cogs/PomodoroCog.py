@@ -54,7 +54,7 @@ async def start_pomodoro_context_menu(
             target_channel = member.voice.channel
 
     if interaction.guild is None:
-        voice_error = None
+        voice_error = "Audio off — not in a voice channel."
     elif target_channel is None:
         voice_error = "Not in a voice channel — audio is off."
     else:
@@ -309,7 +309,7 @@ class PomodoroCog(commands.Cog):
             voice_error = None
         elif target_channel is None:
             voice_error = (
-                "Not in a voice channel — audio is off." if autojoin_enabled else None
+                "Audio off — not in a voice channel." if autojoin_enabled else None
             )
         else:
             voice_error = await PomodoroVoiceManager.start_session(

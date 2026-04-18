@@ -275,6 +275,10 @@ class PomodoroStartView(discord.ui.View):
             self.select_voice_channel_button.disabled = True
             self.select_voice_channel_button.label = "Voice (Server only)"
             self.select_voice_channel_button.style = discord.ButtonStyle.secondary
+        else:
+            self.select_voice_channel_button.label = (
+                "Move Voice" if join_url else "Enable Voice"
+            )
 
         self._sync_play_pause_button()
 
@@ -303,7 +307,7 @@ class PomodoroStartView(discord.ui.View):
             return None
         updated = embed.copy()
         updated.description = PomodoroEmbeds.running_description(end_time)
-        updated.set_footer(text=f"{duration_minutes} min")
+        updated.set_footer(text=f"Total duration: {duration_minutes} min")
         for idx, field in enumerate(updated.fields):
             field_name = (field.name or "").strip().lower()
             if field_name == "ends":
@@ -353,7 +357,7 @@ class PomodoroStartView(discord.ui.View):
             remaining_minutes=remaining_minutes,
         )
         updated.color = discord.Colour.orange()
-        updated.set_footer(text=f"{duration_minutes} min")
+        updated.set_footer(text=f"Total duration: {duration_minutes} min")
 
         for idx, field in enumerate(updated.fields):
             field_name = (field.name or "").strip().lower()
