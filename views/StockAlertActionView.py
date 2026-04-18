@@ -6,9 +6,7 @@ import discord
 
 from classes.OpenAIFunctions import OpenAIFunctions
 from classes.PriceAlertFunctions import (
-    deactivate_alert,
     fetch_user_alert_by_id,
-    set_alert_paused,
     update_alert,
 )
 from classes.UserSettingsFunctions import UserSettingsFunctions
@@ -211,7 +209,7 @@ class StockAlertActionView(discord.ui.View):
         alert_id: str,
         user_id: int,
         guild_id: Optional[int],
-        timeout: float = 900,
+        timeout: float | None = None,
     ) -> None:
         super().__init__(timeout=timeout)
         self.alert_id = str(alert_id)
@@ -219,6 +217,7 @@ class StockAlertActionView(discord.ui.View):
         self.guild_id = guild_id
         self.alert: Optional[Dict[str, Any]] = None
         self.message: Optional[discord.Message] = None
+        self._rebuild_items()
 
     @staticmethod
     def _target_label(value: Any, currency: str) -> str:
@@ -237,7 +236,6 @@ class StockAlertActionView(discord.ui.View):
 
     async def initialize(self) -> None:
         await self.refresh_state()
-        self._sync_button_state()
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.user_id:
@@ -257,21 +255,44 @@ class StockAlertActionView(discord.ui.View):
             self.guild_id,
             True,
         )
-        self._sync_button_state()
+        self._rebuild_items()
 
-    def _sync_button_state(self) -> None:
+    def _rebuild_items(self) -> None:
+        from views.stock_alert_dynamic_items import (
+            StockAlertDeleteButton,
+            StockAlertEditButton,
+            StockAlertToggleButton,
+        )
+
         has_alert = self.alert is not None
-        self.edit_alert_button.disabled = not has_alert
-        self.pause_resume_button.disabled = not has_alert
-        self.delete_button.disabled = not has_alert
-
         paused = bool((self.alert or {}).get("paused"))
-        if paused:
-            self.pause_resume_button.label = "Resume"
-            self.pause_resume_button.style = discord.ButtonStyle.success
-        else:
-            self.pause_resume_button.label = "Pause"
-            self.pause_resume_button.style = discord.ButtonStyle.secondary
+
+        self.clear_items()
+        self.add_item(
+            StockAlertEditButton(
+                self.alert_id,
+                self.user_id,
+                self.guild_id,
+                disabled=not has_alert,
+            )
+        )
+        self.add_item(
+            StockAlertToggleButton(
+                self.alert_id,
+                self.user_id,
+                self.guild_id,
+                paused=paused,
+                disabled=not has_alert,
+            )
+        )
+        self.add_item(
+            StockAlertDeleteButton(
+                self.alert_id,
+                self.user_id,
+                self.guild_id,
+                disabled=not has_alert,
+            )
+        )
 
     def payload(self) -> dict:
         embed = discord.Embed(
@@ -320,88 +341,3 @@ class StockAlertActionView(discord.ui.View):
             await self.message.edit(view=self, **self.payload())
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             return
-
-    @discord.ui.button(label="Edit", style=discord.ButtonStyle.primary, row=0)
-    async def edit_alert_button(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        self.message = interaction.message
-        if self.alert is None:
-            await interaction.response.send_message(
-                ephemeral=True,
-                content="That alert is no longer active.",
-            )
-            return
-
-        await interaction.response.send_modal(StockAlertEditModal(self, self.alert))
-
-    @discord.ui.button(label="Pause", style=discord.ButtonStyle.secondary, row=0)
-    async def pause_resume_button(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        self.message = interaction.message
-        await interaction.response.defer(ephemeral=True)
-
-        if self.alert is None:
-            await interaction.followup.send(
-                ephemeral=True,
-                content="That alert is no longer active.",
-            )
-            return
-
-        currently_paused = bool(self.alert.get("paused"))
-        changed = await asyncio.to_thread(
-            set_alert_paused,
-            self.alert_id,
-            self.user_id,
-            not currently_paused,
-            asset_type="stock",
-            guild_id=self.guild_id,
-        )
-        if not changed:
-            await interaction.followup.send(
-                ephemeral=True,
-                content="That alert could not be updated.",
-            )
-            return
-
-        await self.refresh_state()
-        await self.refresh_message()
-        await interaction.followup.send(
-            ephemeral=True,
-            content="Alert resumed." if currently_paused else "Alert paused.",
-        )
-
-    @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger, row=0)
-    async def delete_button(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        self.message = interaction.message
-        await interaction.response.defer(ephemeral=True)
-
-        deleted = await asyncio.to_thread(
-            deactivate_alert,
-            self.alert_id,
-            self.user_id,
-            "stock",
-            self.guild_id,
-        )
-        if not deleted:
-            await interaction.followup.send(
-                ephemeral=True,
-                content="That alert was not found.",
-            )
-            return
-
-        await self.refresh_state()
-        await self.refresh_message()
-        await interaction.followup.send(
-            ephemeral=True,
-            content="Alert deleted.",
-        )

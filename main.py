@@ -9,6 +9,22 @@ from discord.ext import commands
 from config.env import env
 from config.logger import setup_logging
 from services.error_reporting import handle_app_command_error
+from views.habit_dynamic_items import register_habit_dynamic_items
+from views.pomodoro_dynamic_items import register_pomodoro_dynamic_items
+from views.reminder_dynamic_items import register_reminder_dynamic_items
+from views.stock_list_dynamic_items import register_stock_list_dynamic_items
+from views.scheduled_job_dynamic_items import register_scheduled_job_dynamic_items
+from views.stock_alert_dynamic_items import register_stock_alert_dynamic_items
+from views.stock_action_dynamic_items import register_stock_action_dynamic_items
+from views.crypto_action_dynamic_items import register_crypto_action_dynamic_items
+from views.todo_list_directory_dynamic_items import (
+    register_todo_list_directory_dynamic_items,
+)
+from views.todo_list_description_dynamic_items import (
+    register_todo_list_description_dynamic_items,
+)
+from views.todo_list_items_dynamic_items import register_todo_list_items_dynamic_items
+from views.toggl_dynamic_items import register_toggl_dynamic_items
 
 tick_disabled = env.get("TICK_DISABLED") == "true"
 alias_disabled = env.get("ALIAS_DISABLED") == "true"
@@ -159,6 +175,18 @@ async def load():
 
 async def main():
     await load()
+    await register_habit_dynamic_items(bot)
+    await register_pomodoro_dynamic_items(bot)
+    await register_reminder_dynamic_items(bot)
+    await register_stock_list_dynamic_items(bot)
+    await register_scheduled_job_dynamic_items(bot)
+    await register_stock_alert_dynamic_items(bot)
+    await register_stock_action_dynamic_items(bot)
+    await register_crypto_action_dynamic_items(bot)
+    await register_todo_list_directory_dynamic_items(bot)
+    await register_todo_list_description_dynamic_items(bot)
+    await register_todo_list_items_dynamic_items(bot)
+    await register_toggl_dynamic_items(bot)
     await bot.start(env["DISCORD_TOKEN"])
 
 

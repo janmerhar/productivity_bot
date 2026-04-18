@@ -8,6 +8,7 @@ import discord
 from classes.TodoFunctions import TodoFunctions
 from classes.UserSettingsFunctions import UserSettingsFunctions
 from services.due_datetime import DueDateService
+from services import todo_list_item_sessions
 from services.error_reporting import (
     UserVisibleError,
     ValidationError,
@@ -503,7 +504,7 @@ class TodoItemEditModal(discord.ui.Modal):
         else:
             try:
                 await self.parent_view._reload_items()
-                self.parent_view._build()
+                await self.parent_view.ensure_session()
                 if self.source_message is not None:
                     await self._edit_source_payload(
                         view=self.parent_view,
@@ -763,7 +764,7 @@ class TodoItemCreateModal(discord.ui.Modal):
                     self.parent_view.page = self.parent_view.total_pages
                 else:
                     self.parent_view.page = 1
-            self.parent_view._build()
+            await self.parent_view.ensure_session()
             if self.source_message is not None:
                 await self.source_message.edit(
                     view=self.parent_view,
@@ -1042,7 +1043,7 @@ class TodoListOptionsModal(discord.ui.Modal):
 
         try:
             await self.parent_view._reload_items()
-            self.parent_view._build()
+            await self.parent_view.ensure_session()
         except Exception as exc:
             await handle_interaction_error(
                 interaction,
@@ -1154,8 +1155,11 @@ class TodoListItemsView(discord.ui.View):
         guild_id: Optional[int] = None,
         page: int = 1,
         page_size: int = 5,
+        search_query: str = "",
+        session_id: Optional[str] = None,
+        timeout: float | None = None,
     ) -> None:
-        super().__init__(timeout=300)
+        super().__init__(timeout=timeout)
         self.todo_list = todo_list
         self._all_items = items
         self.items: List[Dict[str, Any]] = []
@@ -1186,13 +1190,105 @@ class TodoListItemsView(discord.ui.View):
         self.user_id = user_id
         self.view_scope = view_scope
         self.guild_id = guild_id
-        self.search_query = ""
+        self.search_query = self.normalize_search_query(search_query)
         self.assignee_filter_label = self._assignee_filter_summary_label()
         self.page_size = max(1, min(page_size, 5))
         self.total_pages = 1
         self.page = max(1, page)
+        self.session_id = str(session_id or "").strip() or None
         self._apply_filters()
+        if self.session_id is not None:
+            self._build()
+
+    @classmethod
+    async def from_session(
+        cls,
+        interaction: discord.Interaction,
+        session_id: str,
+    ) -> Optional["TodoListItemsView"]:
+        session = await asyncio.to_thread(
+            todo_list_item_sessions.get_session,
+            session_id,
+        )
+        if session is None:
+            return None
+
+        todo_list_id = str(session.get("todo_list_id") or "").strip()
+        todo_list = {
+            "_id": todo_list_id or None,
+            "name": str(session.get("todo_list_name") or "").strip(),
+            "scope": str(session.get("todo_scope") or "channel").strip(),
+            "channel_id": session.get("todo_channel_id"),
+            "user_id": session.get("todo_user_id"),
+            "guild_id": session.get("guild_id"),
+        }
+        if todo_list_id:
+            refreshed_list = await asyncio.to_thread(
+                TodoFunctions.fetch_todo_list_by_id,
+                todo_list_id,
+            )
+            if refreshed_list is not None:
+                todo_list = refreshed_list
+
+        view = cls(
+            todo_list=todo_list,
+            items=[],
+            sort=str(session.get("sort") or "ascending").strip(),
+            status_filter=str(session.get("status_filter") or "all").strip(),
+            assignee_filter_ids=list(session.get("assignee_filter_ids") or []),
+            assignee_filter_unassigned=bool(
+                session.get("assignee_filter_unassigned", False)
+            ),
+            user_id=session.get("user_id"),
+            view_scope=str(session.get("view_scope") or "list").strip(),
+            guild_id=session.get("guild_id"),
+            page=max(1, int(session.get("page") or 1)),
+            page_size=max(1, int(session.get("page_size") or 5)),
+            search_query=str(session.get("search_query") or ""),
+            session_id=str(session.get("session_id") or session_id).strip(),
+        )
+        await view._reload_items()
+        await view.ensure_session()
+        return view
+
+    def session_state(self) -> dict:
+        return {
+            "todo_list_id": str(self.todo_list.get("_id") or "").strip(),
+            "todo_list_name": TodoFunctions.display_list_name(self.todo_list, "List"),
+            "todo_scope": str(self.todo_list.get("scope") or "channel"),
+            "todo_channel_id": self.todo_list.get("channel_id"),
+            "todo_user_id": self.todo_list.get("user_id"),
+            "sort": self.sort,
+            "status_filter": self.status_filter,
+            "assignee_filter_ids": self.assignee_filter_ids,
+            "assignee_filter_unassigned": self.assignee_filter_unassigned,
+            "user_id": self.user_id,
+            "view_scope": self.view_scope,
+            "guild_id": self.guild_id,
+            "page": self.page,
+            "page_size": self.page_size,
+            "search_query": self.search_query,
+        }
+
+    async def ensure_session(self) -> str:
+        if self.session_id is None:
+            self.session_id = await asyncio.to_thread(
+                todo_list_item_sessions.create_session,
+                self.session_state(),
+            )
+        else:
+            await self.save_session()
         self._build()
+        return self.session_id
+
+    async def save_session(self) -> None:
+        if self.session_id is None:
+            return
+        await asyncio.to_thread(
+            todo_list_item_sessions.save_session,
+            self.session_id,
+            self.session_state(),
+        )
 
     def _page_slice(self) -> List[Dict[str, Any]]:
         start = (self.page - 1) * self.page_size
@@ -1529,6 +1625,8 @@ class TodoListItemsView(discord.ui.View):
             return
 
     async def _safe_refresh_message(self, interaction: discord.Interaction) -> bool:
+        self._build()
+        await self.save_session()
         try:
             if interaction.response.is_done():
                 await interaction.edit_original_response(view=self, **self.payload())
@@ -1855,95 +1953,52 @@ class TodoListItemsView(discord.ui.View):
 
     def _build(self) -> None:
         self.clear_items()
+        if self.session_id is None:
+            return
+
+        from views.todo_list_items_dynamic_items import (
+            TodoListItemInfoButton,
+            TodoListItemsAddButton,
+            TodoListItemsNextButton,
+            TodoListItemsOptionsButton,
+            TodoListItemsPrevButton,
+        )
 
         for slot_index in range(self.page_size):
-            display_index = slot_index + 1
             item = self._page_item(slot_index)
-            item_id = str((item or {}).get("_id") or "")
             has_item = item is not None
-
-            info_button = discord.ui.Button(
-                label=str(display_index),
-                style=discord.ButtonStyle.secondary,
-                custom_id=f"todo_item_info:{item_id or display_index}",
-                row=0,
-                disabled=not has_item,
+            self.add_item(
+                TodoListItemInfoButton(
+                    self.session_id,
+                    slot_index,
+                    disabled=not has_item,
+                )
             )
 
-            async def _info_callback(
-                interaction: discord.Interaction,
-                item_data: Optional[Dict[str, Any]] = item,
-            ) -> None:
-                await self._open_item_details(interaction, item_data)
-
-            info_button.callback = _info_callback
-            self.add_item(info_button)
-
-        prev_button = discord.ui.Button(
-            style=discord.ButtonStyle.secondary,
-            emoji="◀️",
-            disabled=self.page <= 1,
-            row=1,
-        )
-        add_button = discord.ui.Button(
-            style=discord.ButtonStyle.success,
-            emoji="➕",
-            row=1,
-            disabled=(self.view_scope != "list") or (self.todo_list.get("_id") is None),
-        )
-        next_button = discord.ui.Button(
-            style=discord.ButtonStyle.secondary,
-            emoji="▶️",
-            disabled=self.page >= self.total_pages,
-            row=1,
-        )
-        options_button = discord.ui.Button(
-            style=(
-                discord.ButtonStyle.success
-                if self._has_active_list_options()
-                else discord.ButtonStyle.secondary
-            ),
-            emoji="🔎",
-            row=1,
-        )
-
-        async def _prev_callback(interaction: discord.Interaction) -> None:
-            if self.page <= 1:
-                await interaction.response.defer(ephemeral=True)
-                return
-            self.page -= 1
-            self._build()
-            await self._safe_refresh_message(interaction)
-
-        async def _next_callback(interaction: discord.Interaction) -> None:
-            if self.page >= self.total_pages:
-                await interaction.response.defer(ephemeral=True)
-                return
-            self.page += 1
-            self._build()
-            await self._safe_refresh_message(interaction)
-
-        async def _add_callback(interaction: discord.Interaction) -> None:
-            await self.open_create_modal(
-                interaction,
-                source_message=interaction.message,
+        self.add_item(
+            TodoListItemsPrevButton(
+                self.session_id,
+                disabled=self.page <= 1,
             )
-
-        async def _options_callback(interaction: discord.Interaction) -> None:
-            await self.open_options_modal(
-                interaction,
-                source_message=interaction.message,
+        )
+        self.add_item(
+            TodoListItemsNextButton(
+                self.session_id,
+                disabled=self.page >= self.total_pages,
             )
-
-        prev_button.callback = _prev_callback
-        next_button.callback = _next_callback
-        add_button.callback = _add_callback
-        options_button.callback = _options_callback
-
-        self.add_item(prev_button)
-        self.add_item(next_button)
-        self.add_item(add_button)
-        self.add_item(options_button)
+        )
+        self.add_item(
+            TodoListItemsAddButton(
+                self.session_id,
+                disabled=(self.view_scope != "list") or (self.todo_list.get("_id") is None),
+            )
+        )
+        self.add_item(
+            TodoListItemsOptionsButton(
+                self.session_id,
+                active=self._has_active_list_options(),
+            )
+        )
 
 
 class TodoDeleteConfirmModal(discord.ui.Modal):

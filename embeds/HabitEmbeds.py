@@ -3,8 +3,6 @@ from typing import Optional, Dict, Any
 
 import discord
 
-from views.HabitActionView import HabitActionView
-
 
 class HabitEmbeds:
     _PROGRESS_EMOJI = {
@@ -104,6 +102,8 @@ class HabitEmbeds:
 
     @staticmethod
     def habit_reminder_payload(habit: Dict[str, Any]) -> dict:
+        from views.HabitActionView import HabitActionView
+
         name = str(habit.get("name") or "Habit")
         description = habit.get("description")
         user_id = habit.get("user_id")

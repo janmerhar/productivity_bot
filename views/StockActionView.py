@@ -375,16 +375,34 @@ class StockDailyJobModal(discord.ui.Modal, title="Schedule Daily Stock Check"):
 
 
 class StockActionView(discord.ui.View):
-    def __init__(self, symbol: str, *, timeout: float = 3600) -> None:
+    def __init__(self, symbol: str, *, timeout: float | None = None) -> None:
         super().__init__(timeout=timeout)
         self.symbol = symbol.strip().upper()
+        self._build()
 
-    @discord.ui.button(label="Set Alert", style=discord.ButtonStyle.success)
-    async def set_alert(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
+    def _build(self) -> None:
+        self.clear_items()
+
+        from views.stock_action_dynamic_items import (
+            StockScheduleDailyCheckButton,
+            StockSetAlertButton,
+        )
+
+        symbol = self.symbol
+        self.add_item(
+            StockSetAlertButton(
+                symbol=symbol,
+                disabled=not bool(symbol),
+            )
+        )
+        self.add_item(
+            StockScheduleDailyCheckButton(
+                symbol=symbol,
+                disabled=not bool(symbol),
+            )
+        )
+
+    async def open_set_alert_modal(self, interaction: discord.Interaction) -> None:
         if not self.symbol:
             await handle_interaction_error(
                 interaction,
@@ -395,13 +413,9 @@ class StockActionView(discord.ui.View):
             return
         await interaction.response.send_modal(StockAlertModal(self.symbol))
 
-    @discord.ui.button(
-        label="Schedule Daily Check", style=discord.ButtonStyle.secondary
-    )
-    async def schedule_daily_check(
+    async def open_schedule_daily_check_modal(
         self,
         interaction: discord.Interaction,
-        _: discord.ui.Button,
     ) -> None:
         if not self.symbol:
             await handle_interaction_error(

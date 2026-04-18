@@ -9,6 +9,7 @@ from classes.DailyJob import DailyJob
 from classes.ReminderFunctions import ReminderFunctions
 from services.channel_visibility import can_view_channel
 from services.error_reporting import ValidationError, UserVisibleError, handle_interaction_error
+from services import reminder_list_sessions
 from views.ReminderOutputView import ReminderOutputView
 from views.ReminderEditModal import ReminderCreateModal
 
@@ -167,6 +168,7 @@ class ReminderListOptionsModal(discord.ui.Modal):
             self.parent_view.page = 1
             await self.parent_view._reload_reminders(interaction)
             self.parent_view._build()
+            await self.parent_view.save_session()
         except (ValidationError, UserVisibleError) as exc:
             await handle_interaction_error(
                 interaction,
@@ -186,11 +188,12 @@ class ReminderListOptionsModal(discord.ui.Modal):
 
         target_message = self.source_message or self.parent_view.message
         if target_message is None:
-            await interaction.followup.send(
+            posted_message = await interaction.followup.send(
                 ephemeral=True,
                 view=self.parent_view,
                 **self.parent_view.payload(),
             )
+            self.parent_view.message = posted_message
             return
 
         try:
@@ -228,8 +231,12 @@ class ReminderListView(discord.ui.View):
         user_id: Optional[int],
         sort: str = "ascending",
         response_ephemeral: bool = False,
+        search_query: str = "",
+        ping_filter_user_ids: Optional[List[int]] = None,
+        ping_filter_label: str = "All",
         page: int = 1,
-        timeout: float = 300,
+        session_id: Optional[str] = None,
+        timeout: Optional[float] = None,
     ) -> None:
         super().__init__(timeout=timeout)
         self._all_reminders = list(reminders)
@@ -245,17 +252,95 @@ class ReminderListView(discord.ui.View):
         self.channel_id = channel_id
         self.destination_type = destination_type
         self.user_id = user_id
-        self.search_query = ""
-        self.ping_filter_user_ids: List[int] = []
-        self.ping_filter_label = "All"
+        self.search_query = self.normalize_search_query(search_query)
+        self.ping_filter_user_ids = [
+            int(value) for value in list(ping_filter_user_ids or [])
+        ][:25]
+        self.ping_filter_label = str(ping_filter_label or "All").strip() or "All"
         self.sort = sort if sort in {"ascending", "descending"} else "ascending"
+        self.session_id = str(session_id or "").strip() or None
         self.message: Optional[discord.Message] = None
         self.response_ephemeral = bool(response_ephemeral)
         self.page_size = self.PAGE_SIZE
         self.total_pages = 1
         self.page = max(1, page)
         self._apply_filters()
+        if self.session_id is not None:
+            self._build()
+
+    def session_state(self) -> dict:
+        return {
+            "scope_label": self.scope_label,
+            "target_value": self.target_value,
+            "status_filter": self.status_filter,
+            "guild_id": self.guild_id,
+            "channel_id": self.channel_id,
+            "destination_type": self.destination_type,
+            "user_id": self.user_id,
+            "sort": self.sort,
+            "response_ephemeral": self.response_ephemeral,
+            "page": self.page,
+            "search_query": self.search_query,
+            "ping_filter_user_ids": self.ping_filter_user_ids,
+            "ping_filter_label": self.ping_filter_label,
+        }
+
+    async def ensure_session(self) -> str:
+        if self.session_id is None:
+            self.session_id = await asyncio.to_thread(
+                reminder_list_sessions.create_session,
+                self.session_state(),
+            )
+        else:
+            await self.save_session()
         self._build()
+        return self.session_id
+
+    async def save_session(self) -> None:
+        if self.session_id is None:
+            return
+        await asyncio.to_thread(
+            reminder_list_sessions.save_session,
+            self.session_id,
+            self.session_state(),
+        )
+
+    @classmethod
+    async def from_session(
+        cls,
+        interaction: discord.Interaction,
+        session_id: str,
+    ) -> Optional["ReminderListView"]:
+        session = await asyncio.to_thread(
+            reminder_list_sessions.get_session,
+            session_id,
+        )
+        if session is None:
+            return None
+
+        view = cls(
+            reminders=[],
+            scope_label=str(session.get("scope_label") or "").strip(),
+            target_value=str(session.get("target_value") or "").strip(),
+            status_filter=str(session.get("status_filter") or "all").strip(),
+            guild_id=session.get("guild_id"),
+            channel_id=session.get("channel_id"),
+            destination_type=session.get("destination_type"),
+            user_id=session.get("user_id"),
+            sort=str(session.get("sort") or "ascending").strip(),
+            response_ephemeral=bool(session.get("response_ephemeral", False)),
+            search_query=str(session.get("search_query") or ""),
+            ping_filter_user_ids=list(session.get("ping_filter_user_ids") or []),
+            ping_filter_label=str(session.get("ping_filter_label") or "All"),
+            page=max(1, int(session.get("page") or 1)),
+            session_id=str(session.get("session_id") or session_id).strip(),
+        )
+        view.page = max(1, int(session.get("page") or 1))
+        view.message = interaction.message
+        await view._reload_reminders(interaction)
+        view._build()
+        await view.save_session()
+        return view
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if self.user_id is None or interaction.user.id == self.user_id:
@@ -671,6 +756,7 @@ class ReminderListView(discord.ui.View):
         if current_job is None:
             await self._reload_reminders(interaction)
             self._build()
+            await self.save_session()
             await interaction.response.edit_message(view=self, **self.payload())
             return
 
@@ -744,11 +830,14 @@ class ReminderListView(discord.ui.View):
         *,
         source_message: Optional[discord.Message] = None,
         jump_to_last_page: bool = False,
+        result_message: Optional[str] = None,
     ) -> None:
+        del result_message
         await self._reload_reminders(interaction)
         if jump_to_last_page and self.reminders:
             self.page = self.total_pages
         self._build()
+        await self.save_session()
 
         target_message = source_message or interaction.message
         if target_message is None:
@@ -764,29 +853,49 @@ class ReminderListView(discord.ui.View):
             )
 
     def _build(self) -> None:
+        from views.reminder_dynamic_items import (
+            ReminderListAddButton,
+            ReminderListItemButton,
+            ReminderListNextButton,
+            ReminderListOptionsButton,
+            ReminderListPrevButton,
+        )
+
         self.clear_items()
+        if self.session_id is None:
+            return
 
         for slot_index in range(self.page_size):
             display_index = slot_index + 1
             job = self._page_item(slot_index)
-            job_id = str(job.id) if job is not None else ""
-
-            info_button = discord.ui.Button(
-                label=str(display_index),
-                style=discord.ButtonStyle.secondary,
-                custom_id=f"reminder_item_info:{job_id or display_index}",
-                row=0,
-                disabled=job is None,
+            self.add_item(
+                ReminderListItemButton(
+                    self.session_id,
+                    display_index,
+                    disabled=job is None,
+                )
             )
 
-            async def _info_callback(
-                interaction: discord.Interaction,
-                job_data: Optional[DailyJob] = job,
-            ) -> None:
-                await self._open_reminder_details(interaction, job_data)
-
-            info_button.callback = _info_callback
-            self.add_item(info_button)
+        self.add_item(
+            ReminderListPrevButton(
+                self.session_id,
+                disabled=self.page <= 1,
+            )
+        )
+        self.add_item(
+            ReminderListNextButton(
+                self.session_id,
+                disabled=self.page >= self.total_pages,
+            )
+        )
+        self.add_item(ReminderListAddButton(self.session_id))
+        self.add_item(
+            ReminderListOptionsButton(
+                self.session_id,
+                active=self._has_active_list_options(),
+            )
+        )
+        return
 
         prev_button = discord.ui.Button(
             style=discord.ButtonStyle.secondary,

@@ -4,7 +4,7 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 import discord
 
 from classes.TodoFunctions import TodoFunctions
-from embeds.TodoEmbeds import TodoEmbeds, TodoListItemsView
+from embeds.TodoEmbeds import TodoEmbeds
 from services.error_reporting import (
     UserVisibleError,
     ValidationError,
@@ -88,13 +88,14 @@ class TodoListRenameModal(discord.ui.Modal):
             return
 
         self.parent_view.todo_list = updated_list
+        self.parent_view.list_id = str(updated_list.get("_id") or "").strip()
         self.parent_view.embed_title = "Todo List Updated"
         self.parent_view.embed_description = (
             f"Previous name: `{old_name}`\n"
             f"New name: `{updated_list.get('name') or 'List'}`"
         )
         self.parent_view.color = discord.Colour.blurple()
-        self.parent_view.sync_button_state()
+        self.parent_view._build()
         await self.parent_view.refresh_message(interaction)
 
 
@@ -107,16 +108,17 @@ class TodoListDescriptionView(discord.ui.View):
         color: Optional[discord.Colour] = None,
         todo_list: Optional[Dict[str, Any]] = None,
         user_id: Optional[int] = None,
-        timeout: float = 900,
+        timeout: float | None = None,
     ) -> None:
         super().__init__(timeout=timeout)
         self.embed_title = str(title or "").strip() or "Todo List"
         self.embed_description = str(description or "").strip()
         self.color = color or discord.Colour.blurple()
         self.todo_list = todo_list
+        self.list_id = str((todo_list or {}).get("_id") or "").strip()
         self.user_id = user_id
         self.message: Optional[discord.Message] = None
-        self.sync_button_state()
+        self._build()
 
     @property
     def list_name(self) -> str:
@@ -124,16 +126,57 @@ class TodoListDescriptionView(discord.ui.View):
             return "List"
         return TodoFunctions.display_list_name(self.todo_list, "List")
 
-    def sync_button_state(self) -> None:
+    def _build(self) -> None:
+        from views.todo_list_description_dynamic_items import (
+            TodoListAddButton,
+            TodoListClearButton,
+            TodoListDeleteButton,
+            TodoListRenameButton,
+            TodoListShowButton,
+        )
+
         has_list = bool(self.todo_list and self.todo_list.get("_id"))
         is_custom = has_list and (
             TodoFunctions.list_type(self.todo_list) == TodoFunctions._CUSTOM_LIST_TYPE
         )
-        self.show_list.disabled = not has_list
-        self.add_item.disabled = not has_list
-        self.rename_list.disabled = not is_custom
-        self.clear_list.disabled = not has_list
-        self.delete_list.disabled = not is_custom
+        encoded_user_id = int(self.user_id or 0)
+
+        self.clear_items()
+        self.add_item(
+            TodoListShowButton(
+                self.list_id,
+                encoded_user_id,
+                disabled=not has_list,
+            )
+        )
+        self.add_item(
+            TodoListAddButton(
+                self.list_id,
+                encoded_user_id,
+                disabled=not has_list,
+            )
+        )
+        self.add_item(
+            TodoListRenameButton(
+                self.list_id,
+                encoded_user_id,
+                disabled=not is_custom,
+            )
+        )
+        self.add_item(
+            TodoListClearButton(
+                self.list_id,
+                encoded_user_id,
+                disabled=not has_list,
+            )
+        )
+        self.add_item(
+            TodoListDeleteButton(
+                self.list_id,
+                encoded_user_id,
+                disabled=not is_custom,
+            )
+        )
 
     def payload(self) -> dict:
         return TodoEmbeds.list_description_embed(
@@ -158,19 +201,19 @@ class TodoListDescriptionView(discord.ui.View):
         return False
 
     async def refresh_todo_list(self) -> Optional[Dict[str, Any]]:
-        if not self.todo_list or not self.todo_list.get("_id"):
+        if not self.list_id:
             return None
 
         refreshed = await asyncio.to_thread(
             TodoFunctions.fetch_todo_list_by_id,
-            self.todo_list.get("_id"),
+            self.list_id,
         )
         self.todo_list = refreshed
-        self.sync_button_state()
+        self._build()
         return refreshed
 
     async def refresh_message(self, interaction: discord.Interaction) -> None:
-        self.sync_button_state()
+        self._build()
         try:
             if self.message is not None:
                 await self.message.edit(**self.response_payload())
@@ -282,188 +325,6 @@ class TodoListDescriptionView(discord.ui.View):
             f"Removed items: `{deleted_count}`"
         )
         self.color = discord.Colour.red()
-        self.sync_button_state()
+        self._build()
         self.stop()
         await self.refresh_message(interaction)
-
-    @discord.ui.button(emoji="📋", style=discord.ButtonStyle.secondary, row=0)
-    async def show_list(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        self.message = interaction.message
-        todo_list = await self.refresh_todo_list()
-        if todo_list is None:
-            await handle_interaction_error(
-                interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
-            )
-            return
-
-        try:
-            items = await asyncio.to_thread(
-                TodoFunctions.list_items_on_list,
-                todo_list.get("_id"),
-                "ascending",
-            )
-        except Exception as exc:
-            await handle_interaction_error(
-                interaction,
-                UserVisibleError(
-                    "Something went wrong while loading that list.",
-                    ephemeral=True,
-                    cause=exc,
-                ),
-            )
-            return
-
-        view = TodoListItemsView(
-            todo_list=todo_list,
-            items=items,
-            sort="ascending",
-            status_filter="all",
-            user_id=interaction.user.id,
-            view_scope="list",
-            guild_id=interaction.guild_id,
-        )
-        await interaction.response.send_message(
-            ephemeral=True,
-            view=view,
-            **view.payload(),
-        )
-
-    @discord.ui.button(emoji="➕", style=discord.ButtonStyle.success, row=0)
-    async def add_item(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        self.message = interaction.message
-        todo_list = await self.refresh_todo_list()
-        if todo_list is None:
-            await handle_interaction_error(
-                interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
-            )
-            return
-
-        parent_view = TodoListItemsView(
-            todo_list=todo_list,
-            items=[],
-            sort="ascending",
-            status_filter="all",
-            user_id=interaction.user.id,
-            view_scope="list",
-            guild_id=interaction.guild_id,
-        )
-        await parent_view.open_create_modal(
-            interaction,
-            source_message=None,
-        )
-
-    @discord.ui.button(emoji="✏️", style=discord.ButtonStyle.primary, row=0)
-    async def rename_list(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        self.message = interaction.message
-        todo_list = await self.refresh_todo_list()
-        if todo_list is None:
-            await handle_interaction_error(
-                interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
-            )
-            return
-
-        await interaction.response.send_modal(TodoListRenameModal(self))
-
-    @discord.ui.button(emoji="🧹", style=discord.ButtonStyle.secondary, row=0)
-    async def clear_list(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        self.message = interaction.message
-        todo_list = await self.refresh_todo_list()
-        if todo_list is None:
-            await handle_interaction_error(
-                interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
-            )
-            return
-
-        try:
-            item_count = await asyncio.to_thread(
-                TodoFunctions.count_items_on_list,
-                todo_list.get("_id"),
-            )
-        except Exception as exc:
-            await handle_interaction_error(
-                interaction,
-                UserVisibleError(
-                    "Something went wrong while preparing that confirmation.",
-                    ephemeral=True,
-                    cause=exc,
-                ),
-            )
-            return
-
-        description = self._format_confirmation_description(
-            action_text="This will remove every item from this list.",
-            list_name=TodoFunctions.display_list_name(todo_list, "List"),
-            item_count=item_count,
-        )
-        await interaction.response.send_modal(
-            TodoListConfirmModal(
-                title="Clear Todo List",
-                description=description,
-                on_confirm=self._run_clear_list,
-            )
-        )
-
-    @discord.ui.button(emoji="🗑️", style=discord.ButtonStyle.danger, row=0)
-    async def delete_list(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        self.message = interaction.message
-        todo_list = await self.refresh_todo_list()
-        if todo_list is None:
-            await handle_interaction_error(
-                interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
-            )
-            return
-
-        list_name = TodoFunctions.display_list_name(todo_list, "List")
-        try:
-            item_count = await asyncio.to_thread(
-                TodoFunctions.count_items_on_list,
-                todo_list.get("_id"),
-            )
-        except Exception as exc:
-            await handle_interaction_error(
-                interaction,
-                UserVisibleError(
-                    "Something went wrong while preparing that confirmation.",
-                    ephemeral=True,
-                    cause=exc,
-                ),
-            )
-            return
-
-        description = self._format_confirmation_description(
-            action_text="This will permanently delete this custom list.",
-            list_name=list_name,
-            item_count=item_count,
-        )
-        await interaction.response.send_modal(
-            TodoListConfirmModal(
-                title="Delete Todo List",
-                description=description,
-                on_confirm=self._run_delete_list,
-            )
-        )

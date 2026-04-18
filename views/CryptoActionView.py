@@ -193,6 +193,7 @@ class CryptoAlertModal(discord.ui.Modal, title="Create Crypto Alert"):
 
             timezone = None
             if expires_text:
+
                 async def _continue_with_timezone(
                     followup_interaction: discord.Interaction,
                     resolved_timezone: str,
@@ -346,6 +347,7 @@ class CryptoDailyJobModal(discord.ui.Modal, title="Schedule Daily Crypto Check")
 
             timezone = None
             if not is_valid_cron_expression(raw_schedule):
+
                 async def _continue_with_timezone(
                     followup_interaction: discord.Interaction,
                     resolved_timezone: str,
@@ -388,17 +390,43 @@ class CryptoDailyJobModal(discord.ui.Modal, title="Schedule Daily Crypto Check")
 
 
 class CryptoActionView(discord.ui.View):
-    def __init__(self, coin_id: str, currency: str, *, timeout: float = 3600) -> None:
+    def __init__(
+        self,
+        coin_id: str,
+        currency: str,
+        *,
+        timeout: float | None = None,
+    ) -> None:
         super().__init__(timeout=timeout)
         self.coin_id = coin_id.strip().lower()
         self.currency = currency.strip().lower() or "usd"
+        self._build()
 
-    @discord.ui.button(label="Set Alert", style=discord.ButtonStyle.success)
-    async def set_alert(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
+    def _build(self) -> None:
+        self.clear_items()
+
+        from views.crypto_action_dynamic_items import (
+            CryptoScheduleDailyCheckButton,
+            CryptoSetAlertButton,
+        )
+
+        has_coin = bool(self.coin_id)
+        self.add_item(
+            CryptoSetAlertButton(
+                coin_id=self.coin_id,
+                currency=self.currency,
+                disabled=not has_coin,
+            )
+        )
+        self.add_item(
+            CryptoScheduleDailyCheckButton(
+                coin_id=self.coin_id,
+                currency=self.currency,
+                disabled=not has_coin,
+            )
+        )
+
+    async def open_set_alert_modal(self, interaction: discord.Interaction) -> None:
         if not self.coin_id:
             await handle_interaction_error(
                 interaction,
@@ -412,13 +440,9 @@ class CryptoActionView(discord.ui.View):
             )
         )
 
-    @discord.ui.button(
-        label="Schedule Daily Check", style=discord.ButtonStyle.secondary
-    )
-    async def schedule_daily_check(
+    async def open_schedule_daily_check_modal(
         self,
         interaction: discord.Interaction,
-        _: discord.ui.Button,
     ) -> None:
         if not self.coin_id:
             await handle_interaction_error(

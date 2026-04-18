@@ -6,11 +6,8 @@ import discord
 
 from classes.DailyJob import DailyJob
 from classes.ReminderFunctions import ReminderFunctions
-from services.discord_helpers import (
-    format_reminder_mentions,
-)
+from services.discord_helpers import format_reminder_mentions
 from services.error_reporting import ValidationError, handle_interaction_error
-from services.reminder_destination import build_reminder_destination_select_options
 
 
 class ReminderDeleteConfirmModal(discord.ui.Modal):
@@ -36,13 +33,16 @@ class ReminderOutputView(discord.ui.View):
     def __init__(
         self,
         *,
-        job: DailyJob,
+        job: Optional[DailyJob],
         guild: Optional[discord.Guild],
         result_message: str,
         ok: bool = True,
         user_id: Optional[int] = None,
         response_ephemeral: bool = False,
-        timeout: float = 3600,
+        job_id: Optional[str] = None,
+        guild_id: Optional[int] = None,
+        channel_id: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> None:
         super().__init__(timeout=timeout)
         self.job: Optional[DailyJob] = job
@@ -52,10 +52,15 @@ class ReminderOutputView(discord.ui.View):
         self.user_id = user_id
         self.response_ephemeral = bool(response_ephemeral)
         self.message: Optional[discord.Message] = None
-        self.job_id = str(job.id)
-        self.guild_id = job.guild_id
-        self.channel_id = job.channel_id
-        self._sync_button_state()
+
+        resolved_job_id = str(job.id) if job is not None else str(job_id or "").strip()
+        if not resolved_job_id:
+            raise ValueError("ReminderOutputView needs a reminder id.")
+
+        self.job_id = resolved_job_id
+        self.guild_id = job.guild_id if job is not None else guild_id
+        self.channel_id = job.channel_id if job is not None else channel_id
+        self._rebuild_items()
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if self.user_id is None or interaction.user.id == self.user_id:
@@ -74,7 +79,7 @@ class ReminderOutputView(discord.ui.View):
         )
         if self.job is not None:
             self.channel_id = self.job.channel_id
-        self._sync_button_state()
+        self._rebuild_items()
 
     async def refresh_message(
         self,
@@ -123,27 +128,60 @@ class ReminderOutputView(discord.ui.View):
 
         return False
 
-    def _sync_button_state(self) -> None:
+    def _rebuild_items(self) -> None:
+        from views.reminder_dynamic_items import (
+            ReminderAddButton,
+            ReminderDeleteButton,
+            ReminderEditButton,
+            ReminderPingButton,
+            ReminderToggleButton,
+        )
+
+        self.clear_items()
         has_job = self.job is not None
-        self.edit_this_reminder.disabled = not has_job
-        self.edit_ping_users.disabled = not has_job
-        self.toggle_state.disabled = not has_job
-        self.delete_reminder.disabled = not has_job
+        encoded_user_id = int(self.user_id or 0)
+        is_paused = has_job and ReminderFunctions.is_paused(self.job)
 
-        if not has_job:
-            self.toggle_state.label = None
-            self.toggle_state.emoji = "🚫"
-            self.toggle_state.style = discord.ButtonStyle.secondary
-            return
-
-        if ReminderFunctions.is_paused(self.job):
-            self.toggle_state.label = None
-            self.toggle_state.emoji = "▶️"
-            self.toggle_state.style = discord.ButtonStyle.success
-        else:
-            self.toggle_state.label = None
-            self.toggle_state.emoji = "⏸️"
-            self.toggle_state.style = discord.ButtonStyle.secondary
+        self.add_item(
+            ReminderAddButton(
+                self.job_id,
+                encoded_user_id,
+                self.response_ephemeral,
+            )
+        )
+        self.add_item(
+            ReminderEditButton(
+                self.job_id,
+                encoded_user_id,
+                self.response_ephemeral,
+                disabled=not has_job,
+            )
+        )
+        self.add_item(
+            ReminderPingButton(
+                self.job_id,
+                encoded_user_id,
+                self.response_ephemeral,
+                disabled=not has_job,
+            )
+        )
+        self.add_item(
+            ReminderToggleButton(
+                self.job_id,
+                encoded_user_id,
+                self.response_ephemeral,
+                paused=bool(is_paused),
+                disabled=not has_job,
+            )
+        )
+        self.add_item(
+            ReminderDeleteButton(
+                self.job_id,
+                encoded_user_id,
+                self.response_ephemeral,
+                disabled=not has_job,
+            )
+        )
 
     @staticmethod
     def _format_channel(job: Optional[DailyJob], channel_id: Optional[int]) -> str:
@@ -302,204 +340,6 @@ class ReminderOutputView(discord.ui.View):
             payload["view"] = self
         return payload
 
-    @discord.ui.button(
-        emoji="➕",
-        style=discord.ButtonStyle.success,
-        row=0,
-    )
-    async def add_new_reminder(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        from views.ReminderEditModal import (
-            ReminderCreateModal,
-        )
-
-        self.message = interaction.message
-        default_channel_id = self.channel_id or interaction.channel_id
-        await interaction.response.send_modal(
-            ReminderCreateModal(
-                parent_view=self,
-                default_channel_id=default_channel_id,
-                default_destination_type=(
-                    "private"
-                    if self.job is not None
-                    and ReminderFunctions.is_private_destination(self.job)
-                    else "channel"
-                ),
-                guild=interaction.guild or self.guild,
-                source_message=interaction.message,
-                response_ephemeral=self.response_ephemeral,
-            )
-        )
-
-    @discord.ui.button(
-        emoji="✏️",
-        style=discord.ButtonStyle.secondary,
-        row=0,
-    )
-    async def edit_this_reminder(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        from views.ReminderEditModal import (
-            ReminderEditModal,
-        )
-
-        self.message = interaction.message
-        if self.job is None:
-            await interaction.response.send_message(
-                "That reminder is no longer available.",
-                ephemeral=self.response_ephemeral,
-            )
-            return
-
-        channel_options = build_reminder_destination_select_options(
-            interaction.guild,
-            self.job.channel_id,
-            is_private_selected=ReminderFunctions.is_private_destination(self.job),
-        )
-        await interaction.response.send_modal(
-            ReminderEditModal(
-                self.job,
-                channel_options=channel_options,
-                parent_view=self,
-                source_message=interaction.message,
-                response_ephemeral=self.response_ephemeral,
-            )
-        )
-
-    @discord.ui.button(
-        emoji="🔔",
-        style=discord.ButtonStyle.primary,
-        row=0,
-    )
-    async def edit_ping_users(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        from views.ReminderEditModal import (
-            ReminderPingModal,
-        )
-
-        self.message = interaction.message
-        if self.job is None:
-            await interaction.response.send_message(
-                "That reminder is no longer available.",
-                ephemeral=self.response_ephemeral,
-            )
-            return
-
-        await interaction.response.send_modal(
-            ReminderPingModal(
-                guild=interaction.guild or self.guild,
-                guild_id=self.guild_id,
-                default_channel_id=self.channel_id or interaction.channel_id,
-                response_ephemeral=self.response_ephemeral,
-                user_id=interaction.user.id,
-                job=self.job,
-                parent_view=self,
-                source_message=interaction.message,
-            )
-        )
-
-    @discord.ui.button(
-        emoji="⏸️",
-        style=discord.ButtonStyle.secondary,
-        row=0,
-    )
-    async def toggle_state(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        self.message = interaction.message
-        if self.job is None:
-            await interaction.response.send_message(
-                "That reminder is no longer available.",
-                ephemeral=self.response_ephemeral,
-            )
-            return
-
-        await interaction.response.defer(ephemeral=self.response_ephemeral)
-
-        try:
-            if ReminderFunctions.is_paused(self.job):
-                result = await asyncio.to_thread(
-                    ReminderFunctions.resume_reminder,
-                    self.job_id,
-                    self.guild_id,
-                )
-                desired_message = f"Resumed reminder `{self.job_id}`."
-                no_change_message = f"Reminder `{self.job_id}` is already active."
-            else:
-                result = await asyncio.to_thread(
-                    ReminderFunctions.pause_reminder,
-                    self.job_id,
-                    self.guild_id,
-                )
-                desired_message = f"Paused reminder `{self.job_id}`."
-                no_change_message = f"Reminder `{self.job_id}` is already paused."
-        except ValueError as exc:
-            await handle_interaction_error(
-                interaction,
-                ValidationError(
-                    "That reminder ID is invalid.",
-                    ephemeral=self.response_ephemeral,
-                    cause=exc,
-                ),
-                ephemeral=self.response_ephemeral,
-            )
-            return
-        except Exception as exc:
-            await handle_interaction_error(
-                interaction,
-                exc,
-                ephemeral=self.response_ephemeral,
-            )
-            return
-
-        if result == "missing":
-            self.result_message = "This reminder is no longer available."
-            self.ok = False
-            await self.refresh_message(
-                interaction,
-                source_message=interaction.message,
-                result_message=self.result_message,
-            )
-            return
-
-        result_message = no_change_message if "already_" in result else desired_message
-        self.ok = True
-        await self.refresh_message(
-            interaction,
-            source_message=interaction.message,
-            result_message=result_message,
-        )
-
-    @discord.ui.button(
-        emoji="🗑️",
-        style=discord.ButtonStyle.danger,
-        row=0,
-    )
-    async def delete_reminder(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        self.message = interaction.message
-        if self.job is None:
-            await interaction.response.send_message(
-                "That reminder is no longer available.",
-                ephemeral=self.response_ephemeral,
-            )
-            return
-
-        await interaction.response.send_modal(ReminderDeleteConfirmModal(self))
-
     async def _confirm_delete(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=self.response_ephemeral)
         try:
@@ -531,7 +371,7 @@ class ReminderOutputView(discord.ui.View):
             self.job = None
             self.ok = False
             self.result_message = "This reminder is no longer available."
-            self._sync_button_state()
+            self._rebuild_items()
             await self.refresh_message(
                 interaction,
                 source_message=interaction.message,
@@ -546,7 +386,7 @@ class ReminderOutputView(discord.ui.View):
         self.job = None
         self.ok = True
         self.result_message = f"Deleted reminder `{self.job_id}`."
-        self._sync_button_state()
+        self._rebuild_items()
         await self.refresh_message(
             interaction,
             source_message=interaction.message,

@@ -3,6 +3,13 @@ from typing import List, Optional
 
 import discord
 
+from views.pomodoro_dynamic_items import (
+    PomodoroStartExtendButton,
+    PomodoroStartPlayPauseButton,
+    PomodoroStartSelectVoiceButton,
+    PomodoroStartStopButton,
+)
+
 _POMODORO_MODAL_SELECTS_SUPPORTED = True
 
 
@@ -259,23 +266,19 @@ class PomodoroStartView(discord.ui.View):
         is_paused: bool = False,
         voice_channel_select_enabled: bool = True,
         *,
-        timeout: float = 21600,
+        timeout: Optional[float] = None,
     ) -> None:
         super().__init__(timeout=timeout)
-        self._user_id = user_id
-        self._mode = mode
-        self._end_time = end_time
-        self._is_paused = is_paused
-        self._voice_channel_select_enabled = voice_channel_select_enabled
-
-        if not self._voice_channel_select_enabled:
-            self.select_voice_channel_button.disabled = True
-            self.select_voice_channel_button.label = (
-                "Select Voice Channel (Server only)"
+        self.add_item(
+            PomodoroStartSelectVoiceButton(
+                user_id,
+                disabled=not voice_channel_select_enabled,
+                server_only=not voice_channel_select_enabled,
             )
-            self.select_voice_channel_button.style = discord.ButtonStyle.secondary
-
-        self._sync_play_pause_button()
+        )
+        self.add_item(PomodoroStartPlayPauseButton(user_id, paused=is_paused))
+        self.add_item(PomodoroStartExtendButton(user_id, disabled=is_paused))
+        self.add_item(PomodoroStartStopButton(user_id))
 
         if join_url:
             self.add_item(discord.ui.Button(label="Join Voice", url=join_url))
@@ -311,21 +314,8 @@ class PomodoroStartView(discord.ui.View):
                 )
         return updated
 
-    def _sync_play_pause_button(self) -> None:
-        if self._is_paused:
-            self.play_pause_button.label = "Resume"
-            self.play_pause_button.emoji = "▶️"
-            self.play_pause_button.style = discord.ButtonStyle.success
-            self.extend_timer_button.disabled = True
-            return
-
-        self.play_pause_button.label = "Pause"
-        self.play_pause_button.emoji = "⏸️"
-        self.play_pause_button.style = discord.ButtonStyle.secondary
-        self.extend_timer_button.disabled = False
-
+    @staticmethod
     def _with_paused_timer_fields(
-        self,
         embed: Optional[discord.Embed],
         mode: str,
         remaining_minutes: int,
@@ -356,14 +346,18 @@ class PomodoroStartView(discord.ui.View):
                 )
         return updated
 
+    @staticmethod
     def _with_resumed_timer_fields(
-        self,
         embed: Optional[discord.Embed],
         mode: str,
         end_time: datetime.datetime,
         duration_minutes: int,
     ) -> Optional[discord.Embed]:
-        updated = self._with_updated_timer_fields(embed, end_time, duration_minutes)
+        updated = PomodoroStartView._with_updated_timer_fields(
+            embed,
+            end_time,
+            duration_minutes,
+        )
         if updated is None:
             return None
 
@@ -371,249 +365,3 @@ class PomodoroStartView(discord.ui.View):
         updated.description = f"{mode.capitalize()} timer resumed."
         updated.color = discord.Colour.green()
         return updated
-
-    @discord.ui.button(label="Select Voice Channel", style=discord.ButtonStyle.primary)
-    async def select_voice_channel_button(
-        self, interaction: discord.Interaction, _: discord.ui.Button
-    ) -> None:
-        global _POMODORO_MODAL_SELECTS_SUPPORTED
-
-        if interaction.user.id != self._user_id:
-            await interaction.response.send_message(
-                ephemeral=False,
-                content="Only the user who started this pomodoro can do this.",
-            )
-            return
-
-        if interaction.guild is None:
-            await interaction.response.send_message(
-                ephemeral=False,
-                content="Voice channel selection isn't available in DMs.",
-            )
-            return
-
-        voice_channel_options = (
-            PomodoroVoiceChannelSelectView._build_voice_channel_options(interaction)
-        )
-        if not voice_channel_options:
-            await interaction.response.send_message(
-                ephemeral=False,
-                content="No available voice channels found.",
-            )
-            return
-
-        if _POMODORO_MODAL_SELECTS_SUPPORTED:
-            try:
-                await interaction.response.send_modal(
-                    PomodoroVoiceChannelSelectModal(
-                        user_id=self._user_id,
-                        mode=self._mode,
-                        end_time=self._end_time,
-                        voice_channel_options=voice_channel_options,
-                    )
-                )
-                return
-            except discord.HTTPException as exc:
-                if exc.code == 50035 and "must be one of (4,)" in str(exc):
-                    _POMODORO_MODAL_SELECTS_SUPPORTED = False
-                else:
-                    raise
-
-        picker_view = PomodoroVoiceChannelSelectView(
-            interaction=interaction,
-            user_id=self._user_id,
-            mode=self._mode,
-            end_time=self._end_time,
-        )
-        await interaction.response.send_message(
-            ephemeral=False,
-            content="Choose a voice channel:",
-            view=picker_view,
-        )
-
-    @discord.ui.button(
-        label="Pause",
-        style=discord.ButtonStyle.secondary,
-        emoji="⏸️",
-    )
-    async def play_pause_button(
-        self, interaction: discord.Interaction, _: discord.ui.Button
-    ) -> None:
-        if interaction.user.id != self._user_id:
-            await interaction.response.send_message(
-                ephemeral=False,
-                content="Only the user who started this pomodoro can do this.",
-            )
-            return
-
-        from classes.PomodoroFunctions import PomodoroFunctions
-
-        if self._is_paused:
-            result = await PomodoroFunctions.resume_user_pomodoro(interaction)
-            if (
-                not result.ok
-                or result.end_time is None
-                or result.duration_minutes is None
-            ):
-                await interaction.response.send_message(
-                    ephemeral=False,
-                    content=result.message,
-                )
-                return
-
-            self._is_paused = False
-            self._end_time = result.end_time
-            if result.mode:
-                self._mode = result.mode
-            self._sync_play_pause_button()
-
-            updated_embed = self._with_resumed_timer_fields(
-                (
-                    interaction.message.embeds[0]
-                    if interaction.message and interaction.message.embeds
-                    else None
-                ),
-                self._mode,
-                result.end_time,
-                result.duration_minutes,
-            )
-            if updated_embed is None:
-                await interaction.response.send_message(
-                    ephemeral=False,
-                    content=(
-                        "Pomodoro resumed, but I couldn't refresh the timer card. "
-                        f"New end: {self._relative_timestamp(result.end_time)}"
-                    ),
-                )
-                return
-
-            await interaction.response.edit_message(embed=updated_embed, view=self)
-            return
-
-        result = await PomodoroFunctions.pause_user_pomodoro(interaction)
-        if not result.ok:
-            await interaction.response.send_message(
-                ephemeral=False,
-                content=result.message,
-            )
-            return
-
-        remaining_minutes = result.remaining_minutes or 1
-        if result.mode:
-            self._mode = result.mode
-        self._end_time = None
-        self._is_paused = True
-        self._sync_play_pause_button()
-
-        updated_embed = self._with_paused_timer_fields(
-            (
-                interaction.message.embeds[0]
-                if interaction.message and interaction.message.embeds
-                else None
-            ),
-            self._mode,
-            remaining_minutes,
-        )
-        if updated_embed is None:
-            await interaction.response.send_message(
-                ephemeral=False,
-                content=f"Paused with {remaining_minutes} minute(s) remaining.",
-            )
-            return
-
-        await interaction.response.edit_message(embed=updated_embed, view=self)
-
-    @discord.ui.button(label="Extend +5 min", style=discord.ButtonStyle.secondary)
-    async def extend_timer_button(
-        self, interaction: discord.Interaction, _: discord.ui.Button
-    ) -> None:
-        if interaction.user.id != self._user_id:
-            await interaction.response.send_message(
-                ephemeral=False,
-                content="Only the user who started this pomodoro can do this.",
-            )
-            return
-
-        if self._is_paused:
-            await interaction.response.send_message(
-                ephemeral=False,
-                content="Resume the pomodoro before extending it.",
-            )
-            return
-
-        from classes.PomodoroFunctions import PomodoroFunctions
-
-        result = await PomodoroFunctions.extend_user_pomodoro(
-            interaction,
-            minutes=5,
-            expected_end_time=self._end_time,
-        )
-        if not result.ok or result.end_time is None or result.duration_minutes is None:
-            await interaction.response.send_message(
-                ephemeral=False,
-                content=result.message,
-            )
-            return
-
-        self._end_time = result.end_time
-        updated_embed = self._with_updated_timer_fields(
-            (
-                interaction.message.embeds[0]
-                if interaction.message and interaction.message.embeds
-                else None
-            ),
-            result.end_time,
-            result.duration_minutes,
-        )
-        if updated_embed is None:
-            await interaction.response.send_message(
-                ephemeral=False,
-                content=(
-                    "Extended by 5 minutes, but I couldn't refresh the timer card. "
-                    f"New end: {self._relative_timestamp(result.end_time)}"
-                ),
-            )
-            return
-
-        try:
-            await interaction.response.edit_message(embed=updated_embed, view=self)
-        except discord.HTTPException:
-            fallback_message = (
-                "Extended by 5 minutes, but that timer message no longer exists. "
-                f"New end: {self._relative_timestamp(result.end_time)}"
-            )
-            if interaction.response.is_done():
-                await interaction.followup.send(
-                    ephemeral=False,
-                    content=fallback_message,
-                )
-            else:
-                await interaction.response.send_message(
-                    ephemeral=False,
-                    content=fallback_message,
-                )
-
-    @discord.ui.button(label="Stop Pomodoro", style=discord.ButtonStyle.danger)
-    async def stop_button(
-        self, interaction: discord.Interaction, _: discord.ui.Button
-    ) -> None:
-        if interaction.user.id != self._user_id:
-            await interaction.response.send_message(
-                ephemeral=False,
-                content="Only the user who started this pomodoro can stop it.",
-            )
-            return
-
-        await interaction.response.defer(ephemeral=False)
-        from classes.PomodoroFunctions import PomodoroFunctions
-        from embeds.PomodoroEmbeds import PomodoroEmbeds
-        from views.PomodoroStoppedView import PomodoroStoppedView
-
-        result = await PomodoroFunctions.stop_user_pomodoro(interaction)
-        if not result.ok:
-            await interaction.followup.send(ephemeral=False, content=result.message)
-            return
-
-        payload = PomodoroEmbeds.timer_stopped_embed(result.message)
-        payload["view"] = PomodoroStoppedView(interaction.user.id)
-        await interaction.followup.send(ephemeral=False, **payload)
