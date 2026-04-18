@@ -6,6 +6,10 @@ import discord
 
 class PomodoroEmbeds:
     @staticmethod
+    def _round_half_up(value: float) -> int:
+        return int(value + 0.5)
+
+    @staticmethod
     def _format_end_time(end_time: Optional[datetime.datetime]) -> str:
         if end_time is None:
             return "soon"
@@ -23,26 +27,18 @@ class PomodoroEmbeds:
 
     @staticmethod
     def _format_static_remaining_time(remaining_seconds: Union[int, float]) -> str:
-        seconds = max(0, int(remaining_seconds))
-        if seconds < 60:
-            return "less than a minute"
+        total_seconds = max(0, int(remaining_seconds))
+        if total_seconds < 60:
+            return f"{total_seconds} second{'s' if total_seconds != 1 else ''}"
+        if total_seconds < 3600:
+            minutes = PomodoroEmbeds._round_half_up(total_seconds / 60)
+            return f"{minutes} minute{'s' if minutes != 1 else ''}"
+        if total_seconds < 86400:
+            hours = PomodoroEmbeds._round_half_up(total_seconds / 3600)
+            return f"{hours} hour{'s' if hours != 1 else ''}"
 
-        total_minutes = seconds // 60
-        days, remaining_minutes = divmod(total_minutes, 1440)
-        hours, minutes = divmod(remaining_minutes, 60)
-
-        parts = []
-        if days > 0:
-            parts.append(f"{days} day{'s' if days != 1 else ''}")
-        if hours > 0:
-            parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
-        if minutes > 0:
-            parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
-
-        if not parts:
-            return "1 minute"
-
-        return " ".join(parts[:2])
+        days = PomodoroEmbeds._round_half_up(total_seconds / 86400)
+        return f"{days} day{'s' if days != 1 else ''}"
 
     @staticmethod
     def paused_description(
@@ -51,12 +47,16 @@ class PomodoroEmbeds:
     ) -> str:
         if remaining_seconds is not None:
             formatted = PomodoroEmbeds._format_static_remaining_time(remaining_seconds)
-            return f"**Paused with {formatted} remaining**"
+            return f"**Ends in {formatted}**"
 
         value = str(remaining_minutes).strip() if remaining_minutes is not None else ""
         if value.isdigit():
-            return f"**Paused with {value} minute{'s' if value != '1' else ''} remaining**"
-        return "**Paused**"
+            minute_value = int(value)
+            return (
+                f"**Ends in {minute_value} minute{'s' if minute_value != 1 else ''} "
+                "0 seconds**"
+            )
+        return "**Ends soon**"
 
     @staticmethod
     def insert_timer_embed(

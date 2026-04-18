@@ -55,7 +55,7 @@ class PomodoroFunctions:
             return None
         if value.tzinfo is not None and value.utcoffset() is not None:
             value = value.astimezone().replace(tzinfo=None)
-        return value.replace(second=0, microsecond=0)
+        return value.replace(microsecond=0)
 
     @staticmethod
     def _is_truthy(value: Any) -> bool:
@@ -201,7 +201,7 @@ class PomodoroFunctions:
 
         end_time = (
             datetime.datetime.now() + datetime.timedelta(minutes=resolved_duration)
-        ).replace(second=0, microsecond=0)
+        ).replace(microsecond=0)
 
         schedule = OneTimeSchedule2(datetime=end_time.isoformat())
         data = {
@@ -471,7 +471,7 @@ class PomodoroFunctions:
         )
         new_end_time = (
             datetime.datetime.now() + datetime.timedelta(seconds=remaining_seconds)
-        ).replace(second=0, microsecond=0)
+        ).replace(microsecond=0)
 
         mode = str(data.get("mode", "focus")).strip().lower()
         if mode not in ("focus", "break"):
@@ -575,7 +575,7 @@ class PomodoroFunctions:
                 return None
             if dt.tzinfo is not None and dt.utcoffset() is not None:
                 dt = dt.astimezone().replace(tzinfo=None)
-            return dt.replace(second=0, microsecond=0)
+            return dt.replace(microsecond=0)
 
         normalized_expected = _normalized(expected_end_time)
         selected_job = None
@@ -625,7 +625,7 @@ class PomodoroFunctions:
 
         new_duration = max(0, current_duration) + minutes
         new_end_time = selected_job_end_time + datetime.timedelta(minutes=minutes)
-        new_end_time = new_end_time.replace(second=0, microsecond=0)
+        new_end_time = new_end_time.replace(microsecond=0)
 
         try:
             update_result = await asyncio.to_thread(

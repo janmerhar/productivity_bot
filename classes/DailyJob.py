@@ -204,10 +204,7 @@ class DailyJob:
                 return False
 
             scheduled_dt = datetime.datetime.fromisoformat(schedule["datetime"])
-
-            return scheduled_dt.replace(
-                second=0, microsecond=0
-            ) == check_minute
+            return scheduled_dt <= check_datetime
 
         if mode == "cron":
             expression = schedule["expression"]
