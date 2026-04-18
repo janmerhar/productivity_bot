@@ -25,7 +25,11 @@ from embeds.PriceAlertEmbeds import PriceAlertEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
 from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
-from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from services.visibility import (
+    VISIBILITY_CHOICES,
+    VISIBILITY_DESC,
+    resolve_visibility_for_context,
+)
 from views.ScheduledJobActionView import ScheduledJobActionView
 from views.StockActionView import StockActionView
 from views.StockListItemsView import StockListItemsView
@@ -36,6 +40,19 @@ class StocksCog(commands.Cog):
 
     def __init__(self, client):
         self.client = client
+
+    @staticmethod
+    def _resolve_response_visibility(
+        interaction: discord.Interaction,
+        visibility: Optional[app_commands.Choice[str]],
+        *,
+        guild_default: str,
+    ) -> bool:
+        return resolve_visibility_for_context(
+            interaction.guild_id,
+            visibility,
+            guild_default=guild_default,
+        )
 
     # Events
 
@@ -58,7 +75,11 @@ class StocksCog(commands.Cog):
         ticker: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = self._resolve_response_visibility(
+            interaction,
+            visibility,
+            guild_default="public",
+        )
         await interaction.response.defer(thinking=True, ephemeral=ephemeral)
         await interaction.edit_original_response(
             content=f"• Fetching `{ticker.upper()}` ⏳", embed=None
@@ -264,7 +285,11 @@ class StocksCog(commands.Cog):
         header: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
+        ephemeral = self._resolve_response_visibility(
+            interaction,
+            visibility,
+            guild_default="private",
+        )
         raw_ticker = (ticker or "").strip()
         if not raw_ticker:
             raise ValidationError("Please provide a stock ticker.", ephemeral=ephemeral)
@@ -405,7 +430,11 @@ class StocksCog(commands.Cog):
         destination: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
+        ephemeral = self._resolve_response_visibility(
+            interaction,
+            visibility,
+            guild_default="private",
+        )
         raw_ticker = (ticker or "").strip()
         if not raw_ticker:
             raise ValidationError("Please provide a stock ticker.", ephemeral=ephemeral)
@@ -581,7 +610,11 @@ class StocksCog(commands.Cog):
         kind: Optional[app_commands.Choice[str]] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
+        ephemeral = self._resolve_response_visibility(
+            interaction,
+            visibility,
+            guild_default="private",
+        )
         await interaction.response.defer(ephemeral=ephemeral)
 
         selected_kind = kind.value if kind else "all"
