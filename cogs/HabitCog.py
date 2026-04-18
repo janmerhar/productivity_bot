@@ -63,6 +63,7 @@ class HabitCog(commands.Cog):
                 interaction,
                 _continue_with_timezone,
                 continue_message="Timezone saved as `{timezone}`. Continuing `/habit create`.",
+                response_ephemeral=ephemeral,
             )
             if timezone is None:
                 return
