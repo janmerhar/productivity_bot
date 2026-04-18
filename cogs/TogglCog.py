@@ -7,14 +7,14 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from config.env import env
+from config.env import settings
 from embeds.TogglEmbeds import TogglEmbeds
 from services.toggl_key_gate import ensure_toggl_api_key
 from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
 from views.TogglTimerHistoryView import TogglTimerHistoryView
 from views.TogglTimerView import TogglTimerView
 
-alias_disabled = env.get("ALIAS_DISABLED") == "true"
+alias_disabled = settings.alias_disabled
 saved_disabled = "true"
 DEFAULT_VISIBILITY = "public"
 

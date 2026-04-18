@@ -3,7 +3,7 @@ from ticktick.api import TickTickClient
 
 from abstract.FunctionsAbstract import FunctionsAbstract
 
-from config.env import env
+from config.env import settings
 from config.db import mongo_db
 
 
@@ -272,15 +272,14 @@ class TickTickFunctions(FunctionsAbstract):
 
 
 if __name__ == "__main__":
-    from config.env import env
     import json
 
     ticktick = TickTickFunctions(
-        env["TICK_EMAIL"],
-        env["TICK_PASSWORD"],
-        env["TICK_ID"],
-        env["TICK_SECRET"],
-        env["TICK_URI"],
+        settings.tick_email,
+        settings.tick_password,
+        settings.tick_id,
+        settings.tick_secret,
+        settings.tick_uri,
     )
 
     # res = ticktick.completeTask("test task")

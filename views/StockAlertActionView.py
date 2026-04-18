@@ -10,7 +10,7 @@ from classes.PriceAlertFunctions import (
     update_alert,
 )
 from classes.UserSettingsFunctions import UserSettingsFunctions
-from config.env import env
+from config.env import settings
 from services.discord_helpers import normalize_alert_destination
 from services.error_reporting import ValidationError, handle_interaction_error
 
@@ -135,7 +135,7 @@ class StockAlertEditModal(discord.ui.Modal, title="Edit Stock Alert"):
             if lowered in {"none", "clear", "off"}:
                 update_kwargs["clear_expires_at"] = True
             else:
-                api_key = env.get("OPENAI_API_KEY")
+                api_key = settings.openai_api_key
                 if not api_key:
                     await handle_interaction_error(
                         interaction,

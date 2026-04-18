@@ -8,7 +8,7 @@ from discord import app_commands
 from classes.CryptoFunctions import CryptoFunctions
 from classes.OpenAIFunctions import OpenAIFunctions
 from classes.PriceAlertFunctions import create_alert
-from config.env import env
+from config.env import settings
 from embeds.CryptoEmbeds import CryptoEmbeds
 from embeds.PriceAlertEmbeds import PriceAlertEmbeds
 from services.discord_helpers import (
@@ -217,7 +217,7 @@ class CryptoCog(commands.Cog):
 
         expires_at = None
         if expires_text:
-            api_key = env.get("OPENAI_API_KEY")
+            api_key = settings.openai_api_key
             if not api_key:
                 raise ValidationError(
                     "OpenAI API key is not configured.",

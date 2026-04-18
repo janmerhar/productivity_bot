@@ -8,7 +8,7 @@ from classes.DailyJob import CronSchedule
 from classes.DailyJobManager import DailyJobManager
 from classes.OpenAIFunctions import OpenAIFunctions
 from classes.PriceAlertFunctions import create_alert
-from config.env import env
+from config.env import settings
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from services.cron_schedule import (
     CronConversionError,
@@ -106,7 +106,7 @@ class CryptoAlertModal(discord.ui.Modal, title="Create Crypto Alert"):
 
         expires_at = None
         if expires_text:
-            api_key = env.get("OPENAI_API_KEY")
+            api_key = settings.openai_api_key
             if not api_key:
                 raise ValidationError(
                     "OpenAI API key is not configured.",

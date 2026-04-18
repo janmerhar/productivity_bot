@@ -10,7 +10,7 @@ from classes.DailyJobManager import DailyJobManager
 from classes.OpenAIFunctions import OpenAIFunctions
 from classes.PriceAlertFunctions import create_alert
 from classes.StocksFunctions import StocksFunctions
-from config.env import env
+from config.env import settings
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from services.discord_helpers import (
     alert_destination_autocomplete,
@@ -507,7 +507,7 @@ class StocksCog(commands.Cog):
 
         expires_at = None
         if expires_text:
-            api_key = env.get("OPENAI_API_KEY")
+            api_key = settings.openai_api_key
             if not api_key:
                 raise ValidationError(
                     "OpenAI API key is not configured.",
