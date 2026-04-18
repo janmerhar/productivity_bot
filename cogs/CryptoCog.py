@@ -17,7 +17,11 @@ from services.discord_helpers import (
 )
 from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
-from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from services.visibility import (
+    VISIBILITY_CHOICES,
+    VISIBILITY_DESC,
+    resolve_visibility_for_context,
+)
 from views.CryptoActionView import CryptoActionView
 
 
@@ -26,6 +30,19 @@ class CryptoCog(commands.Cog):
 
     def __init__(self, client):
         self.client = client
+
+    @staticmethod
+    def _resolve_response_visibility(
+        interaction: discord.Interaction,
+        visibility: Optional[app_commands.Choice[str]],
+        *,
+        guild_default: str,
+    ) -> bool:
+        return resolve_visibility_for_context(
+            interaction.guild_id,
+            visibility,
+            guild_default=guild_default,
+        )
 
     # Events
 
@@ -50,7 +67,11 @@ class CryptoCog(commands.Cog):
         currency: str = "usd",
         visibility: Optional[app_commands.Choice[str]] = None,
     ):
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = self._resolve_response_visibility(
+            interaction,
+            visibility,
+            guild_default="public",
+        )
         await interaction.response.defer(thinking=True, ephemeral=ephemeral)
         await interaction.edit_original_response(
             content=f"• Fetching `{ticker.upper()}` in {currency.upper()} ⏳",
@@ -105,7 +126,11 @@ class CryptoCog(commands.Cog):
         destination: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
+        ephemeral = self._resolve_response_visibility(
+            interaction,
+            visibility,
+            guild_default="private",
+        )
         coin_id = ticker.strip().lower()
         vs_currency = currency.strip().lower()
 
