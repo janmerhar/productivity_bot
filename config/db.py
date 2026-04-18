@@ -1,6 +1,6 @@
 from pymongo import MongoClient
 
-from config.env import env
+from config.env import settings
 
-mongo_client = MongoClient(env["MONGO_URI"])
-mongo_db = mongo_client[env.get("MONGO_DB", "productivity_bot")]
+mongo_client = MongoClient(settings.mongo_uri)
+mongo_db = mongo_client[settings.mongo_db]

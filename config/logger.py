@@ -2,7 +2,7 @@ import logging
 import logging.handlers
 from pathlib import Path
 
-from config.env import env
+from config.env import settings
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 APP_LOGGER_PREFIXES = (
@@ -26,22 +26,18 @@ DEFAULT_LOG_MAX_BYTES = 32 * 1024 * 1024
 DEFAULT_LOG_BACKUP_COUNT = 5
 
 
-def _parse_log_level(name: str, default: str) -> int:
-    raw_value = str(env.get(name, default) or default).strip().upper()
+def _parse_log_level(raw_value: str, default: str) -> int:
+    raw_value = str(raw_value or default).strip().upper()
     parsed_level = logging._nameToLevel.get(raw_value)
     if parsed_level is not None:
         return parsed_level
     return logging._nameToLevel.get(default.upper(), logging.INFO)
 
 
-def _parse_int_env(name: str, default: int) -> int:
-    raw_value = env.get(name)
-    if raw_value is None:
-        return default
-
+def _parse_positive_int(raw_value: int, default: int) -> int:
     try:
-        return max(1, int(str(raw_value).strip()))
-    except ValueError:
+        return max(1, int(raw_value))
+    except (TypeError, ValueError):
         return default
 
 
@@ -122,22 +118,25 @@ class ColourFormatter(logging.Formatter):
 def setup_logging() -> None:
     dt_fmt = "%Y-%m-%d %H:%M:%S"
     fmt = "[{asctime}] [{levelname:<8}] [{source:<7}] {name}: {message}"
-    app_log_level = _parse_log_level("APP_LOG_LEVEL", DEFAULT_APP_LOG_LEVEL)
+    app_log_level = _parse_log_level(settings.app_log_level, DEFAULT_APP_LOG_LEVEL)
     library_log_level = _parse_log_level(
-        "LIB_LOG_LEVEL",
+        settings.lib_log_level,
         DEFAULT_LIBRARY_LOG_LEVEL,
     )
     console_log_level = _parse_log_level(
-        "CONSOLE_LOG_LEVEL",
+        settings.console_log_level,
         DEFAULT_CONSOLE_LOG_LEVEL,
     )
-    app_log_filename = str(env.get("APP_LOG_FILE") or DEFAULT_APP_LOG_FILE)
+    app_log_filename = str(settings.app_log_file or DEFAULT_APP_LOG_FILE)
     dependency_log_filename = str(
-        env.get("DEPENDENCY_LOG_FILE") or DEFAULT_DEPENDENCY_LOG_FILE
+        settings.dependency_log_file or DEFAULT_DEPENDENCY_LOG_FILE
     )
-    log_max_bytes = _parse_int_env("LOG_MAX_BYTES", DEFAULT_LOG_MAX_BYTES)
-    log_backup_count = _parse_int_env(
-        "LOG_BACKUP_COUNT",
+    log_max_bytes = _parse_positive_int(
+        settings.log_max_bytes,
+        DEFAULT_LOG_MAX_BYTES,
+    )
+    log_backup_count = _parse_positive_int(
+        settings.log_backup_count,
         DEFAULT_LOG_BACKUP_COUNT,
     )
 
