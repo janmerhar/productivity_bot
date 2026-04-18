@@ -7,16 +7,18 @@ from classes.PomodoroFunctions import PomodoroFunctions
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from embeds.PomodoroEmbeds import PomodoroEmbeds
 from views.PomodoroStartView import PomodoroStartView
-from services.error_reporting import ValidationError, UserVisibleError, handle_interaction_error
+from services.error_reporting import (
+    ValidationError,
+    UserVisibleError,
+    handle_interaction_error,
+)
 
 
 class PomodoroRestartView(discord.ui.View):
     def __init__(self, *, timeout: float = 21600) -> None:
         super().__init__(timeout=timeout)
 
-    async def _start(
-        self, interaction: discord.Interaction, mode: str
-    ) -> None:
+    async def _start(self, interaction: discord.Interaction, mode: str) -> None:
         await interaction.response.defer(ephemeral=False)
 
         try:
@@ -52,15 +54,18 @@ class PomodoroRestartView(discord.ui.View):
         voice_error: Optional[str] = None
         target_channel: Optional[discord.VoiceChannel] = None
 
-        if interaction.guild is None:
-            voice_error = None
+        if interaction.guild is None or (
+            isinstance(interaction.user, discord.Member)
+            and interaction.user.voice is None
+        ):
+            voice_error = "Audio off — not in a voice channel."
         else:
             member = interaction.user
             if isinstance(member, discord.Member) and member.voice:
                 target_channel = member.voice.channel
 
             if target_channel is None:
-                voice_error = "Join a voice channel so I can play audio."
+                voice_error = "Audio off — not in a voice channel."
             else:
                 voice_error = await PomodoroVoiceManager.start_session(
                     interaction.guild,
@@ -77,16 +82,14 @@ class PomodoroRestartView(discord.ui.View):
         join_url = target_channel.jump_url if target_channel else None
         payload["view"] = PomodoroStartView(
             interaction.user.id,
-            join_url=join_url,
+            join_url=join_url if voice_error is None else None,
             mode=mode,
             end_time=end_time,
             voice_channel_select_enabled=interaction.guild is not None,
         )
+        payload["content"] = voice_error or None
 
         await interaction.followup.send(ephemeral=False, **payload)
-
-        if voice_error:
-            await interaction.followup.send(ephemeral=False, content=voice_error)
 
     @discord.ui.button(label="Start Focus", style=discord.ButtonStyle.success)
     async def start_focus(

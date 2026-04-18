@@ -53,10 +53,8 @@ async def start_pomodoro_context_menu(
         if isinstance(member, discord.Member) and member.voice:
             target_channel = member.voice.channel
 
-    if interaction.guild is None:
+    if interaction.guild is None or target_channel is None:
         voice_error = "Audio off — not in a voice channel."
-    elif target_channel is None:
-        voice_error = "Not in a voice channel — audio is off."
     else:
         voice_error = await PomodoroVoiceManager.start_session(
             interaction.guild,
@@ -78,6 +76,7 @@ async def start_pomodoro_context_menu(
         end_time=end_time,
         voice_channel_select_enabled=interaction.guild is not None,
     )
+    payload["content"] = voice_error or None
 
     await interaction.followup.send(**payload)
 

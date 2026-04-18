@@ -82,8 +82,30 @@ class PomodoroEmbeds:
             color=discord.Colour.green(),
         )
         embed.set_footer(text=f"Total duration: {duration_minutes} min")
+        return {"embed": embed}
 
-        embed.set_footer(text=f"Total: {duration_minutes} min")
+    @staticmethod
+    def timer_complete_embed(
+        mode: str,
+        duration_minutes: Union[int, str],
+        end_time: Optional[datetime.datetime],
+        user_id: Optional[Union[int, str]] = None,
+    ) -> dict:
+        resolved_mode = str(mode).strip().lower()
+        if resolved_mode not in ("focus", "break"):
+            resolved_mode = "focus"
+
+        mention = ""
+        user_value = str(user_id).strip() if user_id is not None else ""
+        if user_value.isdigit():
+            mention = f"<@{user_value}> "
+
+        embed = discord.Embed(
+            title=f"{resolved_mode.capitalize()} Complete",
+            description=f"{mention}Your {resolved_mode} session has finished.",
+            color=discord.Colour.green(),
+        )
+        embed.set_footer(text=f"Total duration: {duration_minutes} min")
         return {"embed": embed}
 
     @staticmethod

@@ -17,12 +17,14 @@ class PomodoroVoiceChannelSelectView(discord.ui.View):
         user_id: int,
         mode: str,
         end_time: Optional[datetime.datetime],
+        source_message: Optional[discord.Message],
         timeout: float = 120,
     ) -> None:
         super().__init__(timeout=timeout)
         self._user_id = user_id
         self._mode = mode
         self._end_time = end_time
+        self._source_message = source_message
         self.voice_select: Optional[discord.ui.Select] = None
 
         options = self._build_voice_channel_options(interaction)
@@ -133,9 +135,17 @@ class PomodoroVoiceChannelSelectView(discord.ui.View):
                 interaction.guild.id,
                 force=True,
             )
+
+            status_message = "Selected voice channel: None (left voice)."
+            if self._source_message is not None:
+                try:
+                    await self._source_message.edit(content=status_message)
+                except discord.HTTPException:
+                    pass
+
             await interaction.response.edit_message(
-                content="Selected voice channel: None (left voice).",
-                view=self,
+                content="Voice channel updated.",
+                view=None,
             )
             return
 
@@ -161,9 +171,16 @@ class PomodoroVoiceChannelSelectView(discord.ui.View):
             await interaction.response.send_message(ephemeral=False, content=error)
             return
 
+        status_message = f"Selected voice channel: {channel.name}"
+        if self._source_message is not None:
+            try:
+                await self._source_message.edit(content=status_message)
+            except discord.HTTPException:
+                pass
+
         await interaction.response.edit_message(
-            content=f"Selected voice channel: {channel.name}",
-            view=self,
+            content="Voice channel updated.",
+            view=None,
         )
 
 
@@ -175,11 +192,13 @@ class PomodoroVoiceChannelSelectModal(discord.ui.Modal):
         mode: str,
         end_time: Optional[datetime.datetime],
         voice_channel_options: List[discord.SelectOption],
+        source_message: Optional[discord.Message],
     ) -> None:
         super().__init__(title="Select Voice Channel")
         self._user_id = user_id
         self._mode = mode
         self._end_time = end_time
+        self._source_message = source_message
         self.voice_select = discord.ui.Select(
             placeholder="Voice channel",
             min_values=1,
@@ -217,9 +236,18 @@ class PomodoroVoiceChannelSelectModal(discord.ui.Modal):
                 interaction.guild.id,
                 force=True,
             )
+
+            status_message = "Selected voice channel: None (left voice)."
+            if self._source_message is not None:
+                try:
+                    await self._source_message.edit(content=status_message)
+                    return
+                except discord.HTTPException:
+                    pass
+
             await interaction.followup.send(
                 ephemeral=False,
-                content="Selected voice channel: None (left voice).",
+                content=status_message,
             )
             return
 
@@ -246,9 +274,17 @@ class PomodoroVoiceChannelSelectModal(discord.ui.Modal):
             await interaction.followup.send(ephemeral=False, content=error)
             return
 
+        status_message = f"Selected voice channel: {channel.name}"
+        if self._source_message is not None:
+            try:
+                await self._source_message.edit(content=status_message)
+                return
+            except discord.HTTPException:
+                pass
+
         await interaction.followup.send(
             ephemeral=False,
-            content=f"Selected voice channel: {channel.name}",
+            content=status_message,
         )
 
 
@@ -430,6 +466,7 @@ class PomodoroStartView(discord.ui.View):
                         mode=self._mode,
                         end_time=self._end_time,
                         voice_channel_options=voice_channel_options,
+                        source_message=interaction.message,
                     )
                 )
                 return
@@ -444,6 +481,7 @@ class PomodoroStartView(discord.ui.View):
             user_id=self._user_id,
             mode=self._mode,
             end_time=self._end_time,
+            source_message=interaction.message,
         )
         await interaction.response.send_message(
             ephemeral=False,

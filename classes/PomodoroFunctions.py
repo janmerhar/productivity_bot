@@ -232,17 +232,28 @@ class PomodoroFunctions:
     @staticmethod
     def pomodoro_payload(job: DailyJob) -> Dict[str, Any]:
         data = job.data or {}
-        mode = str(data.get("mode", "focus")).lower()
+        mode = str(data.get("mode", "focus")).strip().lower()
+        if mode not in ("focus", "break"):
+            mode = "focus"
+
         duration = data.get("duration", "")
-        user_id = data.get("user")
+        user_id = str(data.get("user", "")).strip()
         end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
 
-        return PomodoroEmbeds.timer_complete_embed(
+        payload = PomodoroEmbeds.timer_complete_embed(
             mode=mode,
             duration_minutes=duration,
             end_time=end_time,
-            user_id=user_id,
+            user_id=user_id or None,
         )
+
+        if user_id.isdigit():
+            if mode == "break":
+                payload["content"] = f"<@{user_id}> Break finished."
+            else:
+                payload["content"] = f"<@{user_id}> Focus session finished."
+
+        return payload
 
     @staticmethod
     async def stop_user_pomodoro(
