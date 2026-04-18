@@ -156,6 +156,7 @@ class DailyTaskCog(commands.Cog):
                 interaction,
                 _continue_with_timezone,
                 continue_message="Timezone saved as `{timezone}`. Continuing `/jobs create`.",
+                response_ephemeral=ephemeral,
             )
             if timezone is None:
                 return
@@ -231,6 +232,7 @@ class DailyTaskCog(commands.Cog):
                 job_id=str(created_job.id),
                 channel_id=interaction.channel_id,
                 guild_id=interaction.guild_id,
+                response_ephemeral=ephemeral,
             ),
         )
 
