@@ -1,5 +1,4 @@
 import asyncio
-from typing import Optional
 
 import discord
 from discord import app_commands
@@ -18,6 +17,9 @@ class SettingsCog(commands.Cog):
     settings_group = app_commands.Group(
         name="settings", description="Manage your personal bot settings"
     )
+    set_group = app_commands.Group(
+        name="set", description="Update a setting", parent=settings_group
+    )
 
     def __init__(self, client: commands.Bot) -> None:
         self.client = client
@@ -26,7 +28,7 @@ class SettingsCog(commands.Cog):
     async def on_ready(self) -> None:
         print("SettingsCog cog loaded")
 
-    @settings_group.command(
+    @set_group.command(
         name="timezone",
         description="Set your timezone for scheduling and reminders",
     )
@@ -44,11 +46,11 @@ class SettingsCog(commands.Cog):
         )
         await interaction.response.send_modal(modal)
 
-    @settings_group.command(
-        name="toggl-key",
+    @set_group.command(
+        name="toggl",
         description="Set your Toggl API key",
     )
-    async def set_toggl_key(self, interaction: discord.Interaction) -> None:
+    async def set_toggl(self, interaction: discord.Interaction) -> None:
         modal = TogglApiKeyModal(
             user_id=interaction.user.id,
             on_api_key_resolved=_noop,
