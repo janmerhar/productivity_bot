@@ -81,9 +81,6 @@ async def start_pomodoro_context_menu(
 
     await interaction.followup.send(**payload)
 
-    if voice_error:
-        await interaction.followup.send(ephemeral=True, content=voice_error)
-
 
 class PomodoroCog(commands.Cog):
     pomodoro_group = app_commands.Group(name="pomodoro", description="Pomodoro timers")
@@ -338,11 +335,9 @@ class PomodoroCog(commands.Cog):
             end_time=end_time,
             voice_channel_select_enabled=interaction.guild is not None,
         )
+        payload["content"] = voice_error or None
 
         await interaction.followup.send(ephemeral=ephemeral, **payload)
-
-        if voice_error:
-            await interaction.followup.send(ephemeral=ephemeral, content=voice_error)
 
     @pomodoro_group.command(name="stop", description="Stop your active pomodoro timer")
     @app_commands.describe(visibility=VISIBILITY_DESC)

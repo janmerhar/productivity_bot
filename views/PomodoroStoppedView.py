@@ -276,7 +276,7 @@ class PomodoroStoppedView(discord.ui.View):
             end_time=end_time,
             voice_channel_select_enabled=interaction.guild is not None,
         )
-        payload["content"] = None
+        payload["content"] = voice_error or None
 
         try:
             if interaction.message is not None:
@@ -285,9 +285,6 @@ class PomodoroStoppedView(discord.ui.View):
                 await interaction.followup.send(ephemeral=False, **payload)
         except discord.HTTPException:
             await interaction.followup.send(ephemeral=False, **payload)
-
-        if voice_error:
-            await interaction.followup.send(ephemeral=False, content=voice_error)
 
     @discord.ui.button(label="Start Focus", style=discord.ButtonStyle.success)
     async def start_focus(
