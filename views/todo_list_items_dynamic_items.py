@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from services.visibility import inherit_ephemeral_from_interaction
 
 
 async def register_todo_list_items_dynamic_items(bot: commands.Bot) -> None:
@@ -22,14 +23,15 @@ async def _ensure_view(
     view = await TodoListItemsView.from_session(interaction, session_id)
     if view is None:
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=inherit_ephemeral_from_interaction(interaction, default=True),
             content="That todo list is no longer available. Run `/todo list view` again.",
         )
         return None
 
+    view.response_ephemeral = inherit_ephemeral_from_interaction(interaction, default=True)
     if view.user_id is not None and interaction.user.id != view.user_id:
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=view.response_ephemeral,
             content="Only the user who opened this list can manage it.",
         )
         return None
@@ -117,7 +119,7 @@ class TodoListItemsPrevButton(
         if view is None:
             return
         if view.page <= 1:
-            await interaction.response.defer(ephemeral=True)
+            await interaction.response.defer(ephemeral=view.response_ephemeral)
             return
         view.page -= 1
         await view._safe_refresh_message(interaction)
@@ -158,7 +160,7 @@ class TodoListItemsNextButton(
         if view is None:
             return
         if view.page >= view.total_pages:
-            await interaction.response.defer(ephemeral=True)
+            await interaction.response.defer(ephemeral=view.response_ephemeral)
             return
         view.page += 1
         await view._safe_refresh_message(interaction)

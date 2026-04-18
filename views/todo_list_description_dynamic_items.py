@@ -10,6 +10,7 @@ from services.error_reporting import (
     ValidationError,
     handle_interaction_error,
 )
+from services.visibility import inherit_ephemeral_from_interaction
 
 
 async def register_todo_list_description_dynamic_items(bot: commands.Bot) -> None:
@@ -54,6 +55,7 @@ async def _build_view(
         color=discord.Colour.blurple(),
         todo_list=todo_list,
         user_id=user_id or None,
+        response_ephemeral=inherit_ephemeral_from_interaction(interaction, default=True),
     )
     view.list_id = str(list_id or "").strip()
     view.message = interaction.message
@@ -115,7 +117,10 @@ class TodoListShowButton(
         if todo_list is None:
             await handle_interaction_error(
                 interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
+                ValidationError(
+                    "That list is no longer available.",
+                    ephemeral=view.response_ephemeral,
+                ),
             )
             return
 
@@ -130,7 +135,7 @@ class TodoListShowButton(
                 interaction,
                 UserVisibleError(
                     "Something went wrong while loading that list.",
-                    ephemeral=True,
+                    ephemeral=view.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -144,10 +149,11 @@ class TodoListShowButton(
             user_id=interaction.user.id,
             view_scope="list",
             guild_id=interaction.guild_id,
+            response_ephemeral=view.response_ephemeral,
         )
         await items_view.ensure_session()
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=view.response_ephemeral,
             view=items_view,
             **items_view.payload(),
         )
@@ -204,7 +210,10 @@ class TodoListAddButton(
         if todo_list is None:
             await handle_interaction_error(
                 interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
+                ValidationError(
+                    "That list is no longer available.",
+                    ephemeral=view.response_ephemeral,
+                ),
             )
             return
 
@@ -216,6 +225,7 @@ class TodoListAddButton(
             user_id=interaction.user.id,
             view_scope="list",
             guild_id=interaction.guild_id,
+            response_ephemeral=view.response_ephemeral,
         )
         await parent_view.open_create_modal(
             interaction,
@@ -276,7 +286,10 @@ class TodoListRenameButton(
         if todo_list is None:
             await handle_interaction_error(
                 interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
+                ValidationError(
+                    "That list is no longer available.",
+                    ephemeral=view.response_ephemeral,
+                ),
             )
             return
 
@@ -336,7 +349,10 @@ class TodoListClearButton(
         if todo_list is None:
             await handle_interaction_error(
                 interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
+                ValidationError(
+                    "That list is no longer available.",
+                    ephemeral=view.response_ephemeral,
+                ),
             )
             return
 
@@ -350,7 +366,7 @@ class TodoListClearButton(
                 interaction,
                 UserVisibleError(
                     "Something went wrong while preparing that confirmation.",
-                    ephemeral=True,
+                    ephemeral=view.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -423,7 +439,10 @@ class TodoListDeleteButton(
         if todo_list is None:
             await handle_interaction_error(
                 interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
+                ValidationError(
+                    "That list is no longer available.",
+                    ephemeral=view.response_ephemeral,
+                ),
             )
             return
 
@@ -438,7 +457,7 @@ class TodoListDeleteButton(
                 interaction,
                 UserVisibleError(
                     "Something went wrong while preparing that confirmation.",
-                    ephemeral=True,
+                    ephemeral=view.response_ephemeral,
                     cause=exc,
                 ),
             )

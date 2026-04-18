@@ -14,6 +14,7 @@ from services.error_reporting import (
     ValidationError,
     handle_interaction_error,
 )
+from services.visibility import inherit_ephemeral_from_interaction
 
 _MODAL_SELECTS_SUPPORTED = True
 
@@ -162,6 +163,7 @@ class TodoItemEditModal(discord.ui.Modal):
         self.refresh_source_as_item_embed = refresh_source_as_item_embed
         self.locale_code = DueDateService.normalize_locale_code(locale_code)
         self.timezone = timezone
+        self.response_ephemeral = bool(parent_view.response_ephemeral)
 
         current_task = TodoFunctions.task_name_from_item(item) or "Untitled"
         current_description = TodoFunctions.item_body(item)
@@ -296,12 +298,15 @@ class TodoItemEditModal(discord.ui.Modal):
         return True
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
 
         if not self.item_id:
             await handle_interaction_error(
                 interaction,
-                ValidationError("That item could not be edited.", ephemeral=True),
+                ValidationError(
+                    "That item could not be edited.",
+                    ephemeral=self.response_ephemeral,
+                ),
             )
             return
 
@@ -327,7 +332,11 @@ class TodoItemEditModal(discord.ui.Modal):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
         except Exception as exc:
@@ -335,7 +344,7 @@ class TodoItemEditModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while editing that item.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -346,7 +355,7 @@ class TodoItemEditModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "That item could not be updated.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                 ),
             )
             return
@@ -380,7 +389,11 @@ class TodoItemEditModal(discord.ui.Modal):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
         except Exception as exc:
@@ -388,7 +401,7 @@ class TodoItemEditModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while updating the assignee.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -399,7 +412,7 @@ class TodoItemEditModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "That assignee could not be updated.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                 ),
             )
             return
@@ -435,7 +448,11 @@ class TodoItemEditModal(discord.ui.Modal):
             except ValueError as exc:
                 await handle_interaction_error(
                     interaction,
-                    ValidationError(str(exc), ephemeral=True, cause=exc),
+                    ValidationError(
+                        str(exc),
+                        ephemeral=self.response_ephemeral,
+                        cause=exc,
+                    ),
                 )
                 return
             except Exception as exc:
@@ -443,7 +460,7 @@ class TodoItemEditModal(discord.ui.Modal):
                     interaction,
                     UserVisibleError(
                         "Something went wrong while moving that item.",
-                        ephemeral=True,
+                        ephemeral=self.response_ephemeral,
                         cause=exc,
                     ),
                 )
@@ -454,7 +471,7 @@ class TodoItemEditModal(discord.ui.Modal):
                     interaction,
                     UserVisibleError(
                         "That item could not be moved to the selected list.",
-                        ephemeral=True,
+                        ephemeral=self.response_ephemeral,
                     ),
                 )
                 return
@@ -467,7 +484,7 @@ class TodoItemEditModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "That item could not be loaded after update.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                 ),
             )
             return
@@ -487,7 +504,11 @@ class TodoItemEditModal(discord.ui.Modal):
 
         if self.source_message is not None and self.refresh_source_as_item_embed:
             try:
-                payload = TodoEmbeds.item_details_embed(final_list, final_item)
+                payload = TodoEmbeds.item_details_embed(
+                    final_list,
+                    final_item,
+                    response_ephemeral=self.response_ephemeral,
+                )
                 await self._edit_source_payload(**payload)
             except discord.NotFound:
                 pass
@@ -496,7 +517,7 @@ class TodoItemEditModal(discord.ui.Modal):
                     interaction,
                     UserVisibleError(
                         "Item updated, but refreshing the item card failed.",
-                        ephemeral=True,
+                        ephemeral=self.response_ephemeral,
                         cause=exc,
                     ),
                 )
@@ -517,23 +538,27 @@ class TodoItemEditModal(discord.ui.Modal):
                     interaction,
                     UserVisibleError(
                         "Item updated, but refreshing the list failed.",
-                        ephemeral=True,
+                        ephemeral=self.response_ephemeral,
                         cause=exc,
                     ),
                 )
                 return
 
         if self.return_item_embed:
-            payload = TodoEmbeds.item_details_embed(final_list, final_item)
+            payload = TodoEmbeds.item_details_embed(
+                final_list,
+                final_item,
+                response_ephemeral=self.response_ephemeral,
+            )
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 **payload,
             )
             return
 
         if self.source_message is None:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content=f"Updated task {TodoFunctions.task_ref_from_item(final_item)}.",
             )
 
@@ -558,6 +583,7 @@ class TodoItemCreateModal(discord.ui.Modal):
         self.source_message = source_message
         self.locale_code = DueDateService.normalize_locale_code(locale_code)
         self.timezone = timezone
+        self.response_ephemeral = bool(parent_view.response_ephemeral)
         self.current_list_id = str(todo_list.get("_id") or "")
         self.current_list_name = (
             TodoFunctions.display_list_name(todo_list, "List").strip() or "List"
@@ -658,7 +684,7 @@ class TodoItemCreateModal(discord.ui.Modal):
             self.add_item(self.list_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
 
         list_id = self.todo_list.get("_id")
         if not list_id:
@@ -666,7 +692,7 @@ class TodoItemCreateModal(discord.ui.Modal):
                 interaction,
                 ValidationError(
                     "Creating from this view is only supported on a single list.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                 ),
             )
             return
@@ -717,7 +743,11 @@ class TodoItemCreateModal(discord.ui.Modal):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
 
@@ -742,7 +772,11 @@ class TodoItemCreateModal(discord.ui.Modal):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
         except Exception as exc:
@@ -750,7 +784,7 @@ class TodoItemCreateModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while creating that item.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -777,16 +811,20 @@ class TodoItemCreateModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Item created, but refreshing the list failed.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
             return
 
         if self.source_message is None or target_list_id != self.current_list_id:
-            payload = TodoEmbeds.item_details_embed(target_list, created_item)
+            payload = TodoEmbeds.item_details_embed(
+                target_list,
+                created_item,
+                response_ephemeral=self.response_ephemeral,
+            )
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 **payload,
             )
 
@@ -809,6 +847,7 @@ class TodoListOptionsModal(discord.ui.Modal):
         super().__init__(title=modal_title)
         self.parent_view = parent_view
         self.source_message = source_message
+        self.response_ephemeral = bool(parent_view.response_ephemeral)
         self.assignee_select: Optional[discord.ui.Select] = None
         self.assignee_select_label: Optional[discord.ui.Label] = None
         self.assignee_input: Optional[discord.ui.TextInput] = None
@@ -941,7 +980,7 @@ class TodoListOptionsModal(discord.ui.Modal):
                 self.add_item(self.list_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
 
         sort_value = str(self.sort_group.value or "ascending")
         status_value = str(self.status_group.value or "all")
@@ -962,7 +1001,11 @@ class TodoListOptionsModal(discord.ui.Modal):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
         assignee_filter_label = self.parent_view.format_assignee_filter_label(
@@ -1013,7 +1056,11 @@ class TodoListOptionsModal(discord.ui.Modal):
             except ValueError as exc:
                 await handle_interaction_error(
                     interaction,
-                    ValidationError(str(exc), ephemeral=True, cause=exc),
+                    ValidationError(
+                        str(exc),
+                        ephemeral=self.response_ephemeral,
+                        cause=exc,
+                    ),
                 )
                 return
             except Exception as exc:
@@ -1021,7 +1068,7 @@ class TodoListOptionsModal(discord.ui.Modal):
                     interaction,
                     UserVisibleError(
                         "Something went wrong while switching lists.",
-                        ephemeral=True,
+                        ephemeral=self.response_ephemeral,
                         cause=exc,
                     ),
                 )
@@ -1049,7 +1096,7 @@ class TodoListOptionsModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while updating the list options.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -1057,7 +1104,7 @@ class TodoListOptionsModal(discord.ui.Modal):
 
         if self.source_message is None:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 view=self.parent_view,
                 **self.parent_view.payload(),
             )
@@ -1073,7 +1120,7 @@ class TodoListOptionsModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Options updated, but refreshing the list failed.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -1156,6 +1203,7 @@ class TodoListItemsView(discord.ui.View):
         page: int = 1,
         page_size: int = 5,
         search_query: str = "",
+        response_ephemeral: bool = True,
         session_id: Optional[str] = None,
         timeout: float | None = None,
     ) -> None:
@@ -1191,6 +1239,7 @@ class TodoListItemsView(discord.ui.View):
         self.view_scope = view_scope
         self.guild_id = guild_id
         self.search_query = self.normalize_search_query(search_query)
+        self.response_ephemeral = bool(response_ephemeral)
         self.assignee_filter_label = self._assignee_filter_summary_label()
         self.page_size = max(1, min(page_size, 5))
         self.total_pages = 1
@@ -1245,6 +1294,7 @@ class TodoListItemsView(discord.ui.View):
             page=max(1, int(session.get("page") or 1)),
             page_size=max(1, int(session.get("page_size") or 5)),
             search_query=str(session.get("search_query") or ""),
+            response_ephemeral=bool(session.get("response_ephemeral", True)),
             session_id=str(session.get("session_id") or session_id).strip(),
         )
         await view._reload_items()
@@ -1268,6 +1318,7 @@ class TodoListItemsView(discord.ui.View):
             "page": self.page,
             "page_size": self.page_size,
             "search_query": self.search_query,
+            "response_ephemeral": self.response_ephemeral,
         }
 
     async def ensure_session(self) -> str:
@@ -1514,7 +1565,7 @@ class TodoListItemsView(discord.ui.View):
 
         if self.view_scope != "list" or self.todo_list.get("_id") is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="Open a specific list to create a task from this view.",
             )
             return
@@ -1618,9 +1669,15 @@ class TodoListItemsView(discord.ui.View):
         )
         try:
             if interaction.response.is_done():
-                await interaction.followup.send(ephemeral=True, content=message)
+                await interaction.followup.send(
+                    ephemeral=self.response_ephemeral,
+                    content=message,
+                )
             else:
-                await interaction.response.send_message(ephemeral=True, content=message)
+                await interaction.response.send_message(
+                    ephemeral=self.response_ephemeral,
+                    content=message,
+                )
         except Exception:
             return
 
@@ -1659,7 +1716,7 @@ class TodoListItemsView(discord.ui.View):
     ) -> None:
         item_id = str((item or {}).get("_id") or "").strip()
         if not item_id:
-            await interaction.response.defer(ephemeral=True)
+            await interaction.response.defer(ephemeral=self.response_ephemeral)
             return
 
         try:
@@ -1673,7 +1730,7 @@ class TodoListItemsView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while loading that item.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -1686,9 +1743,13 @@ class TodoListItemsView(discord.ui.View):
             return
 
         todo_list = await self._resolve_list_for_item(current_item)
-        payload = TodoEmbeds.item_details_embed(todo_list, current_item)
+        payload = TodoEmbeds.item_details_embed(
+            todo_list,
+            current_item,
+            response_ephemeral=self.response_ephemeral,
+        )
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             **payload,
         )
 
@@ -2008,6 +2069,7 @@ class TodoDeleteConfirmModal(discord.ui.Modal):
         item_name: str,
         list_name: str,
         source_message: Optional[discord.Message],
+        response_ephemeral: bool = True,
     ) -> None:
         modal_title = f"Delete {TodoFunctions.task_ref(item_name)}"
         if len(modal_title) > 45:
@@ -2017,6 +2079,7 @@ class TodoDeleteConfirmModal(discord.ui.Modal):
         self.item_name = str(item_name).strip()
         self.list_name = list_name
         self.source_message = source_message
+        self.response_ephemeral = bool(response_ephemeral)
         self.add_item(
             discord.ui.TextDisplay(
                 f"This will permanently delete {TodoFunctions.task_ref(self.item_name)} "
@@ -2025,13 +2088,13 @@ class TodoDeleteConfirmModal(discord.ui.Modal):
         )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
 
         deleted = await asyncio.to_thread(TodoFunctions.delete_item, self.item_id)
 
         if not deleted:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content=f"Couldn't delete task {TodoFunctions.task_ref(self.item_name)}.",
             )
             return
@@ -2047,7 +2110,7 @@ class TodoDeleteConfirmModal(discord.ui.Modal):
                 pass
             except Exception:
                 await interaction.followup.send(
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     content="Item deleted, but updating the card failed.",
                 )
                 return
@@ -2058,7 +2121,7 @@ class TodoDeleteConfirmModal(discord.ui.Modal):
             self.item_name,
         )
         await interaction.followup.send(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             **deleted_payload,
         )
 
@@ -2070,6 +2133,7 @@ class TodoAssignSelectModal(discord.ui.Modal):
         item: Dict[str, Any],
         source_message: Optional[discord.Message],
         assignee_options: List[discord.SelectOption],
+        response_ephemeral: bool = True,
     ) -> None:
         modal_title = (
             f"Assign {TodoFunctions.task_ref(TodoFunctions.task_name_from_item(item))}"
@@ -2081,6 +2145,7 @@ class TodoAssignSelectModal(discord.ui.Modal):
         self.item_id = str(item.get("_id") or "")
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.source_message = source_message
+        self.response_ephemeral = bool(response_ephemeral)
 
         self.assignee_select = discord.ui.Select(
             placeholder="Assignee",
@@ -2117,7 +2182,11 @@ class TodoAssignSelectModal(discord.ui.Modal):
     ) -> bool:
         if self.source_message is None:
             return False
-        payload = TodoEmbeds.item_details_embed(todo_list, item)
+        payload = TodoEmbeds.item_details_embed(
+            todo_list,
+            item,
+            response_ephemeral=self.response_ephemeral,
+        )
         try:
             await self.source_message.edit(**payload)
             return True
@@ -2128,19 +2197,22 @@ class TodoAssignSelectModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Todo updated, but refreshing the card failed.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
             return False
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
 
         if not self.item_id:
             await handle_interaction_error(
                 interaction,
-                ValidationError("That item could not be assigned.", ephemeral=True),
+                ValidationError(
+                    "That item could not be assigned.",
+                    ephemeral=self.response_ephemeral,
+                ),
             )
             return
 
@@ -2163,7 +2235,11 @@ class TodoAssignSelectModal(discord.ui.Modal):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
         except Exception as exc:
@@ -2171,7 +2247,7 @@ class TodoAssignSelectModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while updating assignment.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -2180,7 +2256,10 @@ class TodoAssignSelectModal(discord.ui.Modal):
         if not updated_item:
             await handle_interaction_error(
                 interaction,
-                UserVisibleError("That item could not be assigned.", ephemeral=True),
+                UserVisibleError(
+                    "That item could not be assigned.",
+                    ephemeral=self.response_ephemeral,
+                ),
             )
             return
 
@@ -2195,6 +2274,7 @@ class TodoAssignPickerView(discord.ui.View):
         item: Dict[str, Any],
         source_message: Optional[discord.Message],
         assignee_options: Optional[List[discord.SelectOption]] = None,
+        response_ephemeral: bool = True,
     ) -> None:
         super().__init__(timeout=180)
         self.todo_list = todo_list
@@ -2202,6 +2282,7 @@ class TodoAssignPickerView(discord.ui.View):
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.guild_id = item.get("guild_id")
         self.source_message = source_message
+        self.response_ephemeral = bool(response_ephemeral)
 
         self.selected_assignee_token: Optional[str] = None
         self.assignee_select: Optional[discord.ui.Select] = None
@@ -2345,7 +2426,11 @@ class TodoAssignPickerView(discord.ui.View):
     ) -> bool:
         if self.source_message is None:
             return False
-        payload = TodoEmbeds.item_details_embed(todo_list, item)
+        payload = TodoEmbeds.item_details_embed(
+            todo_list,
+            item,
+            response_ephemeral=self.response_ephemeral,
+        )
         try:
             await self.source_message.edit(**payload)
             return True
@@ -2356,7 +2441,7 @@ class TodoAssignPickerView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Todo updated, but refreshing the card failed.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -2386,7 +2471,7 @@ class TodoAssignPickerView(discord.ui.View):
     ) -> None:
         if not self.item_id:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item could not be assigned.",
             )
             return
@@ -2394,7 +2479,7 @@ class TodoAssignPickerView(discord.ui.View):
         target_token = self.selected_assignee_token
         if not target_token:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="Select an assignee first.",
             )
             return
@@ -2406,12 +2491,12 @@ class TodoAssignPickerView(discord.ui.View):
             )
         except ValueError:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="Please select a valid assignee option.",
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         assigned = await self._apply_assignment(interaction, target_user_id)
         self._disable_components()
 
@@ -2421,7 +2506,7 @@ class TodoAssignPickerView(discord.ui.View):
             except Exception:
                 pass
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content=f"Couldn't assign task {TodoFunctions.task_ref(self.item_name)}.",
             )
             return
@@ -2449,12 +2534,12 @@ class TodoAssignPickerView(discord.ui.View):
     ) -> None:
         if not self.item_id:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item could not be updated.",
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         unassigned = await self._apply_assignment(interaction, None)
         self._disable_components()
 
@@ -2464,7 +2549,7 @@ class TodoAssignPickerView(discord.ui.View):
             except Exception:
                 pass
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content=f"Couldn't unassign task {TodoFunctions.task_ref(self.item_name)}.",
             )
             return
@@ -2495,12 +2580,14 @@ class TodoItemActionsView(discord.ui.View):
         self,
         todo_list: Dict[str, Any],
         item: Dict[str, Any],
+        response_ephemeral: bool = True,
     ) -> None:
         super().__init__(timeout=900)
         self.todo_list = todo_list
         self.item_id = str(item.get("_id") or "")
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.guild_id = item.get("guild_id")
+        self.response_ephemeral = bool(response_ephemeral)
 
         item_status = TodoFunctions.item_status(item)
         self._apply_progress_button_state(item_status)
@@ -2573,7 +2660,11 @@ class TodoItemActionsView(discord.ui.View):
         todo_list: Dict[str, Any],
         item: Dict[str, Any],
     ) -> bool:
-        payload = TodoEmbeds.item_details_embed(todo_list, item)
+        payload = TodoEmbeds.item_details_embed(
+            todo_list,
+            item,
+            response_ephemeral=self.response_ephemeral,
+        )
         try:
             if interaction.response.is_done():
                 await interaction.edit_original_response(**payload)
@@ -2594,7 +2685,7 @@ class TodoItemActionsView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Todo updated, but refreshing the card failed.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -2607,10 +2698,14 @@ class TodoItemActionsView(discord.ui.View):
         _: discord.ui.Button,
     ) -> None:
         global _MODAL_SELECTS_SUPPORTED
+        self.response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=self.response_ephemeral,
+        )
         current_list, current_item = await self._load_current_item_and_list()
         if current_list is None or current_item is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item no longer exists.",
             )
             return
@@ -2626,7 +2721,7 @@ class TodoItemActionsView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while loading that item.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -2640,6 +2735,7 @@ class TodoItemActionsView(discord.ui.View):
             user_id=interaction.user.id,
             view_scope="list",
             guild_id=interaction.guild_id,
+            response_ephemeral=self.response_ephemeral,
         )
         assignee_options = parent_view._build_assignee_select_options(
             interaction,
@@ -2709,10 +2805,14 @@ class TodoItemActionsView(discord.ui.View):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        await interaction.response.defer(ephemeral=True)
+        self.response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=self.response_ephemeral,
+        )
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         if not self.item_id:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="Couldn't complete that item.",
             )
             return
@@ -2720,7 +2820,7 @@ class TodoItemActionsView(discord.ui.View):
         current_list, current_item = await self._load_current_item_and_list()
         if current_list is None or current_item is None:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item no longer exists.",
             )
             return
@@ -2738,7 +2838,7 @@ class TodoItemActionsView(discord.ui.View):
         )
         if not updated_item:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content=f"Couldn't update task {TodoFunctions.task_ref(self.item_name)}.",
             )
             return
@@ -2752,9 +2852,13 @@ class TodoItemActionsView(discord.ui.View):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
+        self.response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=self.response_ephemeral,
+        )
         if not self.item_id:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item could not be deleted.",
             )
             return
@@ -2765,6 +2869,7 @@ class TodoItemActionsView(discord.ui.View):
                 item_name=self.item_name,
                 list_name=TodoFunctions.display_list_name(self.todo_list, "List"),
                 source_message=interaction.message,
+                response_ephemeral=self.response_ephemeral,
             )
         )
 
@@ -2774,10 +2879,14 @@ class TodoItemActionsView(discord.ui.View):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        await interaction.response.defer(ephemeral=True)
+        self.response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=self.response_ephemeral,
+        )
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         if not self.item_id:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item could not be duplicated.",
             )
             return
@@ -2785,7 +2894,7 @@ class TodoItemActionsView(discord.ui.View):
         current_list, current_item = await self._load_current_item_and_list()
         if current_list is None or current_item is None:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item no longer exists.",
             )
             return
@@ -2803,7 +2912,11 @@ class TodoItemActionsView(discord.ui.View):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
         except Exception as exc:
@@ -2811,7 +2924,7 @@ class TodoItemActionsView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while duplicating that item.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -2819,14 +2932,18 @@ class TodoItemActionsView(discord.ui.View):
 
         if not duplicated_item:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item could not be duplicated.",
             )
             return
 
-        payload = TodoEmbeds.item_details_embed(current_list, duplicated_item)
+        payload = TodoEmbeds.item_details_embed(
+            current_list,
+            duplicated_item,
+            response_ephemeral=self.response_ephemeral,
+        )
         await interaction.followup.send(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             content="Duplicated todo.",
             **payload,
         )
@@ -2838,10 +2955,14 @@ class TodoItemActionsView(discord.ui.View):
         _: discord.ui.Button,
     ) -> None:
         global _MODAL_SELECTS_SUPPORTED
+        self.response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=self.response_ephemeral,
+        )
         current_list, current_item = await self._load_current_item_and_list()
         if current_list is None or current_item is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item no longer exists.",
             )
             return
@@ -2859,6 +2980,7 @@ class TodoItemActionsView(discord.ui.View):
                         item=current_item,
                         source_message=interaction.message,
                         assignee_options=assignee_options,
+                        response_ephemeral=self.response_ephemeral,
                     )
                 )
                 return
@@ -2873,9 +2995,10 @@ class TodoItemActionsView(discord.ui.View):
             item=current_item,
             source_message=interaction.message,
             assignee_options=assignee_options,
+            response_ephemeral=self.response_ephemeral,
         )
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             content="Pick who should own this task.",
             view=assign_view,
         )
@@ -3396,6 +3519,7 @@ class TodoEmbeds:
         todo_list: Dict[str, Any],
         item: Dict[str, Any],
         include_actions: bool = True,
+        response_ephemeral: bool = True,
     ) -> dict:
         text = TodoFunctions.item_text(item) or "No text"
         task_name = TodoFunctions.task_name_from_item(item)
@@ -3415,7 +3539,11 @@ class TodoEmbeds:
 
         payload: Dict[str, Any] = {"embed": embed}
         if include_actions:
-            payload["view"] = TodoItemActionsView(todo_list, item)
+            payload["view"] = TodoItemActionsView(
+                todo_list,
+                item,
+                response_ephemeral=response_ephemeral,
+            )
         return payload
 
     @staticmethod

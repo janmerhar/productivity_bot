@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from services.visibility import inherit_ephemeral_from_interaction
 
 
 async def register_todo_list_directory_dynamic_items(bot: commands.Bot) -> None:
@@ -23,10 +24,11 @@ async def _ensure_view(
     if view is None:
         await interaction.response.send_message(
             "That todo list directory is no longer available. Run `/todo list directory` again.",
-            ephemeral=True,
+            ephemeral=inherit_ephemeral_from_interaction(interaction, default=True),
         )
         return None
 
+    view.response_ephemeral = inherit_ephemeral_from_interaction(interaction, default=True)
     if not await view.interaction_check(interaction):
         return None
     return view
@@ -112,7 +114,7 @@ class TodoDirectoryPrevButton(
         if view is None:
             return
         if view.page <= 1:
-            await interaction.response.defer()
+            await interaction.response.defer(ephemeral=view.response_ephemeral)
             return
         view.page -= 1
         view._build()
@@ -155,7 +157,7 @@ class TodoDirectoryNextButton(
         if view is None:
             return
         if view.page >= view.total_pages:
-            await interaction.response.defer()
+            await interaction.response.defer(ephemeral=view.response_ephemeral)
             return
         view.page += 1
         view._build()
