@@ -287,7 +287,7 @@ class PomodoroStartView(discord.ui.View):
 
     @staticmethod
     def _mode_title(mode: str) -> str:
-        return mode.capitalize()
+        return f"{mode.capitalize()} Session"
 
     @classmethod
     def _paused_title(cls, mode: str) -> str:
@@ -542,12 +542,6 @@ class PomodoroStartView(discord.ui.View):
 
         await interaction.response.edit_message(embed=updated_embed, view=self)
 
-    @discord.ui.button(label="Voice", style=discord.ButtonStyle.primary)
-    async def select_voice_channel_button(
-        self, interaction: discord.Interaction, _: discord.ui.Button
-    ) -> None:
-        await self._handle_select_voice_channel(interaction)
-
     @discord.ui.button(label="+5 min", style=discord.ButtonStyle.secondary)
     async def extend_timer_button(
         self, interaction: discord.Interaction, _: discord.ui.Button
@@ -617,6 +611,12 @@ class PomodoroStartView(discord.ui.View):
                     ephemeral=False,
                     content=fallback_message,
                 )
+
+    @discord.ui.button(label="Voice", style=discord.ButtonStyle.primary)
+    async def select_voice_channel_button(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        await self._handle_select_voice_channel(interaction)
 
     @discord.ui.button(label="Stop", style=discord.ButtonStyle.danger)
     async def stop_button(

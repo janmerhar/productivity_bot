@@ -56,7 +56,7 @@ async def start_pomodoro_context_menu(
     if interaction.guild is None:
         voice_error = None
     elif target_channel is None:
-        voice_error = "Join a voice channel so I can play audio."
+        voice_error = "Not in a voice channel — audio is off."
     else:
         voice_error = await PomodoroVoiceManager.start_session(
             interaction.guild,
@@ -186,12 +186,12 @@ class PomodoroCog(commands.Cog):
             mode,
             duration,
             selected_end_time,
-            title=title_override or "Pomodoro Scheduled",
+            title=title_override,
             description=resolved_description,
         )
         embed = payload.get("embed")
         if is_paused and isinstance(embed, discord.Embed):
-            embed.title = f"{mode.capitalize()} • Paused"
+            embed.title = f"{mode.capitalize()} Session • Paused"
             embed.description = PomodoroEmbeds.paused_description(
                 remaining_seconds=remaining_seconds if remaining_seconds > 0 else None,
                 remaining_minutes=duration,
@@ -309,9 +309,7 @@ class PomodoroCog(commands.Cog):
             voice_error = None
         elif target_channel is None:
             voice_error = (
-                "Join a voice channel or pick one so I can play audio."
-                if autojoin_enabled
-                else None
+                "Not in a voice channel — audio is off." if autojoin_enabled else None
             )
         else:
             voice_error = await PomodoroVoiceManager.start_session(
@@ -419,7 +417,7 @@ class PomodoroCog(commands.Cog):
         )
         embed = payload.get("embed")
         if isinstance(embed, discord.Embed):
-            embed.title = f"{mode.capitalize()} • Paused"
+            embed.title = f"{mode.capitalize()} Session • Paused"
             embed.description = PomodoroEmbeds.paused_description(
                 remaining_seconds=result.remaining_seconds,
                 remaining_minutes=remaining_minutes,
@@ -495,7 +493,7 @@ class PomodoroCog(commands.Cog):
         )
         embed = payload.get("embed")
         if isinstance(embed, discord.Embed):
-            embed.title = mode.capitalize()
+            embed.title = f"{mode.capitalize()} Session"
             embed.description = PomodoroEmbeds.running_description(result.end_time)
 
         join_url: Optional[str] = None

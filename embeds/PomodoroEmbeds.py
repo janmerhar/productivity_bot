@@ -70,7 +70,7 @@ class PomodoroEmbeds:
         duration_label: str = "Duration",
         ends_label: str = "Ends",
     ) -> dict:
-        resolved_title = title if title is not None else mode.capitalize()
+        resolved_title = title if title is not None else f"{mode.capitalize()} Session"
         resolved_description = (
             description
             if description is not None
