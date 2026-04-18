@@ -13,6 +13,7 @@ from services.error_reporting import (
     ValidationError,
     handle_interaction_error,
 )
+from services.visibility import inherit_ephemeral_from_interaction
 
 
 async def register_pomodoro_dynamic_items(bot: commands.Bot) -> None:
@@ -43,23 +44,33 @@ def _current_join_url(interaction: discord.Interaction) -> Optional[str]:
     return channel.jump_url
 
 
-async def _ensure_owner(interaction: discord.Interaction, user_id: int) -> bool:
+async def _ensure_owner(
+    interaction: discord.Interaction,
+    user_id: int,
+    *,
+    response_ephemeral: bool,
+) -> bool:
     if interaction.user.id == user_id:
         return True
 
     await interaction.response.send_message(
-        ephemeral=False,
+        ephemeral=response_ephemeral,
         content="Only the user who started this pomodoro can do this.",
     )
     return False
 
 
-async def _ensure_stopped_owner(interaction: discord.Interaction, user_id: int) -> bool:
+async def _ensure_stopped_owner(
+    interaction: discord.Interaction,
+    user_id: int,
+    *,
+    response_ephemeral: bool,
+) -> bool:
     if interaction.user.id == user_id:
         return True
 
     await interaction.response.send_message(
-        ephemeral=False,
+        ephemeral=response_ephemeral,
         content="Only the user who stopped this pomodoro can do this.",
     )
     return False
@@ -87,6 +98,7 @@ async def _send_started_pomodoro(
     skip_voice: bool,
     source_message: Optional[discord.Message] = None,
     source_disabled_view: Optional[discord.ui.View] = None,
+    response_ephemeral: bool,
 ) -> None:
     from views.PomodoroStartView import PomodoroStartView
 
@@ -104,7 +116,7 @@ async def _send_started_pomodoro(
             interaction,
             ValidationError(
                 str(exc),
-                ephemeral=False,
+                ephemeral=response_ephemeral,
                 cause=exc,
             ),
         )
@@ -114,7 +126,7 @@ async def _send_started_pomodoro(
             interaction,
             UserVisibleError(
                 "Something went wrong while starting that pomodoro.",
-                ephemeral=False,
+                ephemeral=response_ephemeral,
                 cause=exc,
             ),
         )
@@ -157,10 +169,13 @@ async def _send_started_pomodoro(
         voice_channel_select_enabled=interaction.guild is not None,
     )
 
-    await interaction.followup.send(ephemeral=False, **payload)
+    await interaction.followup.send(ephemeral=response_ephemeral, **payload)
 
     if voice_error:
-        await interaction.followup.send(ephemeral=False, content=voice_error)
+        await interaction.followup.send(
+            ephemeral=response_ephemeral,
+            content=voice_error,
+        )
 
     if source_disabled_view is not None:
         await _disable_source_message(source_message, source_disabled_view)
@@ -194,7 +209,8 @@ class PomodoroRestartFocusButton(
     async def callback(self, interaction: discord.Interaction) -> None:
         from views.PomodoroRestartView import PomodoroRestartView
 
-        await interaction.response.defer(ephemeral=False)
+        response_ephemeral = inherit_ephemeral_from_interaction(interaction)
+        await interaction.response.defer(ephemeral=response_ephemeral)
         await _send_started_pomodoro(
             interaction,
             mode="focus",
@@ -204,6 +220,7 @@ class PomodoroRestartFocusButton(
             skip_voice=False,
             source_message=interaction.message,
             source_disabled_view=PomodoroRestartView(disabled=True),
+            response_ephemeral=response_ephemeral,
         )
 
 
@@ -235,7 +252,8 @@ class PomodoroRestartBreakButton(
     async def callback(self, interaction: discord.Interaction) -> None:
         from views.PomodoroRestartView import PomodoroRestartView
 
-        await interaction.response.defer(ephemeral=False)
+        response_ephemeral = inherit_ephemeral_from_interaction(interaction)
+        await interaction.response.defer(ephemeral=response_ephemeral)
         await _send_started_pomodoro(
             interaction,
             mode="break",
@@ -245,6 +263,7 @@ class PomodoroRestartBreakButton(
             skip_voice=False,
             source_message=interaction.message,
             source_disabled_view=PomodoroRestartView(disabled=True),
+            response_ephemeral=response_ephemeral,
         )
 
 
@@ -295,13 +314,18 @@ class PomodoroStartSelectVoiceButton(
             PomodoroVoiceChannelSelectModal,
             PomodoroVoiceChannelSelectView,
         )
+        response_ephemeral = inherit_ephemeral_from_interaction(interaction)
 
-        if not await _ensure_owner(interaction, self.user_id):
+        if not await _ensure_owner(
+            interaction,
+            self.user_id,
+            response_ephemeral=response_ephemeral,
+        ):
             return
 
         if interaction.guild is None:
             await interaction.response.send_message(
-                ephemeral=False,
+                ephemeral=response_ephemeral,
                 content="Voice channel selection isn't available in DMs.",
             )
             return
@@ -309,7 +333,7 @@ class PomodoroStartSelectVoiceButton(
         state = await PomodoroFunctions.get_user_pomodoro_state(interaction)
         if not state.exists:
             await interaction.response.send_message(
-                ephemeral=False,
+                ephemeral=response_ephemeral,
                 content=(
                     "You don't have an active pomodoro "
                     f"{PomodoroFunctions._scope_message(interaction)}."
@@ -322,7 +346,7 @@ class PomodoroStartSelectVoiceButton(
         )
         if not voice_channel_options:
             await interaction.response.send_message(
-                ephemeral=False,
+                ephemeral=response_ephemeral,
                 content="No available voice channels found.",
             )
             return
@@ -337,6 +361,7 @@ class PomodoroStartSelectVoiceButton(
                         mode=state.mode,
                         end_time=state.end_time,
                         voice_channel_options=voice_channel_options,
+                        response_ephemeral=response_ephemeral,
                     )
                 )
                 return
@@ -351,9 +376,10 @@ class PomodoroStartSelectVoiceButton(
             user_id=self.user_id,
             mode=state.mode,
             end_time=state.end_time,
+            response_ephemeral=response_ephemeral,
         )
         await interaction.response.send_message(
-            ephemeral=False,
+            ephemeral=response_ephemeral,
             content="Choose a voice channel:",
             view=picker_view,
         )
@@ -399,14 +425,19 @@ class PomodoroStartPlayPauseButton(
 
     async def callback(self, interaction: discord.Interaction) -> None:
         from views.PomodoroStartView import PomodoroStartView
+        response_ephemeral = inherit_ephemeral_from_interaction(interaction)
 
-        if not await _ensure_owner(interaction, self.user_id):
+        if not await _ensure_owner(
+            interaction,
+            self.user_id,
+            response_ephemeral=response_ephemeral,
+        ):
             return
 
         state = await PomodoroFunctions.get_user_pomodoro_state(interaction)
         if not state.exists:
             await interaction.response.send_message(
-                ephemeral=False,
+                ephemeral=response_ephemeral,
                 content=(
                     "You don't have an active pomodoro "
                     f"{PomodoroFunctions._scope_message(interaction)}."
@@ -418,7 +449,7 @@ class PomodoroStartPlayPauseButton(
             result = await PomodoroFunctions.resume_user_pomodoro(interaction)
             if not result.ok or result.end_time is None or result.duration_minutes is None:
                 await interaction.response.send_message(
-                    ephemeral=False,
+                    ephemeral=response_ephemeral,
                     content=result.message,
                 )
                 return
@@ -436,7 +467,7 @@ class PomodoroStartPlayPauseButton(
             )
             if updated_embed is None:
                 await interaction.response.send_message(
-                    ephemeral=False,
+                    ephemeral=response_ephemeral,
                     content=(
                         "Pomodoro resumed, but I couldn't refresh the timer card. "
                         f"New end: {PomodoroStartView._relative_timestamp(result.end_time)}"
@@ -460,7 +491,7 @@ class PomodoroStartPlayPauseButton(
         result = await PomodoroFunctions.pause_user_pomodoro(interaction)
         if not result.ok:
             await interaction.response.send_message(
-                ephemeral=False,
+                ephemeral=response_ephemeral,
                 content=result.message,
             )
             return
@@ -478,7 +509,7 @@ class PomodoroStartPlayPauseButton(
         )
         if updated_embed is None:
             await interaction.response.send_message(
-                ephemeral=False,
+                ephemeral=response_ephemeral,
                 content=f"Paused with {remaining_minutes} minute(s) remaining.",
             )
             return
@@ -527,14 +558,19 @@ class PomodoroStartExtendButton(
 
     async def callback(self, interaction: discord.Interaction) -> None:
         from views.PomodoroStartView import PomodoroStartView
+        response_ephemeral = inherit_ephemeral_from_interaction(interaction)
 
-        if not await _ensure_owner(interaction, self.user_id):
+        if not await _ensure_owner(
+            interaction,
+            self.user_id,
+            response_ephemeral=response_ephemeral,
+        ):
             return
 
         state = await PomodoroFunctions.get_user_pomodoro_state(interaction)
         if not state.exists:
             await interaction.response.send_message(
-                ephemeral=False,
+                ephemeral=response_ephemeral,
                 content=(
                     "You don't have an active pomodoro "
                     f"{PomodoroFunctions._scope_message(interaction)}."
@@ -544,7 +580,7 @@ class PomodoroStartExtendButton(
 
         if state.is_paused:
             await interaction.response.send_message(
-                ephemeral=False,
+                ephemeral=response_ephemeral,
                 content="Resume the pomodoro before extending it.",
             )
             return
@@ -556,7 +592,7 @@ class PomodoroStartExtendButton(
         )
         if not result.ok or result.end_time is None or result.duration_minutes is None:
             await interaction.response.send_message(
-                ephemeral=False,
+                ephemeral=response_ephemeral,
                 content=result.message,
             )
             return
@@ -572,7 +608,7 @@ class PomodoroStartExtendButton(
         )
         if updated_embed is None:
             await interaction.response.send_message(
-                ephemeral=False,
+                ephemeral=response_ephemeral,
                 content=(
                     "Extended by 5 minutes, but I couldn't refresh the timer card. "
                     f"New end: {PomodoroStartView._relative_timestamp(result.end_time)}"
@@ -599,12 +635,12 @@ class PomodoroStartExtendButton(
             )
             if interaction.response.is_done():
                 await interaction.followup.send(
-                    ephemeral=False,
+                    ephemeral=response_ephemeral,
                     content=fallback_message,
                 )
             else:
                 await interaction.response.send_message(
-                    ephemeral=False,
+                    ephemeral=response_ephemeral,
                     content=fallback_message,
                 )
 
@@ -640,14 +676,22 @@ class PomodoroStartStopButton(
 
     async def callback(self, interaction: discord.Interaction) -> None:
         from views.PomodoroStoppedView import PomodoroStoppedView
+        response_ephemeral = inherit_ephemeral_from_interaction(interaction)
 
-        if not await _ensure_owner(interaction, self.user_id):
+        if not await _ensure_owner(
+            interaction,
+            self.user_id,
+            response_ephemeral=response_ephemeral,
+        ):
             return
 
-        await interaction.response.defer(ephemeral=False)
+        await interaction.response.defer(ephemeral=response_ephemeral)
         result = await PomodoroFunctions.stop_user_pomodoro(interaction)
         if not result.ok:
-            await interaction.followup.send(ephemeral=False, content=result.message)
+            await interaction.followup.send(
+                ephemeral=response_ephemeral,
+                content=result.message,
+            )
             return
 
         payload = PomodoroEmbeds.timer_stopped_embed(result.message)
@@ -660,7 +704,7 @@ class PomodoroStartStopButton(
                 pass
 
         await interaction.followup.send(
-            ephemeral=False,
+            ephemeral=response_ephemeral,
             **payload,
             view=replacement_view,
         )
@@ -697,11 +741,16 @@ class PomodoroStoppedFocusButton(
 
     async def callback(self, interaction: discord.Interaction) -> None:
         from views.PomodoroStoppedView import PomodoroStoppedView
+        response_ephemeral = inherit_ephemeral_from_interaction(interaction)
 
-        if not await _ensure_stopped_owner(interaction, self.user_id):
+        if not await _ensure_stopped_owner(
+            interaction,
+            self.user_id,
+            response_ephemeral=response_ephemeral,
+        ):
             return
 
-        await interaction.response.defer(ephemeral=False)
+        await interaction.response.defer(ephemeral=response_ephemeral)
         await _send_started_pomodoro(
             interaction,
             mode="focus",
@@ -711,6 +760,7 @@ class PomodoroStoppedFocusButton(
             skip_voice=False,
             source_message=interaction.message,
             source_disabled_view=PomodoroStoppedView(self.user_id, disabled=True),
+            response_ephemeral=response_ephemeral,
         )
 
 
@@ -745,11 +795,16 @@ class PomodoroStoppedBreakButton(
 
     async def callback(self, interaction: discord.Interaction) -> None:
         from views.PomodoroStoppedView import PomodoroStoppedView
+        response_ephemeral = inherit_ephemeral_from_interaction(interaction)
 
-        if not await _ensure_stopped_owner(interaction, self.user_id):
+        if not await _ensure_stopped_owner(
+            interaction,
+            self.user_id,
+            response_ephemeral=response_ephemeral,
+        ):
             return
 
-        await interaction.response.defer(ephemeral=False)
+        await interaction.response.defer(ephemeral=response_ephemeral)
         await _send_started_pomodoro(
             interaction,
             mode="break",
@@ -759,6 +814,7 @@ class PomodoroStoppedBreakButton(
             skip_voice=False,
             source_message=interaction.message,
             source_disabled_view=PomodoroStoppedView(self.user_id, disabled=True),
+            response_ephemeral=response_ephemeral,
         )
 
 
@@ -797,8 +853,13 @@ class PomodoroStoppedCustomTimerButton(
             build_custom_voice_options,
         )
         import views.PomodoroStoppedView as stopped_view_module
+        response_ephemeral = inherit_ephemeral_from_interaction(interaction)
 
-        if not await _ensure_stopped_owner(interaction, self.user_id):
+        if not await _ensure_stopped_owner(
+            interaction,
+            self.user_id,
+            response_ephemeral=response_ephemeral,
+        ):
             return
 
         voice_options = build_custom_voice_options(interaction)
@@ -809,6 +870,7 @@ class PomodoroStoppedCustomTimerButton(
                         user_id=self.user_id,
                         source_message=interaction.message,
                         voice_options=voice_options,
+                        response_ephemeral=response_ephemeral,
                     )
                 )
                 return
@@ -819,7 +881,7 @@ class PomodoroStoppedCustomTimerButton(
                     raise
 
         await interaction.response.send_message(
-            ephemeral=False,
+            ephemeral=response_ephemeral,
             content=(
                 "Custom timer popup with dropdowns is not supported here. "
                 "Use `/pomodoro start` for custom mode, duration, and voice options."
