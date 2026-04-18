@@ -16,6 +16,7 @@ from services.reminder_destination import (
     parse_reminder_destination_value,
 )
 from services.timezone_gate import ensure_user_timezone
+from services.visibility import resolve_visibility_for_context
 from views.ReminderOutputView import ReminderOutputView
 
 
@@ -305,7 +306,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         default_destination_type: str = "channel",
         guild: Optional[discord.Guild] = None,
         source_message: Optional[discord.Message] = None,
-        response_ephemeral: bool = False,
+        response_ephemeral: Optional[bool] = None,
         initial_reminder: Optional[str] = None,
         guild_id: Optional[int] = None,
     ) -> None:
@@ -313,7 +314,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         self._parent_view = parent_view
         self._default_channel_id = default_channel_id
         self._source_message = source_message
-        self._response_ephemeral = bool(response_ephemeral)
+        self._response_ephemeral_override = response_ephemeral
         self._guild_id = (
             guild_id if guild_id is not None else getattr(parent_view, "guild_id", None)
         )
@@ -391,6 +392,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
         description: str,
         destination_type: str,
         destination_channel_id: Optional[int],
+        response_ephemeral: bool,
         timezone: Optional[str],
     ) -> None:
         try:
@@ -405,14 +407,14 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
                 destination_channel_id=destination_channel_id,
                 destination_type=destination_type,
                 destination_user_id=interaction.user.id,
-                ephemeral=self._response_ephemeral,
+                ephemeral=response_ephemeral,
                 timezone=timezone,
             )
         except Exception as exc:
             await handle_interaction_error(
                 interaction,
                 exc,
-                ephemeral=self._response_ephemeral,
+                ephemeral=response_ephemeral,
             )
             return
 
@@ -423,11 +425,22 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
             result_message=confirmation,
             ok=True,
             user_id=interaction.user.id,
-            response_ephemeral=self._response_ephemeral,
+            response_ephemeral=response_ephemeral,
         )
         await interaction.followup.send(
-            ephemeral=self._response_ephemeral,
+            ephemeral=response_ephemeral,
             **reminder_view.response_payload(),
+        )
+
+    def _resolve_response_ephemeral(self, destination_type: str) -> bool:
+        if self._response_ephemeral_override is not None:
+            return bool(self._response_ephemeral_override)
+
+        guild_default = "private" if destination_type == "private" else "public"
+        return resolve_visibility_for_context(
+            self._guild_id,
+            None,
+            guild_default=guild_default,
         )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
@@ -453,6 +466,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
                     if destination_type == "private"
                     else self._default_channel_id
                 )
+            response_ephemeral = self._resolve_response_ephemeral(destination_type)
 
             if destination_type == "channel" and destination_channel_id is None:
                 raise ValidationError("Please choose a destination channel.")
@@ -491,6 +505,7 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
                         description=raw_description,
                         destination_type=destination_type,
                         destination_channel_id=destination_channel_id,
+                        response_ephemeral=response_ephemeral,
                         timezone=resolved_timezone,
                     )
 
@@ -498,12 +513,12 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
                     interaction,
                     _continue_with_timezone,
                     continue_message="Timezone saved as `{timezone}`. Continuing reminder creation.",
-                    response_ephemeral=self._response_ephemeral,
+                    response_ephemeral=response_ephemeral,
                 )
                 if timezone is None:
                     return
 
-            await interaction.response.defer(ephemeral=self._response_ephemeral)
+            await interaction.response.defer(ephemeral=response_ephemeral)
             await self._apply_create(
                 interaction,
                 schedule=raw_schedule,
@@ -512,13 +527,20 @@ class ReminderCreateModal(discord.ui.Modal, title="Create Reminder"):
                 description=raw_description,
                 destination_type=destination_type,
                 destination_channel_id=destination_channel_id,
+                response_ephemeral=response_ephemeral,
                 timezone=timezone,
             )
         except Exception as exc:
             await handle_interaction_error(
                 interaction,
                 exc,
-                ephemeral=self._response_ephemeral,
+                ephemeral=(
+                    response_ephemeral
+                    if "response_ephemeral" in locals()
+                    else self._resolve_response_ephemeral(
+                        self._default_destination_type
+                    )
+                ),
             )
 
 

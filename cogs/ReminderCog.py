@@ -16,7 +16,11 @@ from services.discord_helpers import (
 from services.error_reporting import UserVisibleError
 from services.error_reporting import ValidationError
 from services.timezone_gate import ensure_user_timezone
-from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from services.visibility import (
+    VISIBILITY_CHOICES,
+    VISIBILITY_DESC,
+    resolve_visibility_for_context,
+)
 from views.ReminderEditModal import (
     ReminderCreateModal,
     ReminderEditModal,
@@ -53,7 +57,7 @@ async def create_reminder_from_message(
             default_channel_id=default_channel_id,
             guild=interaction.guild,
             source_message=message,
-            response_ephemeral=False,
+            response_ephemeral=None,
             initial_reminder=reminder_text,
             guild_id=interaction.guild_id,
         )
@@ -72,6 +76,47 @@ class ReminderCog(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self) -> None:
         print("ReminderCog cog loaded")
+
+    @staticmethod
+    def _resolve_default_ephemeral(
+        interaction: discord.Interaction,
+        visibility: Optional[app_commands.Choice[str]],
+    ) -> bool:
+        return resolve_visibility_for_context(
+            interaction.guild_id,
+            visibility,
+            guild_default="public",
+        )
+
+    @staticmethod
+    def _resolve_destination_ephemeral(
+        interaction: discord.Interaction,
+        destination_type: str,
+        visibility: Optional[app_commands.Choice[str]],
+    ) -> bool:
+        guild_default = "private" if destination_type == "private" else "public"
+        return resolve_visibility_for_context(
+            interaction.guild_id,
+            visibility,
+            guild_default=guild_default,
+        )
+
+    def _resolve_reminder_ephemeral(
+        self,
+        interaction: discord.Interaction,
+        job,
+        visibility: Optional[app_commands.Choice[str]],
+    ) -> bool:
+        destination_type = (
+            "private"
+            if ReminderFunctions.is_private_destination(job)
+            else "channel"
+        )
+        return self._resolve_destination_ephemeral(
+            interaction,
+            destination_type,
+            visibility,
+        )
 
     async def _send_reminder_output(
         self,
@@ -385,7 +430,7 @@ class ReminderCog(commands.Cog):
         destination: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = self._resolve_default_ephemeral(interaction, visibility)
         try:
             destination_type, destination_channel_id, _ = normalize_reminder_destination(
                 interaction,
@@ -393,6 +438,12 @@ class ReminderCog(commands.Cog):
             )
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
+
+        ephemeral = self._resolve_destination_ephemeral(
+            interaction,
+            destination_type,
+            visibility,
+        )
 
         if add_pings:
             if interaction.guild is None:
@@ -576,15 +627,16 @@ class ReminderCog(commands.Cog):
         reminder: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
-        await interaction.response.defer(ephemeral=ephemeral)
+        provisional_ephemeral = self._resolve_default_ephemeral(interaction, visibility)
         reminder_value = reminder.strip()
 
-        await self._get_visible_reminder(
+        job = await self._get_visible_reminder(
             interaction,
             reminder_value,
-            ephemeral=ephemeral,
+            ephemeral=provisional_ephemeral,
         )
+        ephemeral = self._resolve_reminder_ephemeral(interaction, job, visibility)
+        await interaction.response.defer(ephemeral=ephemeral)
 
         deleted = await asyncio.to_thread(
             ReminderFunctions.delete_reminder,
@@ -621,12 +673,13 @@ class ReminderCog(commands.Cog):
         reminder: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
+        provisional_ephemeral = self._resolve_default_ephemeral(interaction, visibility)
         job = await self._get_visible_reminder(
             interaction,
             reminder,
-            ephemeral=ephemeral,
+            ephemeral=provisional_ephemeral,
         )
+        ephemeral = self._resolve_reminder_ephemeral(interaction, job, visibility)
 
         try:
             channel_options = _build_destination_select_options(
@@ -663,13 +716,14 @@ class ReminderCog(commands.Cog):
         reminder: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
-        await interaction.response.defer(ephemeral=ephemeral)
+        provisional_ephemeral = self._resolve_default_ephemeral(interaction, visibility)
         job = await self._get_visible_reminder(
             interaction,
             reminder,
-            ephemeral=ephemeral,
+            ephemeral=provisional_ephemeral,
         )
+        ephemeral = self._resolve_reminder_ephemeral(interaction, job, visibility)
+        await interaction.response.defer(ephemeral=ephemeral)
 
         await self._send_reminder_output(
             interaction,
@@ -695,7 +749,20 @@ class ReminderCog(commands.Cog):
         until: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
+        reminder_value = reminder.strip()
+        provisional_ephemeral = self._resolve_default_ephemeral(interaction, visibility)
+        job = None
+        if not self._is_all_reminders_value(reminder_value):
+            job = await self._get_visible_reminder(
+                interaction,
+                reminder_value,
+                ephemeral=provisional_ephemeral,
+            )
+        ephemeral = (
+            self._resolve_reminder_ephemeral(interaction, job, visibility)
+            if job is not None
+            else provisional_ephemeral
+        )
         until_value = (until or "").strip() or None
 
         async def _continue_with_timezone(
@@ -724,7 +791,7 @@ class ReminderCog(commands.Cog):
         await interaction.response.defer(ephemeral=ephemeral)
         await self._pause_reminder_from_options(
             interaction,
-            reminder=reminder,
+            reminder=reminder_value,
             until=until_value,
             ephemeral=ephemeral,
             timezone=timezone,
@@ -745,11 +812,24 @@ class ReminderCog(commands.Cog):
         reminder: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
+        reminder_value = reminder.strip()
+        provisional_ephemeral = self._resolve_default_ephemeral(interaction, visibility)
+        job = None
+        if not self._is_all_reminders_value(reminder_value):
+            job = await self._get_visible_reminder(
+                interaction,
+                reminder_value,
+                ephemeral=provisional_ephemeral,
+            )
+        ephemeral = (
+            self._resolve_reminder_ephemeral(interaction, job, visibility)
+            if job is not None
+            else provisional_ephemeral
+        )
         await interaction.response.defer(ephemeral=ephemeral)
         await self._apply_reminder_action(
             interaction,
-            reminder=reminder.strip(),
+            reminder=reminder_value,
             list_paused=True,
             action_fn=ReminderFunctions.resume_reminder,
             success_result="resumed",
