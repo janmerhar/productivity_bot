@@ -155,6 +155,7 @@ async def load():
         "cogs.PomodoroCog",
         "cogs.ReminderCog",
         "cogs.RouterCog",
+        "cogs.SettingsCog",
         "cogs.TodoCog",
         "cogs.TogglCog",
         "cogs.CryptoCog",
