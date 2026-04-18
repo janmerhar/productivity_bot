@@ -1,3 +1,5 @@
+# PomodoroEmbeds.py
+
 import datetime
 from typing import Optional, Union
 
@@ -96,7 +98,7 @@ class PomodoroEmbeds:
         embed = discord.Embed(
             title=title,
             description=description,
-            color=discord.Colour.orange(),
+            color=discord.Colour.red(),
         )
         embed.add_field(name=status_label, value=status_message, inline=False)
         embed.add_field(

@@ -1,3 +1,5 @@
+# PomodoroCog.py
+
 import asyncio
 from typing import Optional
 
@@ -181,9 +183,7 @@ class PomodoroCog(commands.Cog):
 
         resolved_description: Optional[str] = None
         if description_override is not None:
-            resolved_description = description_override.format(
-                mode=mode.capitalize()
-            )
+            resolved_description = description_override.format(mode=mode.capitalize())
 
         payload = PomodoroEmbeds.insert_timer_embed(
             mode,
@@ -275,7 +275,10 @@ class PomodoroCog(commands.Cog):
             )
         except ValueError as exc:
             error_message = str(exc).strip()
-            if "only one pomodoro timer can be active per server" in error_message.lower():
+            if (
+                "only one pomodoro timer can be active per server"
+                in error_message.lower()
+            ):
                 active_payload = await self._build_active_timer_payload(
                     interaction,
                     ephemeral=ephemeral,
@@ -478,7 +481,9 @@ class PomodoroCog(commands.Cog):
                     description_override="{mode} timer is already running.",
                 )
                 if active_payload is not None:
-                    await interaction.followup.send(ephemeral=ephemeral, **active_payload)
+                    await interaction.followup.send(
+                        ephemeral=ephemeral, **active_payload
+                    )
                     return
             await interaction.followup.send(ephemeral=ephemeral, content=result.message)
             return
@@ -615,4 +620,3 @@ class PomodoroCog(commands.Cog):
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(PomodoroCog(client))
     client.tree.add_command(start_pomodoro_context_menu)
-

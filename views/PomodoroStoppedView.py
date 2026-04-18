@@ -1,3 +1,5 @@
+# PomodoroStoppedView.py
+
 import asyncio
 from typing import Optional
 
@@ -6,7 +8,11 @@ import discord
 from classes.PomodoroFunctions import PomodoroFunctions
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from embeds.PomodoroEmbeds import PomodoroEmbeds
-from services.error_reporting import ValidationError, UserVisibleError, handle_interaction_error
+from services.error_reporting import (
+    ValidationError,
+    UserVisibleError,
+    handle_interaction_error,
+)
 from views.PomodoroStartView import PomodoroStartView, PomodoroVoiceChannelSelectView
 
 _POMODORO_STOP_MODAL_SELECTS_SUPPORTED = True
@@ -92,7 +98,9 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
                 )
                 return
 
-        voice_selection = self.voice_select.values[0] if self.voice_select.values else "__auto__"
+        voice_selection = (
+            self.voice_select.values[0] if self.voice_select.values else "__auto__"
+        )
         if voice_selection == "__auto__":
             target_channel = None
             use_member_voice = True
@@ -111,9 +119,11 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
                     ),
                 )
                 return
-            target_channel = PomodoroVoiceChannelSelectView._resolve_selected_voice_channel(
-                interaction.guild,
-                voice_selection,
+            target_channel = (
+                PomodoroVoiceChannelSelectView._resolve_selected_voice_channel(
+                    interaction.guild,
+                    voice_selection,
+                )
             )
             if target_channel is None:
                 await handle_interaction_error(
@@ -151,13 +161,10 @@ class PomodoroStoppedView(discord.ui.View):
         )
         return False
 
-    def _disable_buttons(self) -> None:
-        for item in self.children:
-            if isinstance(item, discord.ui.Button):
-                item.disabled = True
-
     @staticmethod
-    def _custom_voice_options(interaction: discord.Interaction) -> list[discord.SelectOption]:
+    def _custom_voice_options(
+        interaction: discord.Interaction,
+    ) -> list[discord.SelectOption]:
         options: list[discord.SelectOption] = [
             discord.SelectOption(
                 label="Auto (your current voice channel)",
@@ -269,17 +276,18 @@ class PomodoroStoppedView(discord.ui.View):
             end_time=end_time,
             voice_channel_select_enabled=interaction.guild is not None,
         )
-        await interaction.followup.send(ephemeral=False, **payload)
+        payload["content"] = None
+
+        try:
+            if interaction.message is not None:
+                await interaction.message.edit(**payload)
+            else:
+                await interaction.followup.send(ephemeral=False, **payload)
+        except discord.HTTPException:
+            await interaction.followup.send(ephemeral=False, **payload)
 
         if voice_error:
             await interaction.followup.send(ephemeral=False, content=voice_error)
-
-        self._disable_buttons()
-        if interaction.message is not None:
-            try:
-                await interaction.message.edit(view=self)
-            except discord.HTTPException:
-                pass
 
     @discord.ui.button(label="Start Focus", style=discord.ButtonStyle.success)
     async def start_focus(

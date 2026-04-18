@@ -1,3 +1,5 @@
+# PomodoroStartView.py
+
 import datetime
 from typing import List, Optional
 
@@ -639,4 +641,9 @@ class PomodoroStartView(discord.ui.View):
 
         payload = PomodoroEmbeds.timer_stopped_embed(result.message)
         payload["view"] = PomodoroStoppedView(interaction.user.id)
-        await interaction.followup.send(ephemeral=False, **payload)
+        payload["content"] = None
+
+        try:
+            await interaction.message.edit(**payload)
+        except discord.HTTPException:
+            await interaction.followup.send(ephemeral=False, **payload)

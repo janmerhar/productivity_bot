@@ -1,3 +1,5 @@
+# PomodoroFunctions.py
+
 import asyncio
 import datetime
 import math
@@ -278,7 +280,11 @@ class PomodoroFunctions:
                 deleted = await asyncio.to_thread(
                     manager.delete_job,
                     str(job.id),
-                    None if interaction.guild_id is not None else interaction.channel_id,
+                    (
+                        None
+                        if interaction.guild_id is not None
+                        else interaction.channel_id
+                    ),
                     interaction.guild_id,
                 )
             except Exception:
@@ -341,9 +347,11 @@ class PomodoroFunctions:
                 ),
             )
 
-        selected_job, selected_end_time = PomodoroFunctions._select_user_job_by_pause_state(
-            user_jobs,
-            paused=False,
+        selected_job, selected_end_time = (
+            PomodoroFunctions._select_user_job_by_pause_state(
+                user_jobs,
+                paused=False,
+            )
         )
         if selected_job is None or selected_end_time is None:
             return PomodoroPauseResult(
@@ -456,7 +464,9 @@ class PomodoroFunctions:
             default=0,
         )
         if remaining_seconds <= 0:
-            fallback_minutes = PomodoroFunctions._safe_int(data.get("duration"), default=0)
+            fallback_minutes = PomodoroFunctions._safe_int(
+                data.get("duration"), default=0
+            )
             remaining_seconds = max(0, fallback_minutes * 60)
 
         if remaining_seconds <= 0:
@@ -590,7 +600,10 @@ class PomodoroFunctions:
             if normalized_scheduled is None:
                 continue
             if normalized_expected is None:
-                if selected_job_end_time is None or normalized_scheduled > selected_job_end_time:
+                if (
+                    selected_job_end_time is None
+                    or normalized_scheduled > selected_job_end_time
+                ):
                     selected_job = job
                     selected_job_end_time = normalized_scheduled
                 continue
