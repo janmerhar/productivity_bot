@@ -81,7 +81,10 @@ class StocksCog(commands.Cog):
 
         action_view = None
         if response.get("embed") is not None:
-            action_view = StockActionView(ticker)
+            action_view = StockActionView(
+                ticker,
+                response_ephemeral=ephemeral,
+            )
 
         await interaction.edit_original_response(
             content=response.get("content"),
@@ -587,6 +590,7 @@ class StocksCog(commands.Cog):
             guild_id=interaction.guild_id,
             channel_id=interaction.channel_id,
             kind=selected_kind,
+            response_ephemeral=ephemeral,
         )
         await view.initialize()
 

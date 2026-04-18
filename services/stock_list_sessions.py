@@ -38,6 +38,7 @@ def _state_document(state: Dict[str, Any]) -> Dict[str, Any]:
         "guild_id": state.get("guild_id"),
         "channel_id": state.get("channel_id"),
         "kind": str(state.get("kind") or "all").strip(),
+        "response_ephemeral": bool(state.get("response_ephemeral", True)),
         "page": max(1, int(state.get("page") or 1)),
         "selected_entry_type": str(state.get("selected_entry_type") or "").strip(),
         "selected_entry_id": str(state.get("selected_entry_id") or "").strip(),

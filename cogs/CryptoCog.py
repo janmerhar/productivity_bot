@@ -68,6 +68,7 @@ class CryptoCog(commands.Cog):
             action_view = CryptoActionView(
                 ticker,
                 currency,
+                response_ephemeral=ephemeral,
             )
 
         await interaction.edit_original_response(

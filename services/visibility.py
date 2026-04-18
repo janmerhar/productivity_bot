@@ -1,5 +1,6 @@
 from typing import Optional, Union
 
+import discord
 from discord import app_commands
 
 VISIBILITY_DESC = "Who can see this response"
@@ -21,3 +22,19 @@ def resolve_visibility(
 
 def visibility_value_from_ephemeral(ephemeral_default: bool) -> str:
     return "private" if ephemeral_default else "public"
+
+
+def inherit_ephemeral_from_interaction(
+    interaction: discord.Interaction,
+    *,
+    default: bool = False,
+) -> bool:
+    message = getattr(interaction, "message", None)
+    if message is None:
+        return default
+
+    flags = getattr(message, "flags", None)
+    if flags is None:
+        return default
+
+    return bool(flags.ephemeral)

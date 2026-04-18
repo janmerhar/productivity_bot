@@ -6,6 +6,7 @@ from discord.ext import commands
 from classes.DailyJobManager import DailyJobManager
 from classes.PriceAlertFunctions import deactivate_alert
 from services.error_reporting import handle_interaction_error
+from services.visibility import inherit_ephemeral_from_interaction
 
 
 async def register_stock_list_dynamic_items(bot: commands.Bot) -> None:
@@ -29,7 +30,7 @@ async def _ensure_view(
     view = await StockListItemsView.from_session(interaction, session_id)
     if view is None:
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=inherit_ephemeral_from_interaction(interaction, default=True),
             content="That stock list is no longer available. Run `/stock list` again.",
         )
         return None
@@ -127,7 +128,7 @@ class StockListPrevButton(
         if view is None:
             return
         if view.page <= 1:
-            await interaction.response.defer(ephemeral=True)
+            await interaction.response.defer(ephemeral=view.response_ephemeral)
             return
         view.page -= 1
         view._select_index(0)
@@ -169,7 +170,7 @@ class StockListNextButton(
         if view is None:
             return
         if view.page >= view.total_pages:
-            await interaction.response.defer(ephemeral=True)
+            await interaction.response.defer(ephemeral=view.response_ephemeral)
             return
         view.page += 1
         view._select_index(0)
@@ -210,7 +211,7 @@ class StockListRefreshButton(
         view = await _ensure_view(interaction, session_id=self.session_id)
         if view is None:
             return
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=view.response_ephemeral)
         await view._reload_entries()
         await view.refresh_message(interaction)
 
@@ -290,7 +291,7 @@ class StockListDeleteButton(
         current = view._selected_entry()
         if current is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=view.response_ephemeral,
                 content="No item selected.",
             )
             return
@@ -315,10 +316,17 @@ class StockListDeleteButton(
                 )
                 message = "Alert deleted." if deleted else "Alert was not found."
         except Exception as exc:
-            await handle_interaction_error(interaction, exc, ephemeral=True)
+            await handle_interaction_error(
+                interaction,
+                exc,
+                ephemeral=view.response_ephemeral,
+            )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=view.response_ephemeral)
         await view._reload_entries()
         await view.refresh_message(interaction)
-        await interaction.followup.send(ephemeral=True, content=message)
+        await interaction.followup.send(
+            ephemeral=view.response_ephemeral,
+            content=message,
+        )

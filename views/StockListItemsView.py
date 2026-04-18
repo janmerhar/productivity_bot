@@ -22,6 +22,7 @@ class StockListItemsView(discord.ui.View):
         guild_id: Optional[int],
         channel_id: Optional[int],
         kind: str = "all",
+        response_ephemeral: bool = True,
         page: int = 1,
         session_id: Optional[str] = None,
         selected_entry_type: str = "",
@@ -33,6 +34,7 @@ class StockListItemsView(discord.ui.View):
         self.guild_id = guild_id
         self.channel_id = channel_id
         self.kind = kind if kind in {"all", "schedules", "alerts"} else "all"
+        self.response_ephemeral = bool(response_ephemeral)
         self.session_id = str(session_id or "").strip() or None
         self.message: Optional[discord.Message] = None
 
@@ -68,6 +70,7 @@ class StockListItemsView(discord.ui.View):
             guild_id=session.get("guild_id"),
             channel_id=session.get("channel_id"),
             kind=str(session.get("kind") or "all"),
+            response_ephemeral=bool(session.get("response_ephemeral", True)),
             page=max(1, int(session.get("page") or 1)),
             session_id=str(session.get("session_id") or session_id).strip(),
             selected_entry_type=str(session.get("selected_entry_type") or ""),
@@ -113,6 +116,7 @@ class StockListItemsView(discord.ui.View):
             "guild_id": self.guild_id,
             "channel_id": self.channel_id,
             "kind": self.kind,
+            "response_ephemeral": self.response_ephemeral,
             "page": self.page,
             "selected_entry_type": selected_entry_type,
             "selected_entry_id": selected_entry_id,
@@ -122,7 +126,7 @@ class StockListItemsView(discord.ui.View):
         if interaction.user.id == self.user_id:
             return True
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             content="Only the user who opened this list can manage it.",
         )
         return False
@@ -525,7 +529,7 @@ class StockListItemsView(discord.ui.View):
         current = self._selected_entry()
         if current is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="No item selected.",
             )
             return
@@ -533,12 +537,13 @@ class StockListItemsView(discord.ui.View):
         entry_type = str(current.get("entry_type") or "")
         if entry_type == "schedule":
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content=f"Actions for schedule `{current.get('job_id')}`.",
                 view=ScheduledJobActionView(
                     job_id=str(current.get("job_id") or ""),
                     channel_id=current.get("channel_id"),
                     guild_id=current.get("guild_id"),
+                    response_ephemeral=self.response_ephemeral,
                 ),
             )
             return
@@ -548,16 +553,17 @@ class StockListItemsView(discord.ui.View):
                 alert_id=str(current.get("alert_id") or ""),
                 user_id=self.user_id,
                 guild_id=self.guild_id,
+                response_ephemeral=self.response_ephemeral,
             )
             await alert_view.initialize()
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 view=alert_view,
                 **alert_view.payload(),
             )
             return
 
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             content="No actions available for this item.",
         )

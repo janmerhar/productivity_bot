@@ -1,6 +1,8 @@
 import discord
 from discord.ext import commands
 
+from services.visibility import inherit_ephemeral_from_interaction
+
 
 async def register_crypto_action_dynamic_items(bot: commands.Bot) -> None:
     bot.add_dynamic_items(
@@ -9,10 +11,19 @@ async def register_crypto_action_dynamic_items(bot: commands.Bot) -> None:
     )
 
 
-def _build_view(coin_id: str, currency: str):
+def _build_view(
+    coin_id: str,
+    currency: str,
+    *,
+    response_ephemeral: bool,
+):
     from views.CryptoActionView import CryptoActionView
 
-    return CryptoActionView(coin_id, currency)
+    return CryptoActionView(
+        coin_id,
+        currency,
+        response_ephemeral=response_ephemeral,
+    )
 
 
 class CryptoSetAlertButton(
@@ -53,7 +64,11 @@ class CryptoSetAlertButton(
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        view = _build_view(self.coin_id, self.currency)
+        view = _build_view(
+            self.coin_id,
+            self.currency,
+            response_ephemeral=inherit_ephemeral_from_interaction(interaction),
+        )
         await view.open_set_alert_modal(interaction)
 
 
@@ -95,5 +110,9 @@ class CryptoScheduleDailyCheckButton(
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        view = _build_view(self.coin_id, self.currency)
+        view = _build_view(
+            self.coin_id,
+            self.currency,
+            response_ephemeral=inherit_ephemeral_from_interaction(interaction),
+        )
         await view.open_schedule_daily_check_modal(interaction)
