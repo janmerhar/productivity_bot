@@ -20,6 +20,17 @@ def resolve_visibility(
     return value == "private"
 
 
+def resolve_visibility_for_context(
+    guild_id: Optional[int],
+    visibility: Optional[Union[app_commands.Choice[str], str]],
+    *,
+    guild_default: str,
+    dm_default: str = "public",
+) -> bool:
+    default_visibility = guild_default if guild_id is not None else dm_default
+    return resolve_visibility(visibility, default=default_visibility)
+
+
 def visibility_value_from_ephemeral(ephemeral_default: bool) -> str:
     return "private" if ephemeral_default else "public"
 

@@ -5,7 +5,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from services.visibility import resolve_visibility
+from services.visibility import resolve_visibility_for_context
 
 
 async def resolve_messageable_channel(
@@ -349,13 +349,15 @@ def resolve_ephemeral_from_scope(
     dm_default_visibility: str = "public",
 ) -> bool:
     private_scope_set = set(private_scope_values)
-    default_visibility = (
+    guild_default_visibility = (
         "private" if scope_value in private_scope_set else guild_default_visibility
     )
-    if guild_id is None:
-        default_visibility = dm_default_visibility
-
-    return resolve_visibility(visibility, default=default_visibility)
+    return resolve_visibility_for_context(
+        guild_id,
+        visibility,
+        guild_default=guild_default_visibility,
+        dm_default=dm_default_visibility,
+    )
 
 
 def resolve_todo_scope(
