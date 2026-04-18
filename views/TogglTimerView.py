@@ -5,6 +5,7 @@ import discord
 
 from classes.TogglFunctions import TogglFunctions
 from classes.UserSettingsFunctions import UserSettingsFunctions
+from services.visibility import inherit_ephemeral_from_interaction
 from views.TogglTimeEntryEditModal import TogglTimeEntryEditModal
 
 
@@ -17,6 +18,7 @@ class TogglTimerView(discord.ui.View):
         user_id: int,
         timer_data: dict[str, Any],
         is_active: bool,
+        response_ephemeral: bool = True,
         timeout: float | None = None,
     ) -> None:
         super().__init__(timeout=timeout)
@@ -24,6 +26,7 @@ class TogglTimerView(discord.ui.View):
         self.user_id = user_id
         self.timer_data = dict(timer_data or {})
         self.is_active = bool(is_active)
+        self.response_ephemeral = bool(response_ephemeral)
         self.is_terminal = False
         self.is_deleted = False
         self._refresh_state_from_timer_data()
@@ -58,6 +61,7 @@ class TogglTimerView(discord.ui.View):
         workspace_id: Optional[int],
         time_entry_id: Optional[int],
         is_active_hint: bool,
+        response_ephemeral: bool = True,
     ) -> Optional["TogglTimerView"]:
         toggl = cls._create_toggl(user_id)
         if toggl is None:
@@ -76,6 +80,7 @@ class TogglTimerView(discord.ui.View):
                         user_id=user_id,
                         timer_data=current_timer,
                         is_active=cls._is_active_timer(current_timer),
+                        response_ephemeral=response_ephemeral,
                     )
 
         if workspace_id is None or time_entry_id is None:
@@ -94,13 +99,17 @@ class TogglTimerView(discord.ui.View):
             user_id=user_id,
             timer_data=timer_data,
             is_active=cls._is_active_timer(timer_data),
+            response_ephemeral=response_ephemeral,
         )
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.user_id:
             return True
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=inherit_ephemeral_from_interaction(
+                interaction,
+                default=self.response_ephemeral,
+            ),
             content="Only the user who opened this Toggl timer can manage it.",
         )
         return False
@@ -201,9 +210,15 @@ class TogglTimerView(discord.ui.View):
         message: str,
     ) -> None:
         if interaction.response.is_done():
-            await interaction.followup.send(ephemeral=True, content=message)
+            await interaction.followup.send(
+                ephemeral=self.response_ephemeral,
+                content=message,
+            )
             return
-        await interaction.response.send_message(ephemeral=True, content=message)
+        await interaction.response.send_message(
+            ephemeral=self.response_ephemeral,
+            content=message,
+        )
 
     @staticmethod
     def _preserve_extra_fields(
@@ -237,7 +252,7 @@ class TogglTimerView(discord.ui.View):
         toggl = self._get_toggl()
         if toggl is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="Your Toggl API key is missing.",
             )
             return
@@ -310,7 +325,7 @@ class TogglTimerView(discord.ui.View):
         )
         if not refreshed:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="Timer updated.",
             )
 
@@ -506,6 +521,7 @@ class TogglTimerView(discord.ui.View):
                 tag_options=form_options["tag_options"],
                 tags_disabled=form_options["tags_disabled"],
                 on_saved=on_saved,
+                response_ephemeral=self.response_ephemeral,
             )
         )
 
@@ -582,9 +598,10 @@ class TogglTimerView(discord.ui.View):
 
         toggl_timer_history_view = payload.pop("_toggl_timer_history_view", None)
         if toggl_timer_history_view is not None:
+            toggl_timer_history_view["response_ephemeral"] = self.response_ephemeral
             payload["view"] = TogglTimerHistoryView(**toggl_timer_history_view)
 
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             **payload,
         )

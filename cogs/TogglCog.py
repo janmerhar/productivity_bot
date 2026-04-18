@@ -89,9 +89,11 @@ class TogglCog(commands.Cog):
         payload = dict(payload)
         toggl_timer_view = payload.pop("_toggl_timer_view", None)
         if toggl_timer_view is not None:
+            toggl_timer_view["response_ephemeral"] = ephemeral
             payload["view"] = TogglTimerView(**toggl_timer_view)
         toggl_timer_history_view = payload.pop("_toggl_timer_history_view", None)
         if toggl_timer_history_view is not None:
+            toggl_timer_history_view["response_ephemeral"] = ephemeral
             payload["view"] = TogglTimerHistoryView(**toggl_timer_history_view)
 
         if interaction.response.is_done():
@@ -129,6 +131,7 @@ class TogglCog(commands.Cog):
             interaction,
             _continue_with_key,
             continue_message=f"Toggl API key saved. Continuing `{command_label}`.",
+            response_ephemeral=ephemeral,
         )
         if api_key is None:
             return

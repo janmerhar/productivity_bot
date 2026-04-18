@@ -21,27 +21,29 @@ class TogglApiKeyModal(discord.ui.Modal, title="Set Toggl API Key"):
         user_id: int,
         on_api_key_resolved: Callable[[discord.Interaction, str], Awaitable[None]],
         continue_message: Optional[str] = None,
+        response_ephemeral: bool = True,
     ):
         super().__init__()
         self._user_id = int(user_id)
         self._on_api_key_resolved = on_api_key_resolved
         self._continue_message = continue_message
+        self._response_ephemeral = bool(response_ephemeral)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         if interaction.user.id != self._user_id:
             await interaction.response.send_message(
                 "This form is only for the user who started the command.",
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self._response_ephemeral)
 
         cleaned = str(self.api_key.value or "").strip()
         if not cleaned:
             await interaction.followup.send(
                 "API key cannot be empty.",
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
             )
             return
 
@@ -51,7 +53,7 @@ class TogglApiKeyModal(discord.ui.Modal, title="Set Toggl API Key"):
             await handle_interaction_error(
                 interaction,
                 exc,
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
             )
             return
         except Exception as exc:
@@ -59,10 +61,10 @@ class TogglApiKeyModal(discord.ui.Modal, title="Set Toggl API Key"):
                 interaction,
                 UserVisibleError(
                     "I couldn't validate that Toggl API key right now. Please try again.",
-                    ephemeral=True,
+                    ephemeral=self._response_ephemeral,
                     cause=exc,
                 ),
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
             )
             return
 
@@ -78,10 +80,10 @@ class TogglApiKeyModal(discord.ui.Modal, title="Set Toggl API Key"):
                 interaction,
                 UserVisibleError(
                     "I couldn't save that Toggl API key right now. Please try again.",
-                    ephemeral=True,
+                    ephemeral=self._response_ephemeral,
                     cause=exc,
                 ),
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
             )
             return
 
@@ -89,7 +91,7 @@ class TogglApiKeyModal(discord.ui.Modal, title="Set Toggl API Key"):
             if self._continue_message:
                 await interaction.followup.send(
                     content=self._continue_message,
-                    ephemeral=True,
+                    ephemeral=self._response_ephemeral,
                 )
             await self._on_api_key_resolved(interaction, cleaned)
         except Exception as exc:
@@ -97,10 +99,10 @@ class TogglApiKeyModal(discord.ui.Modal, title="Set Toggl API Key"):
                 interaction,
                 UserVisibleError(
                     "API key was saved, but I couldn't continue that action.",
-                    ephemeral=True,
+                    ephemeral=self._response_ephemeral,
                     cause=exc,
                 ),
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
             )
 
     @staticmethod

@@ -14,6 +14,7 @@ async def ensure_toggl_api_key(
     interaction: discord.Interaction,
     on_api_key_resolved: ApiKeyResolvedHandler,
     continue_message: Optional[str] = None,
+    response_ephemeral: bool = True,
 ) -> Optional[str]:
     api_key = await asyncio.to_thread(
         UserSettingsFunctions.get_toggl_api_key,
@@ -27,6 +28,7 @@ async def ensure_toggl_api_key(
             user_id=interaction.user.id,
             on_api_key_resolved=on_api_key_resolved,
             continue_message=continue_message,
+            response_ephemeral=response_ephemeral,
         )
     )
     return None

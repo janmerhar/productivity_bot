@@ -3,6 +3,7 @@ from typing import Optional
 
 import discord
 from discord.ext import commands
+from services.visibility import inherit_ephemeral_from_interaction
 
 
 async def register_toggl_dynamic_items(bot: commands.Bot) -> None:
@@ -36,7 +37,7 @@ async def _build_view(
 
     if interaction.user.id != user_id:
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=inherit_ephemeral_from_interaction(interaction, default=True),
             content="Only the user who opened this Toggl timer can manage it.",
         )
         return None
@@ -47,10 +48,11 @@ async def _build_view(
         workspace_id=workspace_id,
         time_entry_id=time_entry_id,
         is_active_hint=is_active_hint,
+        response_ephemeral=inherit_ephemeral_from_interaction(interaction, default=True),
     )
     if view is None:
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=inherit_ephemeral_from_interaction(interaction, default=True),
             content="That Toggl timer is no longer available.",
         )
         return None
@@ -346,7 +348,7 @@ class TogglListTimersButton(
     async def callback(self, interaction: discord.Interaction) -> None:
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=inherit_ephemeral_from_interaction(interaction, default=True),
                 content="Only the user who opened this Toggl timer can manage it.",
             )
             return
@@ -363,16 +365,19 @@ class TogglListTimersButton(
             )
         except Exception:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=inherit_ephemeral_from_interaction(interaction, default=True),
                 content="I couldn't load your recent Toggl timers right now. Please try again.",
             )
             return
 
         toggl_timer_history_view = payload.pop("_toggl_timer_history_view", None)
         if toggl_timer_history_view is not None:
+            toggl_timer_history_view["response_ephemeral"] = (
+                inherit_ephemeral_from_interaction(interaction, default=True)
+            )
             payload["view"] = TogglTimerHistoryView(**toggl_timer_history_view)
 
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=inherit_ephemeral_from_interaction(interaction, default=True),
             **payload,
         )
