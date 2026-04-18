@@ -383,7 +383,7 @@ def resolve_todo_ephemeral(
         guild_id=guild_id,
         scope_value=scope_value,
         visibility=visibility,
-        private_scope_values=(),
+        private_scope_values=("personal",),
         guild_default_visibility="public",
         dm_default_visibility="public",
     )

@@ -5,7 +5,7 @@ import discord
 from discord import app_commands
 
 from classes.TodoFunctions import TodoFunctions
-from services.discord_helpers import resolve_ephemeral_from_scope
+from services.discord_helpers import resolve_todo_ephemeral
 from services.error_reporting import handle_interaction_error
 
 
@@ -39,7 +39,7 @@ class TodoCreateListForAddModal(discord.ui.Modal, title="Create New List"):
         self._locale_code = locale_code
         self._scope_value = scope_value
         self._guild_id = guild_id
-        self._response_ephemeral = resolve_ephemeral_from_scope(
+        self._response_ephemeral = resolve_todo_ephemeral(
             self._guild_id,
             self._scope_value,
             self._visibility,
@@ -70,7 +70,7 @@ class TodoCreateListForAddModal(discord.ui.Modal, title="Create New List"):
                 str(self.name_input.value or ""),
                 self._scope_value,
             )
-            ephemeral = resolve_ephemeral_from_scope(
+            ephemeral = resolve_todo_ephemeral(
                 interaction.guild_id,
                 self._scope_value,
                 self._visibility,

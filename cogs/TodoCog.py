@@ -10,7 +10,7 @@ from classes.TodoFunctions import TodoFunctions
 from classes.UserSettingsFunctions import UserSettingsFunctions
 from embeds.TodoEmbeds import TodoEmbeds, TodoListItemsView, TodoItemEditModal
 from services.due_datetime import DueDateService
-from services.discord_helpers import resolve_ephemeral_from_scope
+from services.discord_helpers import resolve_todo_ephemeral
 from services.error_reporting import (
     UserVisibleError,
     ValidationError,
@@ -63,7 +63,11 @@ async def add_message_to_todo(
     message: discord.Message,
 ) -> None:
     scope_value = "channel" if interaction.guild_id is not None else "personal"
-    ephemeral = scope_value == "personal"
+    ephemeral = resolve_todo_ephemeral(
+        interaction.guild_id,
+        scope_value,
+        None,
+    )
 
     await interaction.response.defer(ephemeral=ephemeral)
 
@@ -109,7 +113,12 @@ async def add_message_to_personal_todo(
     interaction: discord.Interaction,
     message: discord.Message,
 ) -> None:
-    await interaction.response.defer(ephemeral=True)
+    ephemeral = resolve_todo_ephemeral(
+        interaction.guild_id,
+        "personal",
+        None,
+    )
+    await interaction.response.defer(ephemeral=ephemeral)
 
     try:
         document = await asyncio.to_thread(
@@ -124,11 +133,11 @@ async def add_message_to_personal_todo(
             "personal",
         )
     except ValueError as exc:
-        raise ValidationError(str(exc), ephemeral=True, cause=exc)
+        raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
     except Exception as exc:
         raise UserVisibleError(
             "Something went wrong while creating that todo.",
-            ephemeral=True,
+            ephemeral=ephemeral,
             cause=exc,
         )
 
@@ -143,9 +152,9 @@ async def add_message_to_personal_todo(
     payload = TodoEmbeds.item_details_embed(
         todo_list or {"name": "List"},
         document,
-        response_ephemeral=True,
+        response_ephemeral=ephemeral,
     )
-    await interaction.followup.send(ephemeral=True, **payload)
+    await interaction.followup.send(ephemeral=ephemeral, **payload)
 
 
 class TodoCog(commands.Cog):
@@ -579,11 +588,10 @@ class TodoCog(commands.Cog):
             list_target,
         )
 
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
-            dm_default_visibility="public",
         )
         sort_value = sort.value if sort else "ascending"
         status_value = status.value if status else "all"
@@ -669,7 +677,7 @@ class TodoCog(commands.Cog):
             list_target,
         )
 
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -734,11 +742,10 @@ class TodoCog(commands.Cog):
         )
         if interaction.guild_id is None:
             scope_value = "personal"
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             "channel" if interaction.guild_id is not None else "personal",
             visibility,
-            dm_default_visibility="public",
         )
         await interaction.response.defer(ephemeral=ephemeral)
 
@@ -893,11 +900,10 @@ class TodoCog(commands.Cog):
                 ephemeral=True,
             )
 
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             "channel",
             visibility,
-            dm_default_visibility="public",
         )
         sort_value = sort.value if sort else "ascending"
         status_value = status.value if status else "all"
@@ -988,7 +994,7 @@ class TodoCog(commands.Cog):
         if interaction.guild_id is None:
             scope_value = "personal"
 
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1048,7 +1054,7 @@ class TodoCog(commands.Cog):
                 ephemeral=True,
             )
 
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1127,7 +1133,7 @@ class TodoCog(commands.Cog):
                 ephemeral=True,
             )
 
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1228,7 +1234,7 @@ class TodoCog(commands.Cog):
 
         todo_list, scope_value = await self._resolve_list_target(interaction, list)
 
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1454,7 +1460,7 @@ class TodoCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1481,7 +1487,7 @@ class TodoCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1586,7 +1592,7 @@ class TodoCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1632,7 +1638,7 @@ class TodoCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1678,7 +1684,7 @@ class TodoCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1831,7 +1837,7 @@ class TodoCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
