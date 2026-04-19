@@ -12,6 +12,7 @@ from services.error_reporting import (
     ValidationError,
     handle_interaction_error,
 )
+from services.visibility import inherit_ephemeral_from_interaction
 from views.TodoListDescriptionView import TodoListDescriptionView
 
 
@@ -34,11 +35,13 @@ class TodoListDirectoryCreateModal(discord.ui.Modal):
         ):
             await interaction.response.send_message(
                 "Only the user who opened this list directory can use these controls.",
-                ephemeral=True,
+                ephemeral=self.parent_view.response_ephemeral,
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(
+            ephemeral=self.parent_view.response_ephemeral
+        )
 
         try:
             todo_list = await asyncio.to_thread(
@@ -52,7 +55,11 @@ class TodoListDirectoryCreateModal(discord.ui.Modal):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.parent_view.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
         except Exception as exc:
@@ -60,7 +67,7 @@ class TodoListDirectoryCreateModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while creating that list.",
-                    ephemeral=True,
+                    ephemeral=self.parent_view.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -73,7 +80,7 @@ class TodoListDirectoryCreateModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "The list was created, but refreshing the directory failed.",
-                    ephemeral=True,
+                    ephemeral=self.parent_view.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -91,9 +98,10 @@ class TodoListDirectoryCreateModal(discord.ui.Modal):
             color=discord.Colour.green(),
             todo_list=todo_list,
             user_id=interaction.user.id,
+            response_ephemeral=self.parent_view.response_ephemeral,
         )
         await interaction.followup.send(
-            ephemeral=True,
+            ephemeral=self.parent_view.response_ephemeral,
             **result_view.response_payload(),
         )
 
@@ -112,6 +120,7 @@ class TodoListDirectoryView(discord.ui.View):
         page: int = 1,
         page_size: int = 5,
         sort_direction: str = "ascending",
+        response_ephemeral: bool = True,
         session_id: Optional[str] = None,
         timeout: float | None = None,
     ) -> None:
@@ -121,6 +130,7 @@ class TodoListDirectoryView(discord.ui.View):
         self.channel_id = channel_id
         self.channel_name = channel_name
         self.user_id = user_id
+        self.response_ephemeral = bool(response_ephemeral)
         self.message: Optional[discord.Message] = None
         self.sort_direction = (
             "descending" if sort_direction == "descending" else "ascending"
@@ -161,6 +171,7 @@ class TodoListDirectoryView(discord.ui.View):
             page=max(1, int(session.get("page") or 1)),
             page_size=max(1, int(session.get("page_size") or 5)),
             sort_direction=str(session.get("sort_direction") or "ascending"),
+            response_ephemeral=bool(session.get("response_ephemeral", True)),
             session_id=str(session.get("session_id") or session_id).strip(),
         )
         view.message = interaction.message
@@ -178,6 +189,7 @@ class TodoListDirectoryView(discord.ui.View):
             "page": self.page,
             "page_size": self.page_size,
             "sort_direction": self.sort_direction,
+            "response_ephemeral": self.response_ephemeral,
         }
 
     async def ensure_session(self) -> str:
@@ -382,7 +394,7 @@ class TodoListDirectoryView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "The list directory was updated, but refreshing it failed.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -405,9 +417,10 @@ class TodoListDirectoryView(discord.ui.View):
             color=discord.Colour.blurple(),
             todo_list=todo_list,
             user_id=interaction.user.id,
+            response_ephemeral=self.response_ephemeral,
         )
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             **result_view.response_payload(),
         )
 
@@ -419,7 +432,7 @@ class TodoListDirectoryView(discord.ui.View):
         self.message = interaction.message
         entry = self._page_entry(slot_index)
         if entry is None:
-            await interaction.response.defer()
+            await interaction.response.defer(ephemeral=self.response_ephemeral)
             return
         selected_value = str(entry.get("_id") or "").strip()
 
@@ -433,7 +446,7 @@ class TodoListDirectoryView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while opening that list.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -444,7 +457,10 @@ class TodoListDirectoryView(discord.ui.View):
             await self.refresh_message(interaction)
             await handle_interaction_error(
                 interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
+                ValidationError(
+                    "That list is no longer available.",
+                    ephemeral=self.response_ephemeral,
+                ),
             )
             return
 
@@ -456,7 +472,10 @@ class TodoListDirectoryView(discord.ui.View):
 
         await interaction.response.send_message(
             "Only the user who opened this list directory can use these controls.",
-            ephemeral=True,
+            ephemeral=inherit_ephemeral_from_interaction(
+                interaction,
+                default=self.response_ephemeral,
+            ),
         )
         return False
 

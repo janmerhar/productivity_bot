@@ -16,6 +16,7 @@ class TogglTimerHistoryView(discord.ui.View):
         page: int = 1,
         page_size: int = 5,
         sort: str = "descending",
+        response_ephemeral: bool = True,
         timeout: float = 3600,
     ) -> None:
         super().__init__(timeout=timeout)
@@ -25,6 +26,7 @@ class TogglTimerHistoryView(discord.ui.View):
         self.page_size = max(1, min(int(page_size or 5), 5))
         self.sort = "ascending" if sort == "ascending" else "descending"
         self.page = max(1, int(page or 1))
+        self.response_ephemeral = bool(response_ephemeral)
         self.total_pages = 1
         self._build()
 
@@ -32,7 +34,7 @@ class TogglTimerHistoryView(discord.ui.View):
         if interaction.user.id == self.user_id:
             return True
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             content="Only the user who opened this Toggl timer list can manage it.",
         )
         return False
@@ -99,14 +101,14 @@ class TogglTimerHistoryView(discord.ui.View):
 
         async def _prev_callback(interaction: discord.Interaction) -> None:
             if self.page <= 1:
-                await interaction.response.defer(ephemeral=True)
+                await interaction.response.defer(ephemeral=self.response_ephemeral)
                 return
             self.page -= 1
             await self._refresh_message(interaction)
 
         async def _next_callback(interaction: discord.Interaction) -> None:
             if self.page >= self.total_pages:
-                await interaction.response.defer(ephemeral=True)
+                await interaction.response.defer(ephemeral=self.response_ephemeral)
                 return
             self.page += 1
             await self._refresh_message(interaction)
@@ -137,9 +139,15 @@ class TogglTimerHistoryView(discord.ui.View):
         message: str,
     ) -> None:
         if interaction.response.is_done():
-            await interaction.followup.send(ephemeral=True, content=message)
+            await interaction.followup.send(
+                ephemeral=self.response_ephemeral,
+                content=message,
+            )
             return
-        await interaction.response.send_message(ephemeral=True, content=message)
+        await interaction.response.send_message(
+            ephemeral=self.response_ephemeral,
+            content=message,
+        )
 
     async def _refresh_message(self, interaction: discord.Interaction) -> None:
         from embeds.TogglEmbeds import TogglEmbeds
@@ -167,7 +175,7 @@ class TogglTimerHistoryView(discord.ui.View):
 
         page_timers = self._page_slice()
         if timer_index >= len(page_timers):
-            await interaction.response.defer(ephemeral=True)
+            await interaction.response.defer(ephemeral=self.response_ephemeral)
             return
 
         timer_data = page_timers[timer_index]
@@ -203,11 +211,10 @@ class TogglTimerHistoryView(discord.ui.View):
             user_id=self.user_id,
             timer_data=timer_data,
             is_active=False,
+            response_ephemeral=self.response_ephemeral,
         )
-        message_flags = getattr(interaction.message, "flags", None)
-        is_ephemeral = bool(getattr(message_flags, "ephemeral", False))
         await interaction.response.send_message(
             embeds=[embed],
             view=timer_view,
-            ephemeral=is_ephemeral,
+            ephemeral=self.response_ephemeral,
         )

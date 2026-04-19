@@ -10,7 +10,7 @@ from classes.PriceAlertFunctions import (
     update_alert,
 )
 from classes.UserSettingsFunctions import UserSettingsFunctions
-from config.env import env
+from config.env import settings
 from services.discord_helpers import normalize_alert_destination
 from services.error_reporting import ValidationError, handle_interaction_error
 
@@ -65,7 +65,7 @@ class StockAlertEditModal(discord.ui.Modal, title="Edit Stock Alert"):
             self.destination.default = f"channel:{channel_id}"
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self._view.response_ephemeral)
 
         target_text = str(self.target_price.value or "").strip()
         condition_text = str(self.condition.value or "").strip().lower()
@@ -82,10 +82,10 @@ class StockAlertEditModal(discord.ui.Modal, title="Edit Stock Alert"):
                     interaction,
                     ValidationError(
                         "Target price must be a number.",
-                        ephemeral=True,
+                        ephemeral=self._view.response_ephemeral,
                         cause=exc,
                     ),
-                    ephemeral=True,
+                    ephemeral=self._view.response_ephemeral,
                 )
                 return
             if parsed_target <= 0:
@@ -93,9 +93,9 @@ class StockAlertEditModal(discord.ui.Modal, title="Edit Stock Alert"):
                     interaction,
                     ValidationError(
                         "Target price must be greater than 0.",
-                        ephemeral=True,
+                        ephemeral=self._view.response_ephemeral,
                     ),
-                    ephemeral=True,
+                    ephemeral=self._view.response_ephemeral,
                 )
                 return
             update_kwargs["target_price"] = parsed_target
@@ -106,9 +106,9 @@ class StockAlertEditModal(discord.ui.Modal, title="Edit Stock Alert"):
                     interaction,
                     ValidationError(
                         "Condition must be `above` or `below`.",
-                        ephemeral=True,
+                        ephemeral=self._view.response_ephemeral,
                     ),
-                    ephemeral=True,
+                    ephemeral=self._view.response_ephemeral,
                 )
                 return
             update_kwargs["condition"] = condition_text
@@ -122,8 +122,12 @@ class StockAlertEditModal(discord.ui.Modal, title="Edit Stock Alert"):
             except ValueError as exc:
                 await handle_interaction_error(
                     interaction,
-                    ValidationError(str(exc), ephemeral=True, cause=exc),
-                    ephemeral=True,
+                    ValidationError(
+                        str(exc),
+                        ephemeral=self._view.response_ephemeral,
+                        cause=exc,
+                    ),
+                    ephemeral=self._view.response_ephemeral,
                 )
                 return
 
@@ -135,16 +139,16 @@ class StockAlertEditModal(discord.ui.Modal, title="Edit Stock Alert"):
             if lowered in {"none", "clear", "off"}:
                 update_kwargs["clear_expires_at"] = True
             else:
-                api_key = env.get("OPENAI_API_KEY")
+                api_key = settings.openai_api_key
                 if not api_key:
                     await handle_interaction_error(
                         interaction,
                         ValidationError(
                             "OpenAI API key is not configured.",
                             hint="Set `OPENAI_API_KEY` to parse natural-language expiry.",
-                            ephemeral=True,
+                            ephemeral=self._view.response_ephemeral,
                         ),
-                        ephemeral=True,
+                        ephemeral=self._view.response_ephemeral,
                     )
                     return
 
@@ -164,16 +168,16 @@ class StockAlertEditModal(discord.ui.Modal, title="Edit Stock Alert"):
                         ValidationError(
                             "I couldn't understand that expiry value.",
                             hint="Use values like `3 days`, `tomorrow 9am`, or `none`.",
-                            ephemeral=True,
+                            ephemeral=self._view.response_ephemeral,
                         ),
-                        ephemeral=True,
+                        ephemeral=self._view.response_ephemeral,
                     )
                     return
                 update_kwargs["expires_at"] = expires_at
 
         if not update_kwargs:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self._view.response_ephemeral,
                 content="No changes to apply.",
             )
             return
@@ -191,15 +195,18 @@ class StockAlertEditModal(discord.ui.Modal, title="Edit Stock Alert"):
                 interaction,
                 ValidationError(
                     "That alert was not found or could not be updated.",
-                    ephemeral=True,
+                    ephemeral=self._view.response_ephemeral,
                 ),
-                ephemeral=True,
+                ephemeral=self._view.response_ephemeral,
             )
             return
 
         await self._view.refresh_state()
         await self._view.refresh_message()
-        await interaction.followup.send(ephemeral=True, content="Alert updated.")
+        await interaction.followup.send(
+            ephemeral=self._view.response_ephemeral,
+            content="Alert updated.",
+        )
 
 
 class StockAlertActionView(discord.ui.View):
@@ -209,12 +216,14 @@ class StockAlertActionView(discord.ui.View):
         alert_id: str,
         user_id: int,
         guild_id: Optional[int],
+        response_ephemeral: bool = True,
         timeout: float | None = None,
     ) -> None:
         super().__init__(timeout=timeout)
         self.alert_id = str(alert_id)
         self.user_id = user_id
         self.guild_id = guild_id
+        self.response_ephemeral = bool(response_ephemeral)
         self.alert: Optional[Dict[str, Any]] = None
         self.message: Optional[discord.Message] = None
         self._rebuild_items()
@@ -241,7 +250,7 @@ class StockAlertActionView(discord.ui.View):
         if interaction.user.id == self.user_id:
             return True
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             content="Only the user who opened this alert can manage it.",
         )
         return False
@@ -273,6 +282,7 @@ class StockAlertActionView(discord.ui.View):
                 self.alert_id,
                 self.user_id,
                 self.guild_id,
+                self.response_ephemeral,
                 disabled=not has_alert,
             )
         )
@@ -281,6 +291,7 @@ class StockAlertActionView(discord.ui.View):
                 self.alert_id,
                 self.user_id,
                 self.guild_id,
+                self.response_ephemeral,
                 paused=paused,
                 disabled=not has_alert,
             )
@@ -290,6 +301,7 @@ class StockAlertActionView(discord.ui.View):
                 self.alert_id,
                 self.user_id,
                 self.guild_id,
+                self.response_ephemeral,
                 disabled=not has_alert,
             )
         )

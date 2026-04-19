@@ -4,6 +4,7 @@ import discord
 from discord.ext import commands
 
 from classes.HabitFunctions import HabitFunctions
+from services.visibility import inherit_ephemeral_from_interaction
 
 
 async def register_habit_dynamic_items(bot: commands.Bot) -> None:
@@ -18,12 +19,13 @@ async def _ensure_allowed(
     interaction: discord.Interaction,
     *,
     user_id: int,
+    response_ephemeral: bool,
 ) -> bool:
     if interaction.user.id == user_id:
         return True
 
     await interaction.response.send_message(
-        ephemeral=True,
+        ephemeral=response_ephemeral,
         content="Only the habit owner can update this habit.",
     )
     return False
@@ -47,8 +49,9 @@ async def _record_completion(
     habit_id: str,
     user_id: int,
     mode: str,
+    response_ephemeral: bool,
 ) -> None:
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=response_ephemeral)
     updated = await asyncio.to_thread(
         HabitFunctions.add_completion,
         habit_id,
@@ -57,7 +60,7 @@ async def _record_completion(
     )
     if not updated:
         await interaction.followup.send(
-            ephemeral=True,
+            ephemeral=response_ephemeral,
             content="Couldn't update that habit.",
         )
         return
@@ -74,7 +77,7 @@ async def _record_completion(
     )
     habit_name = str((habit or {}).get("name") or "Habit")
     await interaction.followup.send(
-        ephemeral=True,
+        ephemeral=response_ephemeral,
         content=f"Marked '{habit_name}' as {mode}.",
     )
 
@@ -117,7 +120,15 @@ class HabitCompleteButton(
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        if not await _ensure_allowed(interaction, user_id=self.user_id):
+        response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=True,
+        )
+        if not await _ensure_allowed(
+            interaction,
+            user_id=self.user_id,
+            response_ephemeral=response_ephemeral,
+        ):
             return
 
         await _record_completion(
@@ -125,6 +136,7 @@ class HabitCompleteButton(
             habit_id=self.habit_id,
             user_id=self.user_id,
             mode="complete",
+            response_ephemeral=response_ephemeral,
         )
 
 
@@ -166,7 +178,15 @@ class HabitSkipButton(
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        if not await _ensure_allowed(interaction, user_id=self.user_id):
+        response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=True,
+        )
+        if not await _ensure_allowed(
+            interaction,
+            user_id=self.user_id,
+            response_ephemeral=response_ephemeral,
+        ):
             return
 
         await _record_completion(
@@ -174,6 +194,7 @@ class HabitSkipButton(
             habit_id=self.habit_id,
             user_id=self.user_id,
             mode="skip",
+            response_ephemeral=response_ephemeral,
         )
 
 
@@ -215,7 +236,15 @@ class HabitIncompleteButton(
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        if not await _ensure_allowed(interaction, user_id=self.user_id):
+        response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=True,
+        )
+        if not await _ensure_allowed(
+            interaction,
+            user_id=self.user_id,
+            response_ephemeral=response_ephemeral,
+        ):
             return
 
         await _record_completion(
@@ -223,4 +252,5 @@ class HabitIncompleteButton(
             habit_id=self.habit_id,
             user_id=self.user_id,
             mode="incomplete",
+            response_ephemeral=response_ephemeral,
         )

@@ -8,7 +8,7 @@ import inspect
 from classes.TickTickFunctions import TickTickFunctions
 from abstract.EmbedsAbstract import EmbedsAbstract  # Se moram implemenetirati
 
-from config.env import env
+from config.env import settings
 
 
 class TickTickEmbeds(EmbedsAbstract):
@@ -19,11 +19,11 @@ class TickTickEmbeds(EmbedsAbstract):
     def ticktick(self):
         if self._ticktick is None:
             self._ticktick = TickTickFunctions(
-                env["TICK_EMAIL"],
-                env["TICK_PASSWORD"],
-                env["TICK_ID"],
-                env["TICK_SECRET"],
-                env["TICK_URI"],
+                settings.tick_email,
+                settings.tick_password,
+                settings.tick_id,
+                settings.tick_secret,
+                settings.tick_uri,
             )
         return self._ticktick
 

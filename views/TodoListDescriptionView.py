@@ -10,6 +10,7 @@ from services.error_reporting import (
     ValidationError,
     handle_interaction_error,
 )
+from services.visibility import inherit_ephemeral_from_interaction
 
 
 ListConfirmCallback = Callable[[discord.Interaction], Awaitable[None]]
@@ -46,13 +47,18 @@ class TodoListRenameModal(discord.ui.Modal):
         self.add_item(self.name_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(
+            ephemeral=self.parent_view.response_ephemeral
+        )
 
         todo_list = await self.parent_view.refresh_todo_list()
         if todo_list is None:
             await handle_interaction_error(
                 interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
+                ValidationError(
+                    "That list is no longer available.",
+                    ephemeral=self.parent_view.response_ephemeral,
+                ),
             )
             return
 
@@ -66,7 +72,11 @@ class TodoListRenameModal(discord.ui.Modal):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.parent_view.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
         except Exception as exc:
@@ -74,7 +84,7 @@ class TodoListRenameModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while renaming that list.",
-                    ephemeral=True,
+                    ephemeral=self.parent_view.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -83,7 +93,10 @@ class TodoListRenameModal(discord.ui.Modal):
         if not updated_list:
             await handle_interaction_error(
                 interaction,
-                UserVisibleError("That list could not be renamed.", ephemeral=True),
+                UserVisibleError(
+                    "That list could not be renamed.",
+                    ephemeral=self.parent_view.response_ephemeral,
+                ),
             )
             return
 
@@ -108,6 +121,7 @@ class TodoListDescriptionView(discord.ui.View):
         color: Optional[discord.Colour] = None,
         todo_list: Optional[Dict[str, Any]] = None,
         user_id: Optional[int] = None,
+        response_ephemeral: bool = True,
         timeout: float | None = None,
     ) -> None:
         super().__init__(timeout=timeout)
@@ -117,6 +131,7 @@ class TodoListDescriptionView(discord.ui.View):
         self.todo_list = todo_list
         self.list_id = str((todo_list or {}).get("_id") or "").strip()
         self.user_id = user_id
+        self.response_ephemeral = bool(response_ephemeral)
         self.message: Optional[discord.Message] = None
         self._build()
 
@@ -196,7 +211,10 @@ class TodoListDescriptionView(discord.ui.View):
 
         await interaction.response.send_message(
             "Only the user who opened this list can manage it.",
-            ephemeral=True,
+            ephemeral=inherit_ephemeral_from_interaction(
+                interaction,
+                default=self.response_ephemeral,
+            ),
         )
         return False
 
@@ -224,7 +242,7 @@ class TodoListDescriptionView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "That todo list card is no longer available.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                 ),
             )
         except Exception as exc:
@@ -232,7 +250,7 @@ class TodoListDescriptionView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "The list was updated, but refreshing the card failed.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -251,12 +269,15 @@ class TodoListDescriptionView(discord.ui.View):
         )
 
     async def _run_clear_list(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         todo_list = await self.refresh_todo_list()
         if todo_list is None:
             await handle_interaction_error(
                 interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
+                ValidationError(
+                    "That list is no longer available.",
+                    ephemeral=self.response_ephemeral,
+                ),
             )
             return
 
@@ -270,7 +291,7 @@ class TodoListDescriptionView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while clearing that list.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -285,12 +306,15 @@ class TodoListDescriptionView(discord.ui.View):
         await self.refresh_message(interaction)
 
     async def _run_delete_list(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         todo_list = await self.refresh_todo_list()
         if todo_list is None:
             await handle_interaction_error(
                 interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
+                ValidationError(
+                    "That list is no longer available.",
+                    ephemeral=self.response_ephemeral,
+                ),
             )
             return
 
@@ -305,7 +329,7 @@ class TodoListDescriptionView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while deleting that list.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -314,7 +338,10 @@ class TodoListDescriptionView(discord.ui.View):
         if not deleted:
             await handle_interaction_error(
                 interaction,
-                UserVisibleError("That list could not be deleted.", ephemeral=True),
+                UserVisibleError(
+                    "That list could not be deleted.",
+                    ephemeral=self.response_ephemeral,
+                ),
             )
             return
 

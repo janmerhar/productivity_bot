@@ -6,7 +6,7 @@ from bson.objectid import ObjectId
 from classes.DailyJob import CronSchedule
 from classes.OpenAIFunctions import OpenAIFunctions
 from config.db import mongo_db
-from config.env import env
+from config.env import settings
 
 
 class HabitFunctions:
@@ -51,7 +51,7 @@ class HabitFunctions:
         reminder_time = None
         reminder_text = reminder.strip() if reminder else ""
         if reminder_text:
-            api_key = env.get("OPENAI_API_KEY")
+            api_key = settings.openai_api_key
             if not api_key:
                 raise ValueError("OpenAI API key is not configured.")
             reminder_time = OpenAIFunctions.parse_reminder_time(

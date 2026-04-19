@@ -6,7 +6,7 @@ from typing import Dict, Optional
 
 import discord
 
-from config.env import env
+from config.env import settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +25,11 @@ class PomodoroVoiceManager:
     @staticmethod
     def _resolve_audio_path(mode: str) -> Optional[Path]:
         normalized_mode = mode.lower().strip()
-        key = "POMODORO_AUDIO_PATH"
         default_path = Path("assets/focus.mp3")
+        raw_path = settings.pomodoro_audio_path
         if normalized_mode == "break":
-            key = "POMODORO_BREAK_AUDIO_PATH"
             default_path = Path("assets/break.mp3")
-        raw_path = (env.get(key) or "").strip()
+            raw_path = settings.pomodoro_break_audio_path
         path = Path(raw_path) if raw_path else default_path
         if not path.is_absolute():
             path = Path.cwd() / path
@@ -38,12 +37,8 @@ class PomodoroVoiceManager:
 
     @staticmethod
     def _resolve_volume() -> Optional[float]:
-        raw_volume = (env.get("POMODORO_AUDIO_VOLUME") or "").strip()
-        if not raw_volume:
-            return None
-        try:
-            volume = float(raw_volume)
-        except ValueError:
+        volume = settings.pomodoro_audio_volume
+        if volume is None:
             return None
         return max(0.0, min(volume, 2.0))
 

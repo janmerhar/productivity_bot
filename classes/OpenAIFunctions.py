@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from openai import APIError, OpenAI
 
-from config.env import env
+from config.env import settings
 
 
 DEFAULT_OPENAI_MODEL = "gpt-5.4-mini"
@@ -18,7 +18,7 @@ class OpenAIFunctions:
 
     @staticmethod
     def _get_api_key(api_key: Optional[str]) -> Optional[str]:
-        return api_key or env.get("OPENAI_API_KEY")
+        return api_key or settings.openai_api_key
 
     @staticmethod
     def _get_client(api_key: Optional[str]) -> OpenAI:

@@ -30,6 +30,15 @@ class BugReportEmbeds:
                 inline=False,
             )
 
+        attachment_url = document.get("attachment_url")
+        if attachment_url:
+            embed.add_field(
+                name="Attachment",
+                value=f"[View attachment]({attachment_url})",
+                inline=False,
+            )
+            embed.set_image(url=str(attachment_url))
+
         report_id = document.get("_id")
         if report_id:
             embed.set_footer(text=f"Report id: {report_id}")

@@ -9,7 +9,7 @@ import json
 from bson.objectid import ObjectId
 from cachetools import TTLCache
 
-from config.env import env
+from config.env import settings
 from config.db import mongo_db
 
 
@@ -933,7 +933,7 @@ class TogglFunctions:
 
 
 if __name__ == "__main__":
-    toggl = TogglFunctions(env["TOGGL_TOKEN"])
+    toggl = TogglFunctions(settings.toggl_token or "")
     res = toggl.getCurrentTimeEntry()
     res = toggl.stopCurrentTimeEntry()
     # res = toggl.getTimeEntryHistory("2022-08-29", "2022-08-29")

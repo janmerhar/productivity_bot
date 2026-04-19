@@ -5,8 +5,12 @@ from discord import app_commands
 from discord.ext import commands
 
 from classes.SlashCommandRouter import SlashCommandRouter
-from config.env import env
-from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from config.env import settings
+from services.visibility import (
+    VISIBILITY_CHOICES,
+    VISIBILITY_DESC,
+    resolve_visibility_for_context,
+)
 
 
 class RouterCog(commands.Cog):
@@ -36,8 +40,12 @@ class RouterCog(commands.Cog):
         query: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
-        if env.get("DEV_MODE") == "true":
+        ephemeral = resolve_visibility_for_context(
+            interaction.guild_id,
+            visibility,
+            guild_default="private",
+        )
+        if settings.dev_mode:
             await interaction.response.send_message(
                 "This command is in development.",
                 ephemeral=ephemeral,

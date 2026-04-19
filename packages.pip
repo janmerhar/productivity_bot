@@ -6,6 +6,7 @@ google-auth-oauthlib
 gcsa
 parsedatetime
 python-dotenv>=1.0.1
+pydantic-settings>=2.0
 ticktick-py
 pymongo
 dnspython

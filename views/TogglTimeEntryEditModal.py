@@ -21,11 +21,13 @@ class TogglTimeEntryEditModal(discord.ui.Modal, title="Edit Toggl Timer"):
         tag_options: list[discord.SelectOption],
         tags_disabled: bool,
         on_saved: Callable[[discord.Interaction, dict[str, Any]], Awaitable[None]],
+        response_ephemeral: bool = True,
     ) -> None:
         super().__init__()
         self._toggl = toggl
         self._timer_data = dict(timer_data or {})
         self._on_saved = on_saved
+        self._response_ephemeral = bool(response_ephemeral)
         self._workspace_id = (
             self._timer_data.get("workspace_id")
             or self._timer_data.get("wid")
@@ -241,13 +243,13 @@ class TogglTimeEntryEditModal(discord.ui.Modal, title="Edit Toggl Timer"):
         )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self._response_ephemeral)
 
         workspace_id = self._workspace_id
         time_entry_id = self._timer_data.get("id")
         if workspace_id is None or time_entry_id is None:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
                 content="This timer does not include enough data to edit.",
             )
             return
@@ -260,7 +262,7 @@ class TogglTimeEntryEditModal(discord.ui.Modal, title="Edit Toggl Timer"):
                 project_id = int(project_value)
             except ValueError:
                 await interaction.followup.send(
-                    ephemeral=True,
+                    ephemeral=self._response_ephemeral,
                     content="That project selection is invalid.",
                 )
                 return
@@ -299,14 +301,14 @@ class TogglTimeEntryEditModal(discord.ui.Modal, title="Edit Toggl Timer"):
             )
         except Exception:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
                 content="I couldn't update that Toggl timer right now. Please try again.",
             )
             return
 
         if not isinstance(updated_timer, dict) or updated_timer.get("id") is None:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
                 content="Toggl rejected that timer edit request.",
             )
             return

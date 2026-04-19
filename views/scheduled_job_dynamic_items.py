@@ -402,7 +402,7 @@ class ScheduledJobDeleteButton(
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         manager = DailyJobManager()
         try:
             view = await _build_view(
@@ -428,7 +428,7 @@ class ScheduledJobDeleteButton(
             await view.refresh_message()
 
             await interaction.followup.send(
-                ephemeral=False,
+                ephemeral=self.response_ephemeral,
                 **DailyTaskEmbeds.jobs_cancel_embed(
                     f"Deleted job `{self.job_id}`.",
                     ok=True,

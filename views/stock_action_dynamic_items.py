@@ -1,6 +1,8 @@
 import discord
 from discord.ext import commands
 
+from services.visibility import inherit_ephemeral_from_interaction
+
 
 async def register_stock_action_dynamic_items(bot: commands.Bot) -> None:
     bot.add_dynamic_items(
@@ -9,10 +11,13 @@ async def register_stock_action_dynamic_items(bot: commands.Bot) -> None:
     )
 
 
-def _build_view(symbol: str):
+def _build_view(symbol: str, *, response_ephemeral: bool):
     from views.StockActionView import StockActionView
 
-    return StockActionView(symbol)
+    return StockActionView(
+        symbol,
+        response_ephemeral=response_ephemeral,
+    )
 
 
 class StockSetAlertButton(
@@ -45,7 +50,10 @@ class StockSetAlertButton(
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        view = _build_view(self.symbol)
+        view = _build_view(
+            self.symbol,
+            response_ephemeral=inherit_ephemeral_from_interaction(interaction),
+        )
         await view.open_set_alert_modal(interaction)
 
 
@@ -79,5 +87,8 @@ class StockScheduleDailyCheckButton(
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        view = _build_view(self.symbol)
+        view = _build_view(
+            self.symbol,
+            response_ephemeral=inherit_ephemeral_from_interaction(interaction),
+        )
         await view.open_schedule_daily_check_modal(interaction)

@@ -5,6 +5,7 @@ import discord
 from discord.ext import commands
 
 from classes.PriceAlertFunctions import deactivate_alert, set_alert_paused
+from services.visibility import inherit_ephemeral_from_interaction
 
 
 async def register_stock_alert_dynamic_items(bot: commands.Bot) -> None:
@@ -28,12 +29,13 @@ async def _ensure_allowed(
     interaction: discord.Interaction,
     *,
     user_id: int,
+    response_ephemeral: bool,
 ) -> bool:
     if interaction.user.id == user_id:
         return True
 
     await interaction.response.send_message(
-        ephemeral=True,
+        ephemeral=response_ephemeral,
         content="Only the user who opened this alert can manage it.",
     )
     return False
@@ -45,6 +47,7 @@ async def _build_view(
     alert_id: str,
     user_id: int,
     guild_id: Optional[int],
+    response_ephemeral: bool,
 ):
     from views.StockAlertActionView import StockAlertActionView
 
@@ -52,6 +55,7 @@ async def _build_view(
         alert_id=alert_id,
         user_id=user_id,
         guild_id=guild_id,
+        response_ephemeral=response_ephemeral,
     )
     view.message = interaction.message
     await view.initialize()
@@ -69,6 +73,7 @@ class StockAlertEditButton(
         alert_id: str,
         user_id: int,
         guild_id: Optional[int],
+        response_ephemeral: bool,
         *,
         disabled: bool = False,
     ) -> None:
@@ -86,6 +91,7 @@ class StockAlertEditButton(
         self.alert_id = alert_id
         self.user_id = user_id
         self.guild_id = guild_id
+        self.response_ephemeral = response_ephemeral
 
     @classmethod
     async def from_custom_id(
@@ -95,18 +101,22 @@ class StockAlertEditButton(
         match,
         /,
     ) -> "StockAlertEditButton":
-        del interaction
         return cls(
             match.group("alert_id"),
             int(match.group("user_id")),
             _parse_guild_id(match.group("guild_id")),
+            inherit_ephemeral_from_interaction(interaction),
             disabled=getattr(item, "disabled", False),
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         from views.StockAlertActionView import StockAlertEditModal
 
-        if not await _ensure_allowed(interaction, user_id=self.user_id):
+        if not await _ensure_allowed(
+            interaction,
+            user_id=self.user_id,
+            response_ephemeral=self.response_ephemeral,
+        ):
             return
 
         view = await _build_view(
@@ -114,10 +124,11 @@ class StockAlertEditButton(
             alert_id=self.alert_id,
             user_id=self.user_id,
             guild_id=self.guild_id,
+            response_ephemeral=self.response_ephemeral,
         )
         if view.alert is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That alert is no longer active.",
             )
             return
@@ -136,6 +147,7 @@ class StockAlertToggleButton(
         alert_id: str,
         user_id: int,
         guild_id: Optional[int],
+        response_ephemeral: bool,
         *,
         paused: bool = False,
         disabled: bool = False,
@@ -158,6 +170,7 @@ class StockAlertToggleButton(
         self.alert_id = alert_id
         self.user_id = user_id
         self.guild_id = guild_id
+        self.response_ephemeral = response_ephemeral
 
     @classmethod
     async def from_custom_id(
@@ -167,17 +180,21 @@ class StockAlertToggleButton(
         match,
         /,
     ) -> "StockAlertToggleButton":
-        del interaction
         return cls(
             match.group("alert_id"),
             int(match.group("user_id")),
             _parse_guild_id(match.group("guild_id")),
+            inherit_ephemeral_from_interaction(interaction),
             paused=str(getattr(item, "label", "") or "").strip().lower() == "resume",
             disabled=getattr(item, "disabled", False),
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        if not await _ensure_allowed(interaction, user_id=self.user_id):
+        if not await _ensure_allowed(
+            interaction,
+            user_id=self.user_id,
+            response_ephemeral=self.response_ephemeral,
+        ):
             return
 
         view = await _build_view(
@@ -185,12 +202,13 @@ class StockAlertToggleButton(
             alert_id=self.alert_id,
             user_id=self.user_id,
             guild_id=self.guild_id,
+            response_ephemeral=self.response_ephemeral,
         )
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         if view.alert is None:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That alert is no longer active.",
             )
             return
@@ -206,7 +224,7 @@ class StockAlertToggleButton(
         )
         if not changed:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That alert could not be updated.",
             )
             return
@@ -214,7 +232,7 @@ class StockAlertToggleButton(
         await view.refresh_state()
         await view.refresh_message()
         await interaction.followup.send(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             content="Alert resumed." if currently_paused else "Alert paused.",
         )
 
@@ -230,6 +248,7 @@ class StockAlertDeleteButton(
         alert_id: str,
         user_id: int,
         guild_id: Optional[int],
+        response_ephemeral: bool,
         *,
         disabled: bool = False,
     ) -> None:
@@ -247,6 +266,7 @@ class StockAlertDeleteButton(
         self.alert_id = alert_id
         self.user_id = user_id
         self.guild_id = guild_id
+        self.response_ephemeral = response_ephemeral
 
     @classmethod
     async def from_custom_id(
@@ -256,16 +276,20 @@ class StockAlertDeleteButton(
         match,
         /,
     ) -> "StockAlertDeleteButton":
-        del interaction
         return cls(
             match.group("alert_id"),
             int(match.group("user_id")),
             _parse_guild_id(match.group("guild_id")),
+            inherit_ephemeral_from_interaction(interaction),
             disabled=getattr(item, "disabled", False),
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        if not await _ensure_allowed(interaction, user_id=self.user_id):
+        if not await _ensure_allowed(
+            interaction,
+            user_id=self.user_id,
+            response_ephemeral=self.response_ephemeral,
+        ):
             return
 
         view = await _build_view(
@@ -273,9 +297,10 @@ class StockAlertDeleteButton(
             alert_id=self.alert_id,
             user_id=self.user_id,
             guild_id=self.guild_id,
+            response_ephemeral=self.response_ephemeral,
         )
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         deleted = await asyncio.to_thread(
             deactivate_alert,
             self.alert_id,
@@ -285,7 +310,7 @@ class StockAlertDeleteButton(
         )
         if not deleted:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That alert was not found.",
             )
             return
@@ -293,6 +318,6 @@ class StockAlertDeleteButton(
         await view.refresh_state()
         await view.refresh_message()
         await interaction.followup.send(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             content="Alert deleted.",
         )

@@ -10,7 +10,7 @@ from classes.TodoFunctions import TodoFunctions
 from classes.UserSettingsFunctions import UserSettingsFunctions
 from embeds.TodoEmbeds import TodoEmbeds, TodoListItemsView, TodoItemEditModal
 from services.due_datetime import DueDateService
-from services.discord_helpers import resolve_ephemeral_from_scope
+from services.discord_helpers import resolve_todo_ephemeral
 from services.error_reporting import (
     UserVisibleError,
     ValidationError,
@@ -63,7 +63,11 @@ async def add_message_to_todo(
     message: discord.Message,
 ) -> None:
     scope_value = "channel" if interaction.guild_id is not None else "personal"
-    ephemeral = scope_value == "personal"
+    ephemeral = resolve_todo_ephemeral(
+        interaction.guild_id,
+        scope_value,
+        None,
+    )
 
     await interaction.response.defer(ephemeral=ephemeral)
 
@@ -99,6 +103,7 @@ async def add_message_to_todo(
     payload = TodoEmbeds.item_details_embed(
         todo_list or {"name": "List"},
         document,
+        response_ephemeral=ephemeral,
     )
     await interaction.followup.send(ephemeral=ephemeral, **payload)
 
@@ -108,7 +113,12 @@ async def add_message_to_personal_todo(
     interaction: discord.Interaction,
     message: discord.Message,
 ) -> None:
-    await interaction.response.defer(ephemeral=True)
+    ephemeral = resolve_todo_ephemeral(
+        interaction.guild_id,
+        "personal",
+        None,
+    )
+    await interaction.response.defer(ephemeral=ephemeral)
 
     try:
         document = await asyncio.to_thread(
@@ -123,11 +133,11 @@ async def add_message_to_personal_todo(
             "personal",
         )
     except ValueError as exc:
-        raise ValidationError(str(exc), ephemeral=True, cause=exc)
+        raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
     except Exception as exc:
         raise UserVisibleError(
             "Something went wrong while creating that todo.",
-            ephemeral=True,
+            ephemeral=ephemeral,
             cause=exc,
         )
 
@@ -142,8 +152,9 @@ async def add_message_to_personal_todo(
     payload = TodoEmbeds.item_details_embed(
         todo_list or {"name": "List"},
         document,
+        response_ephemeral=ephemeral,
     )
-    await interaction.followup.send(ephemeral=True, **payload)
+    await interaction.followup.send(ephemeral=ephemeral, **payload)
 
 
 class TodoCog(commands.Cog):
@@ -467,6 +478,7 @@ class TodoCog(commands.Cog):
                 color=discord.Colour.orange(),
                 todo_list=refreshed_list,
                 user_id=interaction.user.id,
+                response_ephemeral=ephemeral,
             )
         except UserVisibleError as exc:
             await handle_interaction_error(interaction, exc)
@@ -541,6 +553,7 @@ class TodoCog(commands.Cog):
             color=discord.Colour.red(),
             todo_list=None,
             user_id=interaction.user.id,
+            response_ephemeral=ephemeral,
         )
         await interaction.followup.send(
             ephemeral=ephemeral,
@@ -575,11 +588,10 @@ class TodoCog(commands.Cog):
             list_target,
         )
 
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
-            dm_default_visibility="public",
         )
         sort_value = sort.value if sort else "ascending"
         status_value = status.value if status else "all"
@@ -622,6 +634,7 @@ class TodoCog(commands.Cog):
             user_id=interaction.user.id,
             view_scope="list",
             guild_id=interaction.guild_id,
+            response_ephemeral=ephemeral,
         )
         await view.ensure_session()
         await interaction.followup.send(
@@ -664,7 +677,7 @@ class TodoCog(commands.Cog):
             list_target,
         )
 
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -729,11 +742,10 @@ class TodoCog(commands.Cog):
         )
         if interaction.guild_id is None:
             scope_value = "personal"
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             "channel" if interaction.guild_id is not None else "personal",
             visibility,
-            dm_default_visibility="public",
         )
         await interaction.response.defer(ephemeral=ephemeral)
 
@@ -844,6 +856,7 @@ class TodoCog(commands.Cog):
             channel_id=interaction.channel_id,
             channel_name=getattr(interaction.channel, "name", None),
             user_id=interaction.user.id,
+            response_ephemeral=ephemeral,
         )
         await directory_view.ensure_session()
         try:
@@ -887,11 +900,10 @@ class TodoCog(commands.Cog):
                 ephemeral=True,
             )
 
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             "channel",
             visibility,
-            dm_default_visibility="public",
         )
         sort_value = sort.value if sort else "ascending"
         status_value = status.value if status else "all"
@@ -939,6 +951,7 @@ class TodoCog(commands.Cog):
             user_id=interaction.user.id,
             view_scope="overview",
             guild_id=interaction.guild_id,
+            response_ephemeral=ephemeral,
         )
         await view.ensure_session()
         await interaction.followup.send(
@@ -981,7 +994,7 @@ class TodoCog(commands.Cog):
         if interaction.guild_id is None:
             scope_value = "personal"
 
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1012,6 +1025,7 @@ class TodoCog(commands.Cog):
             color=discord.Colour.green(),
             todo_list=todo_list,
             user_id=interaction.user.id,
+            response_ephemeral=ephemeral,
         )
         await interaction.followup.send(
             ephemeral=ephemeral,
@@ -1040,7 +1054,7 @@ class TodoCog(commands.Cog):
                 ephemeral=True,
             )
 
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1078,6 +1092,7 @@ class TodoCog(commands.Cog):
             color=discord.Colour.blurple(),
             todo_list=updated_list,
             user_id=interaction.user.id,
+            response_ephemeral=ephemeral,
         )
         await interaction.followup.send(
             ephemeral=ephemeral,
@@ -1118,7 +1133,7 @@ class TodoCog(commands.Cog):
                 ephemeral=True,
             )
 
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1212,13 +1227,14 @@ class TodoCog(commands.Cog):
                     visibility=visibility,
                     locale_code=locale_code,
                     scope_value=scope_value,
+                    guild_id=interaction.guild_id,
                 )
             )
             return
 
         todo_list, scope_value = await self._resolve_list_target(interaction, list)
 
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1274,6 +1290,7 @@ class TodoCog(commands.Cog):
                 interaction,
                 _continue_with_timezone,
                 continue_message="Timezone saved as `{timezone}`. Continuing `/todo add`.",
+                response_ephemeral=ephemeral,
             )
             if timezone is None:
                 return
@@ -1359,12 +1376,16 @@ class TodoCog(commands.Cog):
             except Exception:
                 reminder_failed = True
 
-        payload = TodoEmbeds.item_details_embed(todo_list, item)
+        payload = TodoEmbeds.item_details_embed(
+            todo_list,
+            item,
+            response_ephemeral=ephemeral,
+        )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
         if reminder_failed:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=ephemeral,
                 content="Item was added, but reminder scheduling failed.",
             )
 
@@ -1376,7 +1397,11 @@ class TodoCog(commands.Cog):
             and target_scope == "channel"
             and interaction.guild_id is not None
         ):
-            notify_payload = TodoEmbeds.item_details_embed(todo_list, item)
+            notify_payload = TodoEmbeds.item_details_embed(
+                todo_list,
+                item,
+                response_ephemeral=ephemeral,
+            )
             try:
                 channel = None
                 target_channel_id = todo_list.get("channel_id")
@@ -1393,7 +1418,7 @@ class TodoCog(commands.Cog):
 
         if notify_failed:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=ephemeral,
                 content="Assignee notification failed.",
             )
 
@@ -1435,14 +1460,18 @@ class TodoCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
         )
         await interaction.response.defer(ephemeral=ephemeral)
 
-        payload = TodoEmbeds.item_details_embed(todo_list, item)
+        payload = TodoEmbeds.item_details_embed(
+            todo_list,
+            item,
+            response_ephemeral=ephemeral,
+        )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
     @todo_group.command(name="edit", description="Edit the text of an existing item")
@@ -1458,7 +1487,7 @@ class TodoCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1485,6 +1514,7 @@ class TodoCog(commands.Cog):
             user_id=interaction.user.id,
             view_scope="list",
             guild_id=interaction.guild_id,
+            response_ephemeral=ephemeral,
         )
         assignee_options = parent_view._build_assignee_select_options(
             interaction,
@@ -1562,7 +1592,7 @@ class TodoCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1588,7 +1618,11 @@ class TodoCog(commands.Cog):
                 ephemeral=ephemeral,
             )
 
-        payload = TodoEmbeds.item_details_embed(todo_list, updated_item)
+        payload = TodoEmbeds.item_details_embed(
+            todo_list,
+            updated_item,
+            response_ephemeral=ephemeral,
+        )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
     @todo_group.command(name="delete", description="Delete an item from a list")
@@ -1604,7 +1638,7 @@ class TodoCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1650,7 +1684,7 @@ class TodoCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1684,7 +1718,11 @@ class TodoCog(commands.Cog):
                 ephemeral=ephemeral,
             )
 
-        payload = TodoEmbeds.item_details_embed(todo_list, updated_item)
+        payload = TodoEmbeds.item_details_embed(
+            todo_list,
+            updated_item,
+            response_ephemeral=ephemeral,
+        )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
     @todo_assign.autocomplete("assignee")
@@ -1799,7 +1837,7 @@ class TodoCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         item, todo_list, scope_value = await self._resolve_scope_item(interaction, todo)
-        ephemeral = resolve_ephemeral_from_scope(
+        ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
             scope_value,
             visibility,
@@ -1825,7 +1863,11 @@ class TodoCog(commands.Cog):
                 ephemeral=ephemeral,
             )
 
-        payload = TodoEmbeds.item_details_embed(todo_list, updated_item)
+        payload = TodoEmbeds.item_details_embed(
+            todo_list,
+            updated_item,
+            response_ephemeral=ephemeral,
+        )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
     @item_delete.autocomplete("todo")

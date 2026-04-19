@@ -10,7 +10,11 @@ from classes.HabitFunctions import HabitFunctions
 from views.HabitActionView import HabitActionView
 from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
-from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from services.visibility import (
+    VISIBILITY_CHOICES,
+    VISIBILITY_DESC,
+    resolve_visibility_for_context,
+)
 
 
 class HabitCog(commands.Cog):
@@ -18,6 +22,17 @@ class HabitCog(commands.Cog):
 
     def __init__(self, client: commands.Bot) -> None:
         self.client = client
+
+    @staticmethod
+    def _resolve_response_visibility(
+        interaction: discord.Interaction,
+        visibility: Optional[app_commands.Choice[str]],
+    ) -> bool:
+        return resolve_visibility_for_context(
+            interaction.guild_id,
+            visibility,
+            guild_default="private",
+        )
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
@@ -39,7 +54,7 @@ class HabitCog(commands.Cog):
         reminder: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
+        ephemeral = self._resolve_response_visibility(interaction, visibility)
         if not name.strip():
             raise ValidationError("Habit name cannot be empty.", ephemeral=ephemeral)
 
@@ -63,6 +78,7 @@ class HabitCog(commands.Cog):
                 interaction,
                 _continue_with_timezone,
                 continue_message="Timezone saved as `{timezone}`. Continuing `/habit create`.",
+                response_ephemeral=ephemeral,
             )
             if timezone is None:
                 return
@@ -145,7 +161,7 @@ class HabitCog(commands.Cog):
         mode: Optional[app_commands.Choice[str]] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
+        ephemeral = self._resolve_response_visibility(interaction, visibility)
         mode_value = mode.value if mode else "incomplete"
 
         await interaction.response.defer(ephemeral=ephemeral)

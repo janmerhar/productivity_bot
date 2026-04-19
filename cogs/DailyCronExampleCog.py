@@ -5,8 +5,6 @@ import discord
 from discord.ext import commands, tasks
 from zoneinfo import ZoneInfo
 
-from config.env import env
-
 RUN_AT = datetime.time(hour=8, tzinfo=ZoneInfo("Europe/Ljubljana"))
 MESSAGE = "Test message at 8 am"
 CHANNEL_ID = "1429530996000161938"

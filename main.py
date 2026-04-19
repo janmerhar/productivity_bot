@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime
 from discord.ext import commands
 
-from config.env import env
+from config.env import settings
 from config.logger import setup_logging
 from services.error_reporting import handle_app_command_error
 from views.habit_dynamic_items import register_habit_dynamic_items
@@ -26,17 +26,18 @@ from views.todo_list_description_dynamic_items import (
 from views.todo_list_items_dynamic_items import register_todo_list_items_dynamic_items
 from views.toggl_dynamic_items import register_toggl_dynamic_items
 
-tick_disabled = env.get("TICK_DISABLED") == "true"
-alias_disabled = env.get("ALIAS_DISABLED") == "true"
-dev_mode = env.get("DEV_MODE") == "true"
-dev_guild_id = env.get("DEV_GUILD_ID")
+_runtime_sync_commands_on_start: bool | None = None
 
 
-def _env_flag(name: str, default: bool = False) -> bool:
-    raw_value = env.get(name)
-    if raw_value is None:
-        return default
-    return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
+def configure_runtime(*, sync_commands_on_start: bool | None = None) -> None:
+    global _runtime_sync_commands_on_start
+    _runtime_sync_commands_on_start = sync_commands_on_start
+
+
+def should_sync_commands_on_start() -> bool:
+    if _runtime_sync_commands_on_start is not None:
+        return _runtime_sync_commands_on_start
+    return settings.sync_commands_on_start
 
 setup_logging()
 
@@ -58,7 +59,7 @@ async def _sync_global_commands() -> None:
         )
         return
 
-    if dev_mode:
+    if settings.dev_mode:
         logging.getLogger(__name__).info(
             "Synced %d global application commands (DEV_MODE).",
             len(synced),
@@ -97,7 +98,7 @@ def _start_import_prewarm() -> None:
 async def on_ready():
     global _sync_done
     if not _sync_done:
-        if not _env_flag("SYNC_COMMANDS_ON_START", default=True):
+        if not should_sync_commands_on_start():
             logging.getLogger(__name__).info(
                 "Skipping application command sync on startup."
             )
@@ -107,30 +108,23 @@ async def on_ready():
             return
 
         try:
-            if dev_mode:
-                if not dev_guild_id:
+            if settings.dev_mode:
+                if not settings.dev_guild_id:
                     logging.getLogger(__name__).warning(
                         "DEV_MODE is true but DEV_GUILD_ID is not set; syncing global in background only."
                     )
                     _start_global_command_sync()
                 else:
-                    try:
-                        guild_object = discord.Object(id=int(dev_guild_id))
-                    except ValueError:
-                        logging.getLogger(__name__).warning(
-                            "DEV_GUILD_ID must be an integer; syncing global in background only."
-                        )
-                        _start_global_command_sync()
-                    else:
-                        bot.tree.clear_commands(guild=guild_object)
-                        bot.tree.copy_global_to(guild=guild_object)
-                        synced_guild = await bot.tree.sync(guild=guild_object)
-                        logging.getLogger(__name__).info(
-                            "Synced %d dev guild application commands for guild %s.",
-                            len(synced_guild),
-                            dev_guild_id,
-                        )
-                        _start_global_command_sync()
+                    guild_object = discord.Object(id=settings.dev_guild_id)
+                    bot.tree.clear_commands(guild=guild_object)
+                    bot.tree.copy_global_to(guild=guild_object)
+                    synced_guild = await bot.tree.sync(guild=guild_object)
+                    logging.getLogger(__name__).info(
+                        "Synced %d dev guild application commands for guild %s.",
+                        len(synced_guild),
+                        settings.dev_guild_id,
+                    )
+                    _start_global_command_sync()
             else:
                 _start_global_command_sync()
         except Exception:
@@ -151,22 +145,28 @@ async def load():
     extensions = [
         "cogs.AutomationCog",
         "cogs.BugReportCog",
+        "cogs.GuildEventsCog",
         "cogs.DailyTaskCog",
         "cogs.FeatureRequestCog",
         "cogs.HabitCog",
         "cogs.PomodoroCog",
         "cogs.ReminderCog",
         "cogs.RouterCog",
+        "cogs.SettingsCog",
         "cogs.TodoCog",
         "cogs.TogglCog",
-        "cogs.CryptoCog",
-        "cogs.StocksCog",
     ]
 
-    if not alias_disabled:
+    if not settings.alias_disabled:
         extensions.append("cogs.AliasCog")
 
-    if not tick_disabled:
+    if not settings.crypto_disabled:
+        extensions.append("cogs.CryptoCog")
+
+    if not settings.stock_disabled:
+        extensions.append("cogs.StocksCog")
+
+    if not settings.tick_disabled:
         extensions.append("cogs.TickTickCog")
 
     for extension in extensions:
@@ -187,7 +187,7 @@ async def main():
     await register_todo_list_description_dynamic_items(bot)
     await register_todo_list_items_dynamic_items(bot)
     await register_toggl_dynamic_items(bot)
-    await bot.start(env["DISCORD_TOKEN"])
+    await bot.start(settings.discord_token)
 
 
 def run() -> None:

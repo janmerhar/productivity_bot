@@ -306,6 +306,7 @@ class ScheduledJobEditModal(discord.ui.Modal):
                 interaction,
                 _continue_with_timezone,
                 continue_message="Timezone saved as `{timezone}`. Continuing scheduled job edit.",
+                response_ephemeral=self._view.response_ephemeral,
             )
             if timezone is None:
                 return

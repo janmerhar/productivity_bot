@@ -7,7 +7,7 @@ import discord
 from discord import app_commands
 
 from classes.OpenAIFunctions import OpenAIFunctions, DEFAULT_OPENAI_MODEL
-from config.env import env
+from config.env import settings
 from services.error_reporting import UserVisibleError, ValidationError
 from services.visibility import visibility_value_from_ephemeral
 
@@ -85,7 +85,7 @@ class SlashCommandRouter:
     def _parse_query(
         self, query: str, catalog: List[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
-        api_key = env.get("OPENAI_API_KEY")
+        api_key = settings.openai_api_key
         if not api_key:
             return None
 

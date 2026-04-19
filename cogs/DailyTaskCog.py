@@ -30,7 +30,11 @@ from services.cron_schedule import (
 )
 from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
-from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from services.visibility import (
+    VISIBILITY_CHOICES,
+    VISIBILITY_DESC,
+    resolve_visibility_for_context,
+)
 from views.ReminderOutputView import ReminderOutputView
 
 
@@ -40,6 +44,17 @@ class DailyTaskCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._runner.start()
+
+    @staticmethod
+    def _resolve_response_visibility(
+        interaction: discord.Interaction,
+        visibility: Optional[app_commands.Choice[str]],
+    ) -> bool:
+        return resolve_visibility_for_context(
+            interaction.guild_id,
+            visibility,
+            guild_default="private",
+        )
 
     async def _send_reminder_ping_dms(
         self,
@@ -136,7 +151,7 @@ class DailyTaskCog(commands.Cog):
         data: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
+        ephemeral = self._resolve_response_visibility(interaction, visibility)
         timezone = None
         if not is_valid_cron_expression(schedule):
             async def _continue_with_timezone(
@@ -156,6 +171,7 @@ class DailyTaskCog(commands.Cog):
                 interaction,
                 _continue_with_timezone,
                 continue_message="Timezone saved as `{timezone}`. Continuing `/jobs create`.",
+                response_ephemeral=ephemeral,
             )
             if timezone is None:
                 return
@@ -231,6 +247,7 @@ class DailyTaskCog(commands.Cog):
                 job_id=str(created_job.id),
                 channel_id=interaction.channel_id,
                 guild_id=interaction.guild_id,
+                response_ephemeral=ephemeral,
             ),
         )
 
@@ -420,7 +437,7 @@ class DailyTaskCog(commands.Cog):
         interaction: discord.Interaction,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
+        ephemeral = self._resolve_response_visibility(interaction, visibility)
         await interaction.response.defer(ephemeral=ephemeral)
         manager = DailyJobManager()
         jobs = await asyncio.to_thread(
@@ -446,7 +463,7 @@ class DailyTaskCog(commands.Cog):
         job_id: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
+        ephemeral = self._resolve_response_visibility(interaction, visibility)
         await interaction.response.defer(ephemeral=ephemeral)
         manager = DailyJobManager()
 

@@ -14,7 +14,7 @@ from classes.PriceAlertFunctions import (
     should_trigger,
 )
 from classes.StocksFunctions import StocksFunctions
-from config.env import env
+from config.env import settings
 from embeds.CryptoEmbeds import CryptoEmbeds
 from embeds.StocksEmbeds import StocksEmbeds
 from services.discord_helpers import resolve_alert_destination
@@ -189,16 +189,7 @@ class AutomationCog(commands.Cog):
 
     @staticmethod
     def _resolve_cleanup_interval_seconds() -> int:
-        raw_minutes = env.get("ALERT_EXPIRY_CLEANUP_MINUTES")
-        if raw_minutes is None:
-            return 15 * 60
-
-        try:
-            minutes = max(1, int(str(raw_minutes).strip()))
-        except ValueError:
-            return 15 * 60
-
-        return minutes * 60
+        return max(1, settings.alert_expiry_cleanup_minutes) * 60
 
     async def _cleanup_expired_alerts_if_due(self, asset_type: str) -> None:
         now = time.monotonic()

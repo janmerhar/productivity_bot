@@ -25,7 +25,7 @@ def _disable_background_loops() -> None:
 _disable_background_loops()
 
 import main  # noqa: E402
-from config.env import env  # noqa: E402
+from config.env import settings  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -84,17 +84,11 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _is_dev_mode() -> bool:
-    return str(env.get("DEV_MODE", "")).strip().lower() == "true"
+    return settings.dev_mode
 
 
 def _dev_guild_id() -> int | None:
-    raw = env.get("DEV_GUILD_ID")
-    if not raw:
-        return None
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return None
+    return settings.dev_guild_id
 
 
 def _enabled_extension_modules() -> set[str]:
@@ -340,7 +334,7 @@ async def _apply_cleanup(args: argparse.Namespace) -> list[str]:
 
 
 async def _run(args: argparse.Namespace) -> int:
-    main.env["SYNC_COMMANDS_ON_START"] = "false"
+    main.configure_runtime(sync_commands_on_start=False)
     await main.load()
     pruned_commands = _prune_unloaded_extension_commands()
 
@@ -386,7 +380,7 @@ async def _run(args: argparse.Namespace) -> int:
             completed.set()
             await main.bot.close()
 
-    await main.bot.start(env["DISCORD_TOKEN"])
+    await main.bot.start(settings.discord_token)
     return exit_code
 
 
