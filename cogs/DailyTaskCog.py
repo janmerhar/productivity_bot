@@ -326,6 +326,23 @@ class DailyTaskCog(commands.Cog):
                 if not HabitFunctions.needs_completion_today(habit):
                     continue
 
+                if HabitFunctions._normalize_scope(str(habit.get("scope"))) == "personal":
+                    user_id = habit.get("user_id")
+                    if not user_id:
+                        continue
+                    user = self.bot.get_user(user_id)
+                    if user is None:
+                        user = await self.bot.fetch_user(user_id)
+                    habit_payload = HabitEmbeds.habit_reminder_payload(habit)
+                    try:
+                        await user.send(**habit_payload)
+                    except discord.HTTPException:
+                        logging.getLogger(__name__).exception(
+                            "Failed to DM habit reminder",
+                            extra={"user_id": user_id, "habit_id": habit_id},
+                        )
+                    continue
+
                 channel = await resolve_messageable_channel(self.bot, job.channel_id)
                 if channel is None:
                     continue

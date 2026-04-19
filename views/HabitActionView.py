@@ -56,6 +56,7 @@ class HabitActionView(discord.ui.View):
             HabitFunctions.fetch_habit,
             self.habit_id,
             interaction.guild_id,
+            self.user_id,
         )
 
         if habit is None:

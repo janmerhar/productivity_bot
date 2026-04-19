@@ -8,12 +8,16 @@ from discord.ext import commands
 from embeds.HabitEmbeds import HabitEmbeds
 from classes.HabitFunctions import HabitFunctions
 from views.HabitActionView import HabitActionView
+from services.discord_helpers import (
+    habit_target_autocomplete,
+    normalize_habit_target,
+    resolve_habit_ephemeral,
+)
 from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
 from services.visibility import (
     VISIBILITY_CHOICES,
     VISIBILITY_DESC,
-    resolve_visibility_for_context,
 )
 
 
@@ -26,23 +30,25 @@ class HabitCog(commands.Cog):
     @staticmethod
     def _resolve_response_visibility(
         interaction: discord.Interaction,
+        scope_value: str,
         visibility: Optional[app_commands.Choice[str]],
     ) -> bool:
-        return resolve_visibility_for_context(
+        return resolve_habit_ephemeral(
             interaction.guild_id,
+            scope_value,
             visibility,
-            guild_default="private",
         )
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
         print("HabitCog cog loaded")
 
-    @habit_group.command(name="create", description="Create a new habit")
+    @habit_group.command(name="add", description="Create a new habit")
     @app_commands.describe(
         name="Habit name",
         description="Longer description for this habit",
         reminder="Daily reminder time",
+        scope="This channel, another text channel, or personal",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -52,9 +58,18 @@ class HabitCog(commands.Cog):
         name: str,
         description: Optional[str] = None,
         reminder: Optional[str] = None,
+        scope: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = self._resolve_response_visibility(interaction, visibility)
+        try:
+            scope_value, target_channel_id, _ = normalize_habit_target(interaction, scope)
+        except ValueError as exc:
+            raise ValidationError(str(exc), ephemeral=True, cause=exc)
+        ephemeral = self._resolve_response_visibility(
+            interaction,
+            scope_value,
+            visibility,
+        )
         if not name.strip():
             raise ValidationError("Habit name cannot be empty.", ephemeral=ephemeral)
 
@@ -73,12 +88,14 @@ class HabitCog(commands.Cog):
                     reminder=reminder,
                     ephemeral=ephemeral,
                     timezone=resolved_timezone,
+                    scope_value=scope_value,
+                    target_channel_id=target_channel_id,
                 )
 
             timezone = await ensure_user_timezone(
                 interaction,
                 _continue_with_timezone,
-                continue_message="Timezone saved as `{timezone}`. Continuing `/habit create`.",
+                continue_message="Timezone saved as `{timezone}`. Continuing `/habit add`.",
                 response_ephemeral=ephemeral,
             )
             if timezone is None:
@@ -92,6 +109,8 @@ class HabitCog(commands.Cog):
             reminder=reminder,
             ephemeral=ephemeral,
             timezone=timezone,
+            scope_value=scope_value,
+            target_channel_id=target_channel_id,
         )
 
     async def _create_habit(
@@ -102,17 +121,20 @@ class HabitCog(commands.Cog):
         reminder: Optional[str],
         ephemeral: bool,
         timezone: Optional[str],
+        scope_value: str,
+        target_channel_id: Optional[int],
     ) -> None:
         try:
             document, reminder_time = await asyncio.to_thread(
                 HabitFunctions.insert_habit,
                 interaction.guild_id,
                 interaction.user.id,
-                interaction.channel_id,
+                target_channel_id,
                 name,
                 description,
                 reminder,
                 timezone,
+                scope_value,
             )
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
@@ -147,6 +169,7 @@ class HabitCog(commands.Cog):
     @habit_group.command(name="list", description="List habits")
     @app_commands.describe(
         mode="Show all habits or only incomplete habits",
+        scope="This channel, another text channel, or personal",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
@@ -160,9 +183,18 @@ class HabitCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         mode: Optional[app_commands.Choice[str]] = None,
+        scope: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = self._resolve_response_visibility(interaction, visibility)
+        try:
+            scope_value, target_channel_id, _ = normalize_habit_target(interaction, scope)
+        except ValueError as exc:
+            raise ValidationError(str(exc), ephemeral=True, cause=exc)
+        ephemeral = self._resolve_response_visibility(
+            interaction,
+            scope_value,
+            visibility,
+        )
         mode_value = mode.value if mode else "incomplete"
 
         await interaction.response.defer(ephemeral=ephemeral)
@@ -172,8 +204,9 @@ class HabitCog(commands.Cog):
                 HabitFunctions.list_habits,
                 interaction.guild_id,
                 interaction.user.id,
-                interaction.channel_id,
+                target_channel_id,
                 mode_value,
+                scope_value,
             )
         except Exception as exc:
             raise UserVisibleError(
@@ -198,6 +231,22 @@ class HabitCog(commands.Cog):
             view = HabitActionView(habit_id, habit_name, interaction.user.id)
             await interaction.followup.send(ephemeral=ephemeral, view=view, **payload)
 
+    @habit.autocomplete("scope")
+    async def habit_create_scope_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        return habit_target_autocomplete(interaction, current)
+
+    @habits.autocomplete("scope")
+    async def habit_list_scope_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        return habit_target_autocomplete(interaction, current)
+
     @habit_group.command(name="show", description="Show one habit")
     @app_commands.describe(
         habit_name="Habit to show",
@@ -211,7 +260,12 @@ class HabitCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         del habit_name
-        ephemeral = self._resolve_response_visibility(interaction, visibility)
+        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        ephemeral = self._resolve_response_visibility(
+            interaction,
+            scope_value,
+            visibility,
+        )
         await interaction.response.send_message(
             "This slash command is not yet implemented.",
             ephemeral=ephemeral,
@@ -239,7 +293,12 @@ class HabitCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         del habit_name, status
-        ephemeral = self._resolve_response_visibility(interaction, visibility)
+        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        ephemeral = self._resolve_response_visibility(
+            interaction,
+            scope_value,
+            visibility,
+        )
         await interaction.response.send_message(
             "This slash command is not yet implemented.",
             ephemeral=ephemeral,
@@ -258,7 +317,12 @@ class HabitCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         del habit_name
-        ephemeral = self._resolve_response_visibility(interaction, visibility)
+        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        ephemeral = self._resolve_response_visibility(
+            interaction,
+            scope_value,
+            visibility,
+        )
         await interaction.response.send_message(
             "This slash command is not yet implemented.",
             ephemeral=ephemeral,
@@ -277,7 +341,12 @@ class HabitCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         del habit_name
-        ephemeral = self._resolve_response_visibility(interaction, visibility)
+        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        ephemeral = self._resolve_response_visibility(
+            interaction,
+            scope_value,
+            visibility,
+        )
         await interaction.response.send_message(
             "This slash command is not yet implemented.",
             ephemeral=ephemeral,

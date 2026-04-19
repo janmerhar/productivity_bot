@@ -57,6 +57,7 @@ async def _record_completion(
         habit_id,
         interaction.guild_id,
         mode,
+        interaction.user.id,
     )
     if not updated:
         await interaction.followup.send(
@@ -74,6 +75,7 @@ async def _record_completion(
         HabitFunctions.fetch_habit,
         habit_id,
         interaction.guild_id,
+        interaction.user.id,
     )
     habit_name = str((habit or {}).get("name") or "Habit")
     await interaction.followup.send(

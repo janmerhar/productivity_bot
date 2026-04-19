@@ -11,6 +11,21 @@ from config.env import settings
 
 class HabitFunctions:
     @staticmethod
+    def _normalize_scope(scope: Optional[str]) -> str:
+        return scope if scope in ("channel", "personal") else "channel"
+
+    @staticmethod
+    def _channel_scope_query() -> Dict[str, Any]:
+        return {
+            "$or": [
+                {"scope": "channel"},
+                {"scope": {"$exists": False}},
+                {"scope": None},
+                {"scope": ""},
+            ]
+        }
+
+    @staticmethod
     def insert_habit_task(
         habit: Dict[str, Any],
         reminder_time: datetime.time,
@@ -24,7 +39,7 @@ class HabitFunctions:
         manager = DailyJobManager()
         manager.insert_job(
             guild_id=guild_id,
-            channel_id=habit["channel_id"],
+            channel_id=habit.get("channel_id"),
             type="habit",
             data={"habit_id": habit_id},
             schedule=schedule,
@@ -32,17 +47,22 @@ class HabitFunctions:
 
     @staticmethod
     def insert_habit(
-        guild_id: int,
+        guild_id: Optional[int],
         user_id: int,
-        channel_id: int,
+        channel_id: Optional[int],
         name: str,
         description: Optional[str] = None,
         reminder: Optional[str] = None,
         timezone: Optional[str] = None,
+        scope: str = "channel",
     ) -> Tuple[Dict[str, Any], Optional[datetime.time]]:
         cleaned_name = name.strip()
         if not cleaned_name:
             raise ValueError("Habit name cannot be empty.")
+
+        scope_value = HabitFunctions._normalize_scope(scope)
+        if guild_id is None:
+            scope_value = "personal"
 
         cleaned_description = description.strip() if description else None
         if cleaned_description == "":
@@ -65,9 +85,10 @@ class HabitFunctions:
                 )
 
         document: Dict[str, Any] = {
-            "guild_id": guild_id,
+            "scope": scope_value,
+            "guild_id": None if scope_value == "personal" else guild_id,
             "user_id": user_id,
-            "channel_id": channel_id,
+            "channel_id": None if scope_value == "personal" else channel_id,
             "name": cleaned_name,
             "description": cleaned_description,
             "created": datetime.datetime.now().isoformat(),
@@ -81,16 +102,29 @@ class HabitFunctions:
 
     @staticmethod
     def list_habits(
-        guild_id: int,
+        guild_id: Optional[int],
         user_id: int,
-        channel_id: int,
+        channel_id: Optional[int],
         mode: str = "all",
+        scope: str = "channel",
     ) -> List[Dict[str, Any]]:
-        query: Dict[str, Any] = {
-            "guild_id": guild_id,
-            "user_id": user_id,
-            "channel_id": channel_id,
-        }
+        scope_value = HabitFunctions._normalize_scope(scope)
+        if guild_id is None:
+            scope_value = "personal"
+
+        query: Dict[str, Any]
+        if scope_value == "personal":
+            query = {
+                "scope": "personal",
+                "user_id": user_id,
+            }
+        else:
+            query = {
+                "guild_id": guild_id,
+                "user_id": user_id,
+                "channel_id": channel_id,
+                **HabitFunctions._channel_scope_query(),
+            }
         cursor = mongo_db["habits"].find(query).sort("_id", 1)
         habits = list(cursor)
 
@@ -102,22 +136,50 @@ class HabitFunctions:
         return habits
 
     @staticmethod
-    def fetch_habit(habit_id: str, guild_id: int) -> Optional[Dict[str, Any]]:
+    def fetch_habit(
+        habit_id: str,
+        guild_id: Optional[int] = None,
+        user_id: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
         try:
             object_id = ObjectId(habit_id)
         except Exception:
             return None
 
-        return mongo_db["habits"].find_one({"_id": object_id, "guild_id": guild_id})
+        habit = mongo_db["habits"].find_one({"_id": object_id})
+        if habit is None:
+            return None
+
+        scope_value = HabitFunctions._normalize_scope(
+            str(habit.get("scope") or "channel")
+        )
+        if user_id is not None and int(habit.get("user_id") or 0) != int(user_id):
+            return None
+        if (
+            scope_value == "channel"
+            and guild_id is not None
+            and habit.get("guild_id") != guild_id
+        ):
+            return None
+
+        return habit
 
     @staticmethod
-    def add_completion(habit_id: str, guild_id: int, mode: str) -> bool:
+    def add_completion(
+        habit_id: str,
+        guild_id: Optional[int],
+        mode: str,
+        user_id: Optional[int] = None,
+    ) -> bool:
         if mode not in {"complete", "skip", "incomplete"}:
             return False
 
-        try:
-            object_id = ObjectId(habit_id)
-        except Exception:
+        habit = HabitFunctions.fetch_habit(
+            habit_id,
+            guild_id=guild_id,
+            user_id=user_id,
+        )
+        if habit is None:
             return False
 
         entry = {
@@ -126,7 +188,7 @@ class HabitFunctions:
         }
 
         result = mongo_db["habits"].update_one(
-            {"_id": object_id, "guild_id": guild_id},
+            {"_id": habit["_id"]},
             {"$push": {"completitions": entry}},
         )
 
