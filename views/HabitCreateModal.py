@@ -230,6 +230,10 @@ class HabitCreateModal(discord.ui.Modal):
                 HabitFunctions.today_status(document),
                 HabitFunctions.recent_progress(document, days=5),
             )
+            if reminder_failed:
+                payload["content"] = (
+                    "Habit updated, but I couldn't schedule the reminder."
+                )
             payload["view"] = self._source_view
             try:
                 posted_message = await interaction.followup.send(
@@ -243,6 +247,7 @@ class HabitCreateModal(discord.ui.Modal):
                     ephemeral=self._response_ephemeral,
                     **payload,
                 )
+            return
 
         if reminder_failed:
             await interaction.followup.send(
