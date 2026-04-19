@@ -89,11 +89,23 @@ class PomodoroRestartView(discord.ui.View):
         )
         payload["content"] = voice_error or None
 
-        posted_message = await interaction.followup.send(
-            ephemeral=False,
-            wait=True,
-            **payload,
-        )
+        try:
+            if interaction.message is not None:
+                await interaction.message.edit(**payload)
+                posted_message = interaction.message
+            else:
+                posted_message = await interaction.followup.send(
+                    ephemeral=False,
+                    wait=True,
+                    **payload,
+                )
+        except discord.HTTPException:
+            posted_message = await interaction.followup.send(
+                ephemeral=False,
+                wait=True,
+                **payload,
+            )
+
         await PomodoroFunctions.bind_timer_message(
             job_id=str(created_job.id),
             channel_id=interaction.channel_id,
@@ -107,7 +119,7 @@ class PomodoroRestartView(discord.ui.View):
     ) -> None:
         await self._start(interaction, "focus")
 
-    @discord.ui.button(label="Start Relax", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Start Break", style=discord.ButtonStyle.primary)
     async def start_break(
         self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
