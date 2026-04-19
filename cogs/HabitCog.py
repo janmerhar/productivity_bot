@@ -489,10 +489,13 @@ class HabitCog(commands.Cog):
             ephemeral=ephemeral,
         )
 
-    @habit_group.command(name="status", description="Set today's status for a habit")
+    @habit_group.command(
+        name="mark",
+        description="Mark today's result for a habit",
+    )
     @app_commands.describe(
-        habit_name="Habit to update",
-        status="Today's status for the habit",
+        habit_name="Habit to mark",
+        status="Today's result for the habit",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
@@ -503,7 +506,7 @@ class HabitCog(commands.Cog):
         ],
         visibility=VISIBILITY_CHOICES,
     )
-    async def status_habit(
+    async def mark_habit(
         self,
         interaction: discord.Interaction,
         habit_name: str,
