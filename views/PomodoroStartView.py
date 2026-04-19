@@ -660,6 +660,26 @@ class PomodoroStartView(discord.ui.View):
     ) -> None:
         await self._handle_select_voice_channel(interaction)
 
+    @discord.ui.button(
+        label="Auto",
+        style=discord.ButtonStyle.secondary,
+        emoji="🔄",
+    )
+    async def auto_cycle_button(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        if interaction.user.id != self._user_id:
+            await interaction.response.send_message(
+                ephemeral=False,
+                content="Only the user who started this pomodoro can do this.",
+            )
+            return
+
+        await interaction.response.send_message(
+            ephemeral=False,
+            content="Auto-cycle toggle is not implemented yet.",
+        )
+
     @discord.ui.button(label="Stop", style=discord.ButtonStyle.danger)
     async def stop_button(
         self, interaction: discord.Interaction, _: discord.ui.Button

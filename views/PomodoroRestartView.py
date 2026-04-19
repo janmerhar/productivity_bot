@@ -22,7 +22,7 @@ class PomodoroRestartView(discord.ui.View):
         await interaction.response.defer(ephemeral=False)
 
         try:
-            end_time, resolved_duration = await asyncio.to_thread(
+            end_time, resolved_duration, created_job = await asyncio.to_thread(
                 PomodoroFunctions.create_timer,
                 interaction.guild_id,
                 interaction.channel_id,
@@ -89,7 +89,17 @@ class PomodoroRestartView(discord.ui.View):
         )
         payload["content"] = voice_error or None
 
-        await interaction.followup.send(ephemeral=False, **payload)
+        posted_message = await interaction.followup.send(
+            ephemeral=False,
+            wait=True,
+            **payload,
+        )
+        await PomodoroFunctions.bind_timer_message(
+            job_id=str(created_job.id),
+            channel_id=interaction.channel_id,
+            guild_id=interaction.guild_id,
+            message_id=posted_message.id,
+        )
 
     @discord.ui.button(label="Start Focus", style=discord.ButtonStyle.success)
     async def start_focus(

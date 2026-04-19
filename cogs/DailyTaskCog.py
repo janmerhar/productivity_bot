@@ -74,6 +74,7 @@ class DailyTaskCog(commands.Cog):
         ephemeral = resolve_visibility(visibility, default="private")
         timezone = None
         if not is_valid_cron_expression(schedule):
+
             async def _continue_with_timezone(
                 followup_interaction: discord.Interaction,
                 resolved_timezone: str,
@@ -169,7 +170,7 @@ class DailyTaskCog(commands.Cog):
             ),
         )
 
-    @tasks.loop(minutes=1)
+    @tasks.loop(seconds=5)
     async def _runner(self) -> None:
         manager = DailyJobManager()
         manager.get_due_jobs()
@@ -182,14 +183,44 @@ class DailyTaskCog(commands.Cog):
             if job.type == "pomodoro":
                 channel = await resolve_messageable_channel(self.bot, job.channel_id)
                 if channel is None:
+                    print(
+                        f"Pomodoro replace failed: channel {job.channel_id} not found for job {job.id}"
+                    )
                     continue
+
                 pomodoro_payload = PomodoroFunctions.pomodoro_payload(job)
                 pomodoro_payload["view"] = PomodoroRestartView()
-                await channel.send(**pomodoro_payload)
+
+                message_id_raw = str((job.data or {}).get("message_id") or "").strip()
+                if not message_id_raw.isdigit():
+                    print(
+                        f"Pomodoro replace failed: missing or invalid message_id for job {job.id}"
+                    )
+                    continue
+
+                try:
+                    original_message = await channel.fetch_message(int(message_id_raw))
+                    await original_message.edit(**pomodoro_payload)
+                except discord.NotFound:
+                    print(
+                        f"Pomodoro replace failed: message {message_id_raw} not found for job {job.id}"
+                    )
+                    continue
+                except discord.Forbidden:
+                    print(
+                        f"Pomodoro replace failed: no permission to edit message {message_id_raw} for job {job.id}"
+                    )
+                    continue
+                except discord.HTTPException as exc:
+                    print(
+                        f"Pomodoro replace failed: HTTPException while editing message {message_id_raw} for job {job.id}: {exc}"
+                    )
+                    continue
 
                 end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
                 guild = getattr(channel, "guild", None)
-                await PomodoroVoiceManager.stop_for_guild(guild.id, end_time)
+                if guild is not None:
+                    await PomodoroVoiceManager.stop_for_guild(guild.id, end_time)
                 continue
             if job.type == "todo":
                 task_id = job.data.get("task_id")
@@ -269,7 +300,9 @@ class DailyTaskCog(commands.Cog):
                         response_ephemeral=False,
                     )
                     reminder_payload = reminder_view.response_payload()
-                    ping_text = ReminderFunctions.reminder_edit_values(job).get("ping_text")
+                    ping_text = ReminderFunctions.reminder_edit_values(job).get(
+                        "ping_text"
+                    )
                     if ping_text:
                         reminder_payload["content"] = ping_text
 

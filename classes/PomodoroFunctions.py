@@ -144,7 +144,7 @@ class PomodoroFunctions:
         mode: str,
         duration_minutes: Optional[int],
         user_id: Union[int, str],
-    ) -> Tuple[datetime.datetime, int]:
+    ) -> Tuple[datetime.datetime, int, DailyJob]:
         end_time, resolved_duration, data, schedule = (
             PomodoroFunctions.insert_pomodoro_timer(
                 channel_id=channel_id,
@@ -161,9 +161,16 @@ class PomodoroFunctions:
                     "Only one pomodoro timer can be active per server. "
                     "Stop the current timer first."
                 )
-        manager.insert_job(guild_id, channel_id, "pomodoro", data, schedule)
 
-        return end_time, resolved_duration
+        created_job = manager.insert_job(
+            guild_id,
+            channel_id,
+            "pomodoro",
+            data,
+            schedule,
+        )
+
+        return end_time, resolved_duration, created_job
 
     @staticmethod
     def insert_timer(
@@ -228,6 +235,45 @@ class PomodoroFunctions:
             return datetime.datetime.fromisoformat(raw_value)
         except ValueError:
             return None
+
+    @staticmethod
+    async def bind_timer_message(
+        *,
+        job_id: str,
+        channel_id: Optional[int],
+        guild_id: Optional[int],
+        message_id: int,
+    ) -> None:
+        manager = DailyJobManager()
+
+        try:
+            job = await asyncio.to_thread(
+                manager.get_job,
+                job_id,
+                channel_id if guild_id is None else None,
+                guild_id,
+            )
+        except Exception:
+            return
+
+        if job is None:
+            return
+
+        data = dict(job.data or {})
+        data["message_id"] = str(message_id)
+
+        try:
+            await asyncio.to_thread(
+                manager.update_job,
+                job_id,
+                data,
+                None,
+                None,
+                channel_id if guild_id is None else None,
+                guild_id,
+            )
+        except Exception:
+            return
 
     @staticmethod
     def pomodoro_payload(job: DailyJob) -> Dict[str, Any]:

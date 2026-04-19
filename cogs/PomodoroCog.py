@@ -31,7 +31,7 @@ async def start_pomodoro_context_menu(
     target_channel: Optional[discord.VoiceChannel] = None
 
     try:
-        end_time, resolved_duration = await asyncio.to_thread(
+        end_time, resolved_duration, created_job = await asyncio.to_thread(
             PomodoroFunctions.create_timer,
             interaction.guild_id,
             interaction.channel_id,
@@ -78,7 +78,21 @@ async def start_pomodoro_context_menu(
     )
     payload["content"] = voice_error or None
 
-    await interaction.followup.send(**payload)
+    if interaction.channel is None:
+        posted_message = await interaction.followup.send(wait=True, **payload)
+    else:
+        posted_message = await interaction.channel.send(**payload)
+        await interaction.followup.send(
+            ephemeral=True,
+            content="Pomodoro started.",
+        )
+
+    await PomodoroFunctions.bind_timer_message(
+        job_id=str(created_job.id),
+        channel_id=interaction.channel_id,
+        guild_id=interaction.guild_id,
+        message_id=posted_message.id,
+    )
 
 
 class PomodoroCog(commands.Cog):
@@ -261,7 +275,7 @@ class PomodoroCog(commands.Cog):
         autojoin_enabled = autojoin is None or autojoin.value == "on"
 
         try:
-            end_time, resolved_duration = await asyncio.to_thread(
+            end_time, resolved_duration, created_job = await asyncio.to_thread(
                 PomodoroFunctions.create_timer,
                 interaction.guild_id,
                 channel_id,
@@ -334,7 +348,29 @@ class PomodoroCog(commands.Cog):
         )
         payload["content"] = voice_error or None
 
-        await interaction.followup.send(ephemeral=ephemeral, **payload)
+        if ephemeral:
+            await interaction.followup.send(ephemeral=True, **payload)
+            return
+
+        if interaction.channel is None:
+            posted_message = await interaction.followup.send(
+                ephemeral=False,
+                wait=True,
+                **payload,
+            )
+        else:
+            posted_message = await interaction.channel.send(**payload)
+            await interaction.followup.send(
+                ephemeral=True,
+                content="Pomodoro started.",
+            )
+
+        await PomodoroFunctions.bind_timer_message(
+            job_id=str(created_job.id),
+            channel_id=interaction.channel_id,
+            guild_id=interaction.guild_id,
+            message_id=posted_message.id,
+        )
 
     @pomodoro_group.command(name="stop", description="Stop your active pomodoro timer")
     @app_commands.describe(visibility=VISIBILITY_DESC)
