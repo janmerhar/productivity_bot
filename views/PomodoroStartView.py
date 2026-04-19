@@ -298,6 +298,8 @@ class PomodoroStartView(discord.ui.View):
         is_paused: bool = False,
         auto_cycle_enabled: bool = False,
         voice_channel_select_enabled: bool = True,
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
         *,
         timeout: float = 21600,
     ) -> None:
@@ -308,6 +310,8 @@ class PomodoroStartView(discord.ui.View):
         self._is_paused = is_paused
         self._auto_cycle_enabled = auto_cycle_enabled
         self._voice_channel_select_enabled = voice_channel_select_enabled
+        self._focus_duration = focus_duration
+        self._break_duration = break_duration
 
         if not self._voice_channel_select_enabled:
             self.select_voice_channel_button.disabled = True
@@ -335,8 +339,8 @@ class PomodoroStartView(discord.ui.View):
     def _paused_title(cls, mode: str) -> str:
         return f"{cls._mode_title(mode)} • Paused"
 
-    @staticmethod
     def _with_updated_timer_fields(
+        self,
         embed: Optional[discord.Embed],
         end_time: datetime.datetime,
         duration_minutes: int,
@@ -345,7 +349,7 @@ class PomodoroStartView(discord.ui.View):
             return None
         updated = embed.copy()
         updated.description = PomodoroEmbeds.running_description(end_time)
-        updated.set_footer(text=f"Total duration: {duration_minutes} min")
+        updated.set_footer(text=PomodoroEmbeds._duration_footer(self._focus_duration, self._break_duration))
         for idx, field in enumerate(updated.fields):
             field_name = (field.name or "").strip().lower()
             if field_name == "ends":
@@ -402,7 +406,7 @@ class PomodoroStartView(discord.ui.View):
             remaining_minutes=remaining_minutes,
         )
         updated.color = discord.Colour.orange()
-        updated.set_footer(text=f"Total duration: {duration_minutes} min")
+        updated.set_footer(text=PomodoroEmbeds._duration_footer(self._focus_duration, self._break_duration))
 
         for idx, field in enumerate(updated.fields):
             field_name = (field.name or "").strip().lower()

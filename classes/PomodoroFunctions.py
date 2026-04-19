@@ -144,6 +144,8 @@ class PomodoroFunctions:
         mode: str,
         duration_minutes: Optional[int],
         user_id: Union[int, str],
+        break_duration: Optional[int] = None,
+        focus_duration: Optional[int] = None,
     ) -> Tuple[datetime.datetime, int, DailyJob]:
         end_time, resolved_duration, data, schedule = (
             PomodoroFunctions.insert_pomodoro_timer(
@@ -151,6 +153,8 @@ class PomodoroFunctions:
                 mode=mode,
                 duration_minutes=duration_minutes,
                 user_id=user_id,
+                break_duration=break_duration,
+                focus_duration=focus_duration,
             )
         )
         manager = DailyJobManager()
@@ -196,7 +200,9 @@ class PomodoroFunctions:
         mode: str,
         duration_minutes: Optional[int],
         user_id: Union[int, str],
-    ) -> Tuple[datetime.datetime, int, Dict[str, str], OneTimeSchedule2]:
+        break_duration: Optional[int] = None,
+        focus_duration: Optional[int] = None,
+    ) -> Tuple[datetime.datetime, int, Dict[str, Any], OneTimeSchedule2]:
         normalized_mode = mode.lower()
         if normalized_mode not in ("focus", "break"):
             raise ValueError("Invalid pomodoro mode.")
@@ -213,13 +219,17 @@ class PomodoroFunctions:
         ).replace(microsecond=0)
 
         schedule = OneTimeSchedule2(datetime=end_time.isoformat())
-        data = {
+        data: Dict[str, Any] = {
             "mode": normalized_mode,
             "duration": str(resolved_duration),
             "total_duration_minutes": str(resolved_duration),
             "user": str(user_id),
             "auto_cycle": False,
         }
+        if focus_duration is not None:
+            data["focus_duration"] = str(focus_duration)
+        if break_duration is not None:
+            data["break_duration"] = str(break_duration)
 
         return end_time, resolved_duration, data, schedule
 
@@ -371,12 +381,16 @@ class PomodoroFunctions:
         duration = data.get("duration", "")
         user_id = str(data.get("user", "")).strip()
         end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
+        raw_focus = str(data.get("focus_duration") or "").strip()
+        raw_break = str(data.get("break_duration") or "").strip()
 
         payload = PomodoroEmbeds.timer_complete_embed(
             mode=mode,
             duration_minutes=duration,
             end_time=end_time,
             user_id=user_id or None,
+            focus_duration=int(raw_focus) if raw_focus.isdigit() else None,
+            break_duration=int(raw_break) if raw_break.isdigit() else None,
         )
 
         if user_id.isdigit():

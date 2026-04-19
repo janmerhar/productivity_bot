@@ -23,37 +23,29 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
         self,
         *,
         parent_view: "PomodoroStoppedView",
-        voice_options: list[discord.SelectOption],
     ) -> None:
-        super().__init__(title="Start Custom Pomodoro")
+        super().__init__(title="Custom Pomodoro")
         self._parent_view = parent_view
-        self.mode_select = discord.ui.Select(
-            placeholder="Mode",
-            min_values=1,
-            max_values=1,
-            options=[
-                discord.SelectOption(label="Focus", value="focus", default=True),
-                discord.SelectOption(label="Break", value="break"),
-            ],
-        )
-        self.mode_select_label = discord.ui.Label(
-            text="Mode",
-            component=self.mode_select,
-        )
-        self.add_item(self.mode_select_label)
         self.duration_input = discord.ui.TextInput(
-            label="Duration (minutes, optional)",
-            placeholder="Defaults: 30 focus / 5 break",
+            label="Focus Duration (min)",
+            placeholder="30",
             required=False,
             max_length=4,
         )
         self.add_item(self.duration_input)
+        self.break_duration_input = discord.ui.TextInput(
+            label="Break Duration (min)",
+            placeholder="5",
+            required=False,
+            max_length=4,
+        )
+        self.add_item(self.break_duration_input)
 
-        self.voice_select = discord.ui.Select(
+        self.voice_select = discord.ui.ChannelSelect(
             placeholder="Voice channel",
-            min_values=1,
+            channel_types=[discord.ChannelType.voice],
+            min_values=0,
             max_values=1,
-            options=voice_options[:25],
         )
         self.voice_select_label = discord.ui.Label(
             text="Voice playback",
@@ -65,13 +57,7 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
         if not await self._parent_view._ensure_user(interaction):
             return
 
-        mode = (
-            self.mode_select.values[0].strip().lower()
-            if self.mode_select.values
-            else "focus"
-        )
-        if mode not in ("focus", "break"):
-            mode = "focus"
+        mode = "focus"
 
         duration_value: Optional[int] = None
         raw_duration = (self.duration_input.value or "").strip()
@@ -98,18 +84,36 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
                 )
                 return
 
-        voice_selection = (
-            self.voice_select.values[0] if self.voice_select.values else "__auto__"
-        )
-        if voice_selection == "__auto__":
-            target_channel = None
-            use_member_voice = True
-            skip_voice = False
-        elif voice_selection == "__none__":
-            target_channel = None
-            use_member_voice = False
-            skip_voice = True
-        else:
+        break_duration_value: Optional[int] = None
+        raw_break_duration = (self.break_duration_input.value or "").strip()
+        if raw_break_duration:
+            try:
+                break_duration_value = int(raw_break_duration)
+            except ValueError as exc:
+                await handle_interaction_error(
+                    interaction,
+                    ValidationError(
+                        "Break duration must be a whole number of minutes.",
+                        ephemeral=False,
+                        cause=exc,
+                    ),
+                )
+                return
+            if break_duration_value <= 0:
+                await handle_interaction_error(
+                    interaction,
+                    ValidationError(
+                        "Break duration must be greater than zero.",
+                        ephemeral=False,
+                    ),
+                )
+                return
+
+        target_channel = None
+        use_member_voice = True
+        skip_voice = False
+        if self.voice_select.values:
+            selected = self.voice_select.values[0]
             if interaction.guild is None:
                 await handle_interaction_error(
                     interaction,
@@ -119,13 +123,8 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
                     ),
                 )
                 return
-            target_channel = (
-                PomodoroVoiceChannelSelectView._resolve_selected_voice_channel(
-                    interaction.guild,
-                    voice_selection,
-                )
-            )
-            if target_channel is None:
+            resolved = interaction.guild.get_channel(selected.id)
+            if not isinstance(resolved, discord.VoiceChannel):
                 await handle_interaction_error(
                     interaction,
                     ValidationError(
@@ -134,13 +133,14 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
                     ),
                 )
                 return
+            target_channel = resolved
             use_member_voice = False
-            skip_voice = False
 
         await self._parent_view._start_with_options(
             interaction,
             mode=mode,
             duration=duration_value,
+            break_duration=break_duration_value,
             target_channel=target_channel,
             use_member_voice=use_member_voice,
             skip_voice=skip_voice,
@@ -201,6 +201,7 @@ class PomodoroStoppedView(discord.ui.View):
         *,
         mode: str,
         duration: Optional[int],
+        break_duration: Optional[int] = None,
         target_channel: Optional[discord.VoiceChannel],
         use_member_voice: bool,
         skip_voice: bool,
@@ -218,6 +219,8 @@ class PomodoroStoppedView(discord.ui.View):
                 mode,
                 duration,
                 interaction.user.id,
+                break_duration,
+                duration if mode == "focus" else None,
             )
         except ValueError as exc:
             await handle_interaction_error(
@@ -263,10 +266,13 @@ class PomodoroStoppedView(discord.ui.View):
                     mode,
                 )
 
+        focus_dur = duration if mode == "focus" else None
         payload = PomodoroEmbeds.insert_timer_embed(
             mode,
             resolved_duration,
             end_time,
+            focus_duration=focus_dur,
+            break_duration=break_duration,
         )
         join_url = resolved_target_channel.jump_url if resolved_target_channel else None
         payload["view"] = PomodoroStartView(
@@ -275,6 +281,8 @@ class PomodoroStoppedView(discord.ui.View):
             mode=mode,
             end_time=end_time,
             voice_channel_select_enabled=interaction.guild is not None,
+            focus_duration=focus_dur,
+            break_duration=break_duration,
         )
         payload["content"] = voice_error or None
 
@@ -342,14 +350,12 @@ class PomodoroStoppedView(discord.ui.View):
             return
 
         global _POMODORO_STOP_MODAL_SELECTS_SUPPORTED
-        voice_options = self._custom_voice_options(interaction)
 
         if _POMODORO_STOP_MODAL_SELECTS_SUPPORTED:
             try:
                 await interaction.response.send_modal(
                     PomodoroCustomTimerModal(
                         parent_view=self,
-                        voice_options=voice_options,
                     )
                 )
                 return

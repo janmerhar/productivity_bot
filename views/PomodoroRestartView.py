@@ -15,10 +15,20 @@ from services.error_reporting import (
 
 
 class PomodoroRestartView(discord.ui.View):
-    def __init__(self, *, timeout: float = 21600) -> None:
+    def __init__(
+        self,
+        *,
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
+        timeout: float = 21600,
+    ) -> None:
         super().__init__(timeout=timeout)
+        self._focus_duration = focus_duration
+        self._break_duration = break_duration
 
-    async def _start(self, interaction: discord.Interaction, mode: str) -> None:
+    async def _start(
+        self, interaction: discord.Interaction, mode: str, duration: Optional[int]
+    ) -> None:
         await interaction.response.defer(ephemeral=False)
 
         try:
@@ -27,8 +37,10 @@ class PomodoroRestartView(discord.ui.View):
                 interaction.guild_id,
                 interaction.channel_id,
                 mode,
-                None,
+                duration,
                 interaction.user.id,
+                self._break_duration,
+                self._focus_duration,
             )
         except ValueError as exc:
             await handle_interaction_error(
@@ -78,6 +90,8 @@ class PomodoroRestartView(discord.ui.View):
             mode,
             resolved_duration,
             end_time,
+            focus_duration=self._focus_duration,
+            break_duration=self._break_duration,
         )
         join_url = target_channel.jump_url if target_channel else None
         payload["view"] = PomodoroStartView(
@@ -86,6 +100,8 @@ class PomodoroRestartView(discord.ui.View):
             mode=mode,
             end_time=end_time,
             voice_channel_select_enabled=interaction.guild is not None,
+            focus_duration=self._focus_duration,
+            break_duration=self._break_duration,
         )
         payload["content"] = voice_error or None
 
@@ -117,10 +133,10 @@ class PomodoroRestartView(discord.ui.View):
     async def start_focus(
         self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
-        await self._start(interaction, "focus")
+        await self._start(interaction, "focus", self._focus_duration)
 
     @discord.ui.button(label="Start Break", style=discord.ButtonStyle.primary)
     async def start_break(
         self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
-        await self._start(interaction, "break")
+        await self._start(interaction, "break", self._break_duration)

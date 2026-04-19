@@ -202,12 +202,19 @@ class DailyTaskCog(commands.Cog):
 
                 if auto_cycle_enabled:
                     next_mode = "break" if mode == "focus" else "focus"
+                    raw_break = str(data.get("break_duration") or "").strip()
+                    stored_break_dur: Optional[int] = int(raw_break) if raw_break.isdigit() else None
+                    raw_focus = str(data.get("focus_duration") or "").strip()
+                    stored_focus_dur: Optional[int] = int(raw_focus) if raw_focus.isdigit() else None
+                    next_duration_min = stored_break_dur if next_mode == "break" else stored_focus_dur
                     next_end_time, next_duration, next_data, next_schedule = (
                         PomodoroFunctions.insert_pomodoro_timer(
                             channel_id=job.channel_id or channel.id,
                             mode=next_mode,
-                            duration_minutes=None,
+                            duration_minutes=next_duration_min,
                             user_id=user_raw or owner_id,
+                            break_duration=stored_break_dur,
+                            focus_duration=stored_focus_dur,
                         )
                     )
                     next_data["auto_cycle"] = True
@@ -242,6 +249,8 @@ class DailyTaskCog(commands.Cog):
                         next_mode,
                         next_duration,
                         next_end_time,
+                        focus_duration=stored_focus_dur,
+                        break_duration=stored_break_dur,
                     )
                     next_payload["view"] = PomodoroStartView(
                         owner_id,
@@ -250,6 +259,8 @@ class DailyTaskCog(commands.Cog):
                         end_time=next_end_time,
                         auto_cycle_enabled=True,
                         voice_channel_select_enabled=guild is not None,
+                        focus_duration=stored_focus_dur,
+                        break_duration=stored_break_dur,
                     )
                     next_payload["content"] = voice_error or None
 
@@ -283,7 +294,12 @@ class DailyTaskCog(commands.Cog):
                     continue
 
                 pomodoro_payload = PomodoroFunctions.pomodoro_payload(job)
-                pomodoro_payload["view"] = PomodoroRestartView()
+                raw_focus_dur = str(data.get("focus_duration") or "").strip()
+                raw_break_dur = str(data.get("break_duration") or "").strip()
+                pomodoro_payload["view"] = PomodoroRestartView(
+                    focus_duration=int(raw_focus_dur) if raw_focus_dur.isdigit() else None,
+                    break_duration=int(raw_break_dur) if raw_break_dur.isdigit() else None,
+                )
 
                 if not message_id_raw.isdigit():
                     continue

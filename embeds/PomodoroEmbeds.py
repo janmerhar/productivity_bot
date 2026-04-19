@@ -8,6 +8,15 @@ import discord
 
 class PomodoroEmbeds:
     @staticmethod
+    def _duration_footer(
+        focus_duration: Optional[int],
+        break_duration: Optional[int],
+    ) -> str:
+        f_min = focus_duration if focus_duration is not None else 30
+        b_min = break_duration if break_duration is not None else 5
+        return f"Focus: {f_min} min • Break: {b_min} min"
+
+    @staticmethod
     def _round_half_up(value: float) -> int:
         return int(value + 0.5)
 
@@ -69,6 +78,8 @@ class PomodoroEmbeds:
         description: Optional[str] = None,
         duration_label: str = "Duration",
         ends_label: str = "Ends",
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
     ) -> dict:
         resolved_title = title if title is not None else f"{mode.capitalize()} Session"
         resolved_description = (
@@ -81,7 +92,7 @@ class PomodoroEmbeds:
             description=resolved_description,
             color=discord.Colour.green(),
         )
-        embed.set_footer(text=f"Total duration: {duration_minutes} min")
+        embed.set_footer(text=PomodoroEmbeds._duration_footer(focus_duration, break_duration))
         return {"embed": embed}
 
     @staticmethod
@@ -90,6 +101,8 @@ class PomodoroEmbeds:
         duration_minutes: Union[int, str],
         end_time: Optional[datetime.datetime],
         user_id: Optional[Union[int, str]] = None,
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
     ) -> dict:
         resolved_mode = str(mode).strip().lower()
         if resolved_mode not in ("focus", "break"):
@@ -105,7 +118,7 @@ class PomodoroEmbeds:
             description=f"{mention}Your {resolved_mode} session has finished.",
             color=discord.Colour.green(),
         )
-        embed.set_footer(text=f"Total duration: {duration_minutes} min")
+        embed.set_footer(text=PomodoroEmbeds._duration_footer(focus_duration, break_duration))
         return {"embed": embed}
 
     @staticmethod
@@ -119,5 +132,4 @@ class PomodoroEmbeds:
             description=description,
             color=discord.Colour.red(),
         )
-        embed.set_footer(text="Default: Focus 30 min • Break 5 min")
         return {"embed": embed}
