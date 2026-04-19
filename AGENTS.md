@@ -51,6 +51,7 @@ This repository contains a self-hosted Discord productivity bot. The main runtim
 
 - Treat embeds and views as complementary, not interchangeable: use embeds for structured display and add views when the message represents an actionable state.
 - Default to public responses when choosing between public and ephemeral replies. Use ephemeral only when the content is user-specific, sensitive, transient, or would create unnecessary channel noise.
+- Every new slash command must include a `visibility` parameter so response visibility is set explicitly instead of being hardcoded.
 - Keep Discord view code modular. Prefer one view or one closely related view family per Python file rather than growing a single mega-file for many unrelated views.
 - When a user is likely to take a next step from a message, prefer buttons, selects, or modals over forcing them to run another command manually.
 - For user input flows, prefer pop-up modals over ad hoc inline prompt messages when the interaction fits naturally into a modal.
