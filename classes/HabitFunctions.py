@@ -1,8 +1,9 @@
 import datetime
-from typing import Optional, Tuple, Dict, Any, List
+from typing import Optional, Tuple, Dict, Any, List, Mapping
 
 from bson.objectid import ObjectId
 
+from classes.DailyJobManager import DailyJobManager
 from classes.DailyJob import CronSchedule
 from classes.OpenAIFunctions import OpenAIFunctions
 from config.db import mongo_db
@@ -30,8 +31,6 @@ class HabitFunctions:
         habit: Dict[str, Any],
         reminder_time: datetime.time,
     ) -> None:
-        from classes.DailyJobManager import DailyJobManager
-
         expression = f"{reminder_time.minute} {reminder_time.hour} * * *"
         schedule = CronSchedule(expression=expression)
         habit_id = str(habit.get("_id"))
@@ -44,6 +43,31 @@ class HabitFunctions:
             data={"habit_id": habit_id},
             schedule=schedule,
         )
+
+    @staticmethod
+    def _parse_habit_reminder_time(
+        reminder: Optional[str],
+        timezone: Optional[str] = None,
+    ) -> Optional[datetime.time]:
+        reminder_text = reminder.strip() if reminder else ""
+        if not reminder_text:
+            return None
+
+        api_key = settings.openai_api_key
+        if not api_key:
+            raise ValueError("OpenAI API key is not configured.")
+
+        reminder_time = OpenAIFunctions.parse_reminder_time(
+            reminder_text,
+            api_key=api_key,
+            timezone=timezone,
+        )
+        if reminder_time is None:
+            raise ValueError(
+                "I couldn't understand that reminder time. Try '8am' or '20:30'."
+            )
+
+        return reminder_time
 
     @staticmethod
     def insert_habit(
@@ -68,21 +92,10 @@ class HabitFunctions:
         if cleaned_description == "":
             cleaned_description = None
 
-        reminder_time = None
-        reminder_text = reminder.strip() if reminder else ""
-        if reminder_text:
-            api_key = settings.openai_api_key
-            if not api_key:
-                raise ValueError("OpenAI API key is not configured.")
-            reminder_time = OpenAIFunctions.parse_reminder_time(
-                reminder_text,
-                api_key=api_key,
-                timezone=timezone,
-            )
-            if reminder_time is None:
-                raise ValueError(
-                    "I couldn't understand that reminder time. Try '8am' or '20:30'."
-                )
+        reminder_time = HabitFunctions._parse_habit_reminder_time(
+            reminder,
+            timezone,
+        )
 
         document: Dict[str, Any] = {
             "scope": scope_value,
@@ -99,6 +112,59 @@ class HabitFunctions:
         document["_id"] = result.inserted_id
 
         return document, reminder_time
+
+    @staticmethod
+    def update_habit(
+        habit_id: str,
+        guild_id: Optional[int],
+        user_id: int,
+        channel_id: Optional[int],
+        name: str,
+        description: Optional[str] = None,
+        reminder: Optional[str] = None,
+        timezone: Optional[str] = None,
+        scope: str = "channel",
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[datetime.time]]:
+        habit = HabitFunctions.fetch_habit(
+            habit_id,
+            guild_id=guild_id,
+            user_id=user_id,
+        )
+        if habit is None:
+            return None, None
+
+        cleaned_name = name.strip()
+        if not cleaned_name:
+            raise ValueError("Habit name cannot be empty.")
+
+        scope_value = HabitFunctions._normalize_scope(scope)
+        if guild_id is None:
+            scope_value = "personal"
+
+        cleaned_description = description.strip() if description else None
+        if cleaned_description == "":
+            cleaned_description = None
+
+        reminder_time = HabitFunctions._parse_habit_reminder_time(
+            reminder,
+            timezone,
+        )
+
+        updated_fields: Dict[str, Any] = {
+            "scope": scope_value,
+            "guild_id": None if scope_value == "personal" else guild_id,
+            "channel_id": None if scope_value == "personal" else channel_id,
+            "name": cleaned_name,
+            "description": cleaned_description,
+        }
+
+        mongo_db["habits"].update_one(
+            {"_id": habit["_id"]},
+            {"$set": updated_fields},
+        )
+
+        updated_habit = mongo_db["habits"].find_one({"_id": habit["_id"]})
+        return updated_habit, reminder_time
 
     @staticmethod
     def list_habits(
@@ -163,6 +229,67 @@ class HabitFunctions:
             return None
 
         return habit
+
+    @staticmethod
+    def _habit_task_matches(
+        data: Optional[Mapping[str, Any]],
+        habit_id: str,
+    ) -> bool:
+        return str((data or {}).get("habit_id") or "") == str(habit_id)
+
+    @staticmethod
+    def list_habit_tasks(
+        habit_id: str,
+        guild_id: Optional[int] = None,
+    ) -> List[Any]:
+        manager = DailyJobManager()
+        jobs = manager.list_jobs(guild_id=guild_id)
+        return [
+            job
+            for job in jobs
+            if job.type == "habit"
+            and HabitFunctions._habit_task_matches(job.data, habit_id)
+        ]
+
+    @staticmethod
+    def get_habit_reminder_time(
+        habit_id: str,
+        guild_id: Optional[int] = None,
+    ) -> Optional[datetime.time]:
+        jobs = HabitFunctions.list_habit_tasks(habit_id, guild_id)
+        if not jobs:
+            return None
+
+        schedule = jobs[0].schedule
+        if not isinstance(schedule, Mapping):
+            return None
+
+        expression = str(schedule.get("expression") or "").strip()
+        parts = expression.split()
+        if len(parts) < 2:
+            return None
+
+        try:
+            minute = int(parts[0])
+            hour = int(parts[1])
+            return datetime.time(hour=hour, minute=minute)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def sync_habit_tasks(
+        habit: Dict[str, Any],
+        reminder_time: Optional[datetime.time],
+    ) -> None:
+        manager = DailyJobManager()
+        habit_id = str(habit.get("_id") or "")
+        guild_id = habit.get("guild_id")
+
+        for job in HabitFunctions.list_habit_tasks(habit_id, guild_id):
+            manager.delete_job(str(job.id), guild_id=job.guild_id)
+
+        if reminder_time is not None:
+            HabitFunctions.insert_habit_task(habit, reminder_time)
 
     @staticmethod
     def add_completion(

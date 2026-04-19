@@ -189,6 +189,59 @@ class HabitCog(commands.Cog):
 
         return document, reminder_time, reminder_failed
 
+    async def _persist_habit_update(
+        self,
+        *,
+        interaction: discord.Interaction,
+        habit_id: str,
+        habit: str,
+        description: Optional[str],
+        reminder: Optional[str],
+        ephemeral: bool,
+        timezone: Optional[str],
+        scope_value: str,
+        target_channel_id: Optional[int],
+    ) -> tuple[dict, Optional[object], bool]:
+        try:
+            document, reminder_time = await asyncio.to_thread(
+                HabitFunctions.update_habit,
+                habit_id,
+                interaction.guild_id,
+                interaction.user.id,
+                target_channel_id,
+                habit,
+                description,
+                reminder,
+                timezone,
+                scope_value,
+            )
+        except ValueError as exc:
+            raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while editing that habit.",
+                ephemeral=ephemeral,
+                cause=exc,
+            )
+
+        if document is None:
+            raise ValidationError(
+                "That habit no longer exists.",
+                ephemeral=ephemeral,
+            )
+
+        reminder_failed = False
+        try:
+            await asyncio.to_thread(
+                HabitFunctions.sync_habit_tasks,
+                document,
+                reminder_time,
+            )
+        except Exception:
+            reminder_failed = True
+
+        return document, reminder_time, reminder_failed
+
     async def _send_created_habit_response(
         self,
         interaction: discord.Interaction,
@@ -219,7 +272,14 @@ class HabitCog(commands.Cog):
             response_ephemeral=ephemeral,
         )
 
-        await interaction.followup.send(ephemeral=ephemeral, **payload)
+        posted_message = await interaction.followup.send(
+            ephemeral=ephemeral,
+            wait=True,
+            **payload,
+        )
+        view = payload["view"]
+        if isinstance(view, HabitActionView):
+            view.message = posted_message
 
     @habit_group.command(name="list", description="List habits")
     @app_commands.describe(

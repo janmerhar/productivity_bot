@@ -1,4 +1,5 @@
 import asyncio
+from typing import Optional
 
 import discord
 
@@ -19,6 +20,7 @@ class HabitActionView(discord.ui.View):
         self.habit_id = habit_id
         self.habit_name = habit_name
         self.user_id = user_id
+        self.message: Optional[discord.Message] = None
         self._rebuild_items()
 
     def _rebuild_items(self, *, disabled: bool = False) -> None:
@@ -43,7 +45,12 @@ class HabitActionView(discord.ui.View):
             )
         )
 
-    async def refresh_message(self, interaction: discord.Interaction) -> bool:
+    async def refresh_message(
+        self,
+        interaction: discord.Interaction,
+        *,
+        source_message: Optional[discord.Message] = None,
+    ) -> bool:
         habit = await asyncio.to_thread(
             HabitFunctions.fetch_habit,
             self.habit_id,
@@ -68,11 +75,18 @@ class HabitActionView(discord.ui.View):
             )
             embed = payload["embed"]
 
-        if interaction.message is None:
-            return False
-
-        try:
-            await interaction.message.edit(embed=embed, view=self)
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-            return False
-        return True
+        candidates = [
+            source_message,
+            interaction.message,
+            self.message,
+        ]
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            try:
+                await candidate.edit(embed=embed, view=self)
+                self.message = candidate
+                return True
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                continue
+        return False
