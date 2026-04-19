@@ -63,7 +63,7 @@ class HabitCog(commands.Cog):
         habit="Habit name",
         description="Longer description for this habit",
         reminder="Daily reminder time",
-        scope="This channel, another text channel, or personal",
+        destination="This channel, another text channel, or personal",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -73,11 +73,14 @@ class HabitCog(commands.Cog):
         habit: str,
         description: Optional[str] = None,
         reminder: Optional[str] = None,
-        scope: Optional[str] = None,
+        destination: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         try:
-            scope_value, target_channel_id, _ = normalize_habit_target(interaction, scope)
+            scope_value, target_channel_id, _ = normalize_habit_target(
+                interaction,
+                destination,
+            )
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=True, cause=exc)
         ephemeral = self._resolve_response_visibility(
@@ -360,8 +363,8 @@ class HabitCog(commands.Cog):
             view = HabitActionView(habit_id, habit_name, interaction.user.id)
             await interaction.followup.send(ephemeral=ephemeral, view=view, **payload)
 
-    @habit.autocomplete("scope")
-    async def habit_create_scope_autocomplete(
+    @habit.autocomplete("destination")
+    async def habit_create_destination_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
