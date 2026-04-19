@@ -26,12 +26,6 @@ from views.todo_list_description_dynamic_items import (
 from views.todo_list_items_dynamic_items import register_todo_list_items_dynamic_items
 from views.toggl_dynamic_items import register_toggl_dynamic_items
 
-tick_disabled = settings.tick_disabled
-alias_disabled = settings.alias_disabled
-stock_disabled = settings.stock_disabled
-crypto_disabled = settings.crypto_disabled
-dev_mode = settings.dev_mode
-dev_guild_id = settings.dev_guild_id
 _runtime_sync_commands_on_start: bool | None = None
 
 
@@ -65,7 +59,7 @@ async def _sync_global_commands() -> None:
         )
         return
 
-    if dev_mode:
+    if settings.dev_mode:
         logging.getLogger(__name__).info(
             "Synced %d global application commands (DEV_MODE).",
             len(synced),
@@ -114,21 +108,21 @@ async def on_ready():
             return
 
         try:
-            if dev_mode:
-                if not dev_guild_id:
+            if settings.dev_mode:
+                if not settings.dev_guild_id:
                     logging.getLogger(__name__).warning(
                         "DEV_MODE is true but DEV_GUILD_ID is not set; syncing global in background only."
                     )
                     _start_global_command_sync()
                 else:
-                    guild_object = discord.Object(id=dev_guild_id)
+                    guild_object = discord.Object(id=settings.dev_guild_id)
                     bot.tree.clear_commands(guild=guild_object)
                     bot.tree.copy_global_to(guild=guild_object)
                     synced_guild = await bot.tree.sync(guild=guild_object)
                     logging.getLogger(__name__).info(
                         "Synced %d dev guild application commands for guild %s.",
                         len(synced_guild),
-                        dev_guild_id,
+                        settings.dev_guild_id,
                     )
                     _start_global_command_sync()
             else:
@@ -163,16 +157,16 @@ async def load():
         "cogs.TogglCog",
     ]
 
-    if not alias_disabled:
+    if not settings.alias_disabled:
         extensions.append("cogs.AliasCog")
 
-    if not crypto_disabled:
+    if not settings.crypto_disabled:
         extensions.append("cogs.CryptoCog")
 
-    if not stock_disabled:
+    if not settings.stock_disabled:
         extensions.append("cogs.StocksCog")
 
-    if not tick_disabled:
+    if not settings.tick_disabled:
         extensions.append("cogs.TickTickCog")
 
     for extension in extensions:
