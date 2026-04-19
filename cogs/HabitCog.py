@@ -359,6 +359,24 @@ class HabitCog(commands.Cog):
         reminder_failed: bool,
         ephemeral: bool,
     ) -> None:
+        await self._send_habit_card_response(
+            interaction,
+            document=document,
+            reminder_time=reminder_time,
+            reminder_failed=reminder_failed,
+            ephemeral=ephemeral,
+        )
+
+    async def _send_habit_card_response(
+        self,
+        interaction: discord.Interaction,
+        *,
+        document: dict,
+        reminder_time,
+        reminder_failed: bool,
+        ephemeral: bool,
+        content: Optional[str] = None,
+    ) -> None:
         status = HabitFunctions.today_status(document)
         progress = HabitFunctions.recent_progress(document, days=5)
         payload = HabitEmbeds.habit_item_embed(
@@ -366,8 +384,14 @@ class HabitCog(commands.Cog):
             status,
             progress,
         )
+        if content:
+            payload["content"] = content
         if reminder_failed:
-            payload["content"] = "Habit created, but I couldn't schedule the reminder."
+            reminder_message = "Habit created, but I couldn't schedule the reminder."
+            if content:
+                payload["content"] = f"{content}\n{reminder_message}"
+            else:
+                payload["content"] = reminder_message
         payload["view"] = self._build_created_habit_view(
             document,
             ephemeral=ephemeral,
@@ -489,13 +513,145 @@ class HabitCog(commands.Cog):
             ephemeral=ephemeral,
         )
 
+    async def _start_habit_mark_flow(
+        self,
+        interaction: discord.Interaction,
+        *,
+        habit: str,
+        status_value: str,
+        status_label: str,
+        date: Optional[str],
+        scope_value: str,
+        ephemeral: bool,
+        locale_code: Optional[str],
+    ) -> None:
+        timezone = None
+        if (date or "").strip():
+
+            async def _continue_with_timezone(
+                followup_interaction: discord.Interaction,
+                resolved_timezone: str,
+            ) -> None:
+                await self._run_habit_mark(
+                    interaction=followup_interaction,
+                    habit=habit,
+                    status_value=status_value,
+                    status_label=status_label,
+                    date=date,
+                    scope_value=scope_value,
+                    ephemeral=ephemeral,
+                    timezone=resolved_timezone,
+                    locale_code=locale_code,
+                )
+
+            timezone = await ensure_user_timezone(
+                interaction,
+                _continue_with_timezone,
+                continue_message="Timezone saved as `{timezone}`. Continuing `/habit mark`.",
+                response_ephemeral=ephemeral,
+            )
+            if timezone is None:
+                return
+
+        await interaction.response.defer(ephemeral=ephemeral)
+        await self._run_habit_mark(
+            interaction=interaction,
+            habit=habit,
+            status_value=status_value,
+            status_label=status_label,
+            date=date,
+            scope_value=scope_value,
+            ephemeral=ephemeral,
+            timezone=timezone,
+            locale_code=locale_code,
+        )
+
+    async def _run_habit_mark(
+        self,
+        interaction: discord.Interaction,
+        *,
+        habit: str,
+        status_value: str,
+        status_label: str,
+        date: Optional[str],
+        scope_value: str,
+        ephemeral: bool,
+        timezone: Optional[str],
+        locale_code: Optional[str],
+    ) -> None:
+        habit_document = await self._resolve_habit_reference(
+            interaction,
+            habit,
+            scope_value=scope_value,
+            ephemeral=ephemeral,
+        )
+        habit_id = str(habit_document.get("_id") or "").strip()
+        if not habit_id:
+            raise ValidationError(
+                "That habit is no longer available.",
+                ephemeral=ephemeral,
+            )
+
+        recorded_at = None
+        if (date or "").strip():
+            recorded_at = await asyncio.to_thread(
+                HabitFunctions.parse_completion_timestamp,
+                str(date),
+                timezone=timezone,
+                locale_code=locale_code,
+            )
+
+        updated = await asyncio.to_thread(
+            HabitFunctions.add_completion,
+            habit_id,
+            interaction.guild_id,
+            status_value,
+            interaction.user.id,
+            recorded_at,
+        )
+        if not updated:
+            raise UserVisibleError(
+                "That habit could not be updated.",
+                ephemeral=ephemeral,
+            )
+
+        refreshed_document = await asyncio.to_thread(
+            HabitFunctions.fetch_habit,
+            habit_id,
+            interaction.guild_id,
+            interaction.user.id,
+        )
+        if refreshed_document is None:
+            raise UserVisibleError(
+                "Updated the habit, but couldn't load the refreshed habit card.",
+                ephemeral=ephemeral,
+            )
+
+        if recorded_at is None:
+            date_label = "today"
+        else:
+            date_label = recorded_at.date().isoformat()
+        confirmation = (
+            f"Marked `{refreshed_document.get('name') or 'Habit'}` as "
+            f"{status_label} for {date_label}."
+        )
+        await self._send_habit_card_response(
+            interaction,
+            document=refreshed_document,
+            reminder_time=None,
+            reminder_failed=False,
+            ephemeral=ephemeral,
+            content=confirmation,
+        )
+
     @habit_group.command(
         name="mark",
-        description="Mark today's result for a habit",
+        description="Record a daily result for a habit",
     )
     @app_commands.describe(
-        habit_name="Habit to mark",
-        status="Today's result for the habit",
+        habit="Habit from autocomplete",
+        status="Result to record for the habit",
+        date="Optional day to record, for example `yesterday` or `2026-04-18`",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
@@ -509,20 +665,27 @@ class HabitCog(commands.Cog):
     async def mark_habit(
         self,
         interaction: discord.Interaction,
-        habit_name: str,
+        habit: str,
         status: app_commands.Choice[str],
+        date: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        del habit_name, status
         scope_value = self._default_scope_value(interaction)
         ephemeral = self._resolve_response_visibility(
             interaction,
             scope_value,
             visibility,
         )
-        await interaction.response.send_message(
-            "This slash command is not yet implemented.",
+        locale_code = str(getattr(interaction, "locale", "") or "").strip() or None
+        await self._start_habit_mark_flow(
+            interaction,
+            habit=habit,
+            status_value=status.value,
+            status_label=status.name,
+            date=date,
+            scope_value=scope_value,
             ephemeral=ephemeral,
+            locale_code=locale_code,
         )
 
     @habit_group.command(name="edit", description="Edit an existing habit")
@@ -651,6 +814,14 @@ class HabitCog(commands.Cog):
 
     @edit_habit.autocomplete("habit")
     async def habit_edit_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        return await self._habit_reference_autocomplete(interaction, current)
+
+    @mark_habit.autocomplete("habit")
+    async def habit_mark_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,

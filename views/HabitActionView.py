@@ -2,6 +2,7 @@ import asyncio
 from typing import Optional
 
 import discord
+from discord.utils import MISSING
 
 from classes.HabitFunctions import HabitFunctions
 from embeds.HabitEmbeds import HabitEmbeds
@@ -56,6 +57,7 @@ class HabitActionView(discord.ui.View):
         *,
         source_message: Optional[discord.Message] = None,
         habit: Optional[dict] = None,
+        content=MISSING,
     ) -> bool:
         if habit is None:
             habit = await asyncio.to_thread(
@@ -82,6 +84,18 @@ class HabitActionView(discord.ui.View):
             )
             embed = payload["embed"]
 
+        if getattr(interaction, "message", None) is not None:
+            try:
+                await interaction.edit_original_response(
+                    content=content,
+                    embed=embed,
+                    view=self,
+                )
+                self.message = interaction.message
+                return True
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                pass
+
         candidates = []
         for candidate in (source_message, interaction.message, self.message):
             if candidate is None:
@@ -95,7 +109,7 @@ class HabitActionView(discord.ui.View):
 
         for candidate in candidates:
             try:
-                await candidate.edit(embed=embed, view=self)
+                await candidate.edit(content=content, embed=embed, view=self)
                 self.message = candidate
                 return True
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
@@ -106,6 +120,7 @@ class HabitActionView(discord.ui.View):
             try:
                 await interaction.followup.edit_message(
                     source_message_id,
+                    content=content,
                     embed=embed,
                     view=self,
                 )

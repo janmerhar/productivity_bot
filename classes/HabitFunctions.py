@@ -1,6 +1,8 @@
 import datetime
 from typing import Optional, Tuple, Dict, Any, List, Mapping
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import dateparser
 from bson.objectid import ObjectId
 
 from classes.DailyJobManager import DailyJobManager
@@ -8,9 +10,140 @@ from classes.DailyJob import CronSchedule
 from classes.OpenAIFunctions import OpenAIFunctions
 from config.db import mongo_db
 from config.env import settings
+from services.due_datetime import DueDateService
 
 
 class HabitFunctions:
+    @staticmethod
+    def _resolve_tzinfo(timezone: Optional[str]):
+        timezone_value = str(timezone or "").strip()
+        if not timezone_value:
+            return None
+
+        try:
+            return ZoneInfo(timezone_value)
+        except ZoneInfoNotFoundError:
+            return None
+
+    @staticmethod
+    def _normalize_recorded_datetime(
+        value: datetime.datetime,
+        timezone: Optional[str] = None,
+    ) -> datetime.datetime:
+        parsed = value.replace(microsecond=0)
+        tzinfo = HabitFunctions._resolve_tzinfo(timezone)
+
+        if parsed.tzinfo is not None:
+            return parsed.astimezone().replace(tzinfo=None)
+        if tzinfo is not None:
+            return parsed.replace(tzinfo=tzinfo).astimezone().replace(tzinfo=None)
+        return parsed
+
+    @staticmethod
+    def _parse_recorded_datetime_local(
+        value: str,
+        *,
+        timezone: Optional[str] = None,
+        locale_code: Optional[str] = None,
+    ) -> Optional[datetime.datetime]:
+        text = str(value or "").strip()
+        if not text:
+            return None
+
+        timezone_value = (timezone or "").strip()
+        tzinfo = HabitFunctions._resolve_tzinfo(timezone_value)
+        base_now = datetime.datetime.now(tzinfo) if tzinfo else datetime.datetime.now()
+        settings: Dict[str, Any] = {
+            "PREFER_DATES_FROM": "past",
+            "RELATIVE_BASE": base_now,
+            "RETURN_AS_TIMEZONE_AWARE": bool(tzinfo),
+            "DATE_ORDER": DueDateService.locale_date_order(
+                locale_code,
+                timezone=timezone_value,
+            ),
+        }
+        if timezone_value:
+            settings["TIMEZONE"] = timezone_value
+            settings["TO_TIMEZONE"] = timezone_value
+
+        parsed: Optional[datetime.datetime] = None
+        normalized_locale = DueDateService.normalize_locale_code(locale_code)
+        locales: List[str] = []
+        if normalized_locale:
+            locales.append(normalized_locale)
+            language = normalized_locale.split("-", 1)[0].strip()
+            if language and language not in locales:
+                locales.append(language)
+
+        if locales:
+            try:
+                parsed = dateparser.parse(
+                    text,
+                    locales=locales,
+                    settings=settings,
+                )
+            except Exception:
+                parsed = None
+
+        if parsed is None:
+            try:
+                parsed = dateparser.parse(
+                    text,
+                    settings=settings,
+                )
+            except Exception:
+                parsed = None
+
+        if parsed is None:
+            return None
+
+        return HabitFunctions._normalize_recorded_datetime(
+            parsed,
+            timezone=timezone,
+        )
+
+    @staticmethod
+    def parse_completion_timestamp(
+        value: str,
+        *,
+        timezone: Optional[str] = None,
+        locale_code: Optional[str] = None,
+    ) -> datetime.datetime:
+        text = str(value or "").strip()
+        if not text:
+            raise ValueError("Date cannot be empty.")
+
+        parsed = DueDateService.coerce_due_datetime(text)
+        if parsed is not None:
+            parsed = HabitFunctions._normalize_recorded_datetime(
+                parsed,
+                timezone=timezone,
+            )
+        else:
+            parsed = HabitFunctions._parse_recorded_datetime_local(
+                text,
+                timezone=timezone,
+                locale_code=locale_code,
+            )
+
+        if parsed is None:
+            parsed = OpenAIFunctions.parse_habit_record_datetime(
+                text,
+                timezone=timezone,
+            )
+
+        if parsed is None:
+            raise ValueError(
+                "I couldn't understand that date. Try `yesterday`, "
+                "`2026-04-18`, or `2026-04-18 21:00`."
+            )
+
+        now = datetime.datetime.now().replace(microsecond=0)
+        if parsed > now:
+            raise ValueError("Habit records cannot be in the future.")
+
+        return parsed
+
     @staticmethod
     def _normalize_scope(scope: Optional[str]) -> str:
         return scope if scope in ("channel", "personal") else "channel"
@@ -429,6 +562,7 @@ class HabitFunctions:
         guild_id: Optional[int],
         mode: str,
         user_id: Optional[int] = None,
+        timestamp: Optional[datetime.datetime] = None,
     ) -> bool:
         if mode not in {"complete", "skip", "incomplete"}:
             return False
@@ -441,8 +575,16 @@ class HabitFunctions:
         if habit is None:
             return False
 
+        recorded_at = (
+            HabitFunctions._normalize_recorded_datetime(timestamp)
+            if timestamp is not None
+            else datetime.datetime.now().replace(microsecond=0)
+        )
+        if recorded_at > datetime.datetime.now().replace(microsecond=0):
+            raise ValueError("Habit records cannot be in the future.")
+
         entry = {
-            "timestamp": datetime.datetime.now().isoformat(),
+            "timestamp": recorded_at.isoformat(),
             "mode": mode,
         }
 
@@ -490,7 +632,7 @@ class HabitFunctions:
             parsed = HabitFunctions._parse_timestamp(timestamp)
             if parsed is None or parsed.date() != today:
                 continue
-            if latest_dt is None or parsed > latest_dt:
+            if latest_dt is None or parsed >= latest_dt:
                 latest_dt = parsed
                 latest_mode = str(mode)
 
@@ -529,7 +671,7 @@ class HabitFunctions:
                 if day < today - datetime.timedelta(days=days - 1) or day > today:
                     continue
                 existing = day_status.get(day)
-                if existing is None or parsed > existing[0]:
+                if existing is None or parsed >= existing[0]:
                     day_status[day] = (parsed, str(mode))
 
         progress: List[str] = []

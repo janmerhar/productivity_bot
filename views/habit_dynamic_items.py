@@ -2,6 +2,7 @@ import asyncio
 
 import discord
 from discord.ext import commands
+from discord.utils import MISSING
 
 from classes.HabitFunctions import HabitFunctions
 from services.visibility import inherit_ephemeral_from_interaction
@@ -72,6 +73,7 @@ async def _refresh_habit_message(
     user_id: int,
     view_kind: str,
     response_ephemeral: bool,
+    mode: str | None = None,
 ) -> bool:
     view, habit = await _build_habit_view(
         interaction,
@@ -81,10 +83,17 @@ async def _refresh_habit_message(
         response_ephemeral=response_ephemeral,
     )
     view.message = interaction.message
+    content = MISSING
+    if mode and habit is not None:
+        content = (
+            f"Marked `{str(habit.get('name') or 'Habit')}` as "
+            f"{mode.capitalize()} for today."
+        )
     return await view.refresh_message(
         interaction,
         source_message=interaction.message,
         habit=habit,
+        content=content,
     )
 
 
@@ -118,6 +127,7 @@ async def _record_completion(
         user_id=user_id,
         view_kind=view_kind,
         response_ephemeral=response_ephemeral,
+        mode=mode,
     )
     if refreshed:
         return
