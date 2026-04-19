@@ -28,6 +28,8 @@ from views.toggl_dynamic_items import register_toggl_dynamic_items
 
 tick_disabled = settings.tick_disabled
 alias_disabled = settings.alias_disabled
+stock_disabled = settings.stock_disabled
+crypto_disabled = settings.crypto_disabled
 dev_mode = settings.dev_mode
 dev_guild_id = settings.dev_guild_id
 _runtime_sync_commands_on_start: bool | None = None
@@ -159,12 +161,16 @@ async def load():
         "cogs.SettingsCog",
         "cogs.TodoCog",
         "cogs.TogglCog",
-        "cogs.CryptoCog",
-        "cogs.StocksCog",
     ]
 
     if not alias_disabled:
         extensions.append("cogs.AliasCog")
+
+    if not crypto_disabled:
+        extensions.append("cogs.CryptoCog")
+
+    if not stock_disabled:
+        extensions.append("cogs.StocksCog")
 
     if not tick_disabled:
         extensions.append("cogs.TickTickCog")
