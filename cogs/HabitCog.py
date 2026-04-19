@@ -40,6 +40,20 @@ class HabitCog(commands.Cog):
             visibility,
         )
 
+    @staticmethod
+    def _default_scope_value(interaction: discord.Interaction) -> str:
+        return "channel" if interaction.guild_id is not None else "personal"
+
+    @staticmethod
+    def _habit_choice_label(habit: dict) -> str:
+        name = str(habit.get("name") or "Habit").strip() or "Habit"
+        created = HabitFunctions._parse_timestamp(habit.get("created"))
+        created_text = created.strftime("%Y-%m-%d") if created is not None else "unknown"
+        habit_id = str(habit.get("_id") or "").strip()
+        suffix = habit_id[-6:] if habit_id else "habit"
+        label = f"{name} | {created_text} | {suffix}"
+        return label[:100]
+
     @commands.Cog.listener()
     async def on_ready(self) -> None:
         print("HabitCog cog loaded")
@@ -375,7 +389,7 @@ class HabitCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         del habit_name
-        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        scope_value = self._default_scope_value(interaction)
         ephemeral = self._resolve_response_visibility(
             interaction,
             scope_value,
@@ -408,7 +422,7 @@ class HabitCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         del habit_name, status
-        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        scope_value = self._default_scope_value(interaction)
         ephemeral = self._resolve_response_visibility(
             interaction,
             scope_value,
@@ -432,7 +446,7 @@ class HabitCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         del habit_name
-        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        scope_value = self._default_scope_value(interaction)
         ephemeral = self._resolve_response_visibility(
             interaction,
             scope_value,
@@ -455,17 +469,95 @@ class HabitCog(commands.Cog):
         habit_name: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        del habit_name
-        scope_value = "channel" if interaction.guild_id is not None else "personal"
+        scope_value = self._default_scope_value(interaction)
         ephemeral = self._resolve_response_visibility(
             interaction,
             scope_value,
             visibility,
         )
-        await interaction.response.send_message(
-            "This slash command is not yet implemented.",
-            ephemeral=ephemeral,
+        reference = str(habit_name or "").strip()
+        if not reference:
+            raise ValidationError(
+                "Habit name cannot be empty.",
+                ephemeral=ephemeral,
+            )
+
+        await interaction.response.defer(ephemeral=ephemeral)
+
+        habit = await asyncio.to_thread(
+            HabitFunctions.fetch_habit_in_scope,
+            reference,
+            interaction.guild_id,
+            interaction.user.id,
+            interaction.channel_id,
+            scope_value,
         )
+        if habit is None:
+            matches = await asyncio.to_thread(
+                HabitFunctions.find_habits_by_name,
+                interaction.guild_id,
+                interaction.user.id,
+                interaction.channel_id,
+                reference,
+                scope_value,
+            )
+            if len(matches) > 1:
+                raise ValidationError(
+                    "Multiple habits in this scope have that name. Use autocomplete to pick the exact one.",
+                    ephemeral=ephemeral,
+                )
+            if not matches:
+                raise ValidationError(
+                    "No matching habit found in this scope.",
+                    hint="Use autocomplete or run `/habit list` first.",
+                    ephemeral=ephemeral,
+                )
+            habit = matches[0]
+
+        deleted = await asyncio.to_thread(
+            HabitFunctions.delete_habit,
+            str(habit.get("_id") or ""),
+            interaction.guild_id,
+            interaction.user.id,
+        )
+        if not deleted:
+            raise UserVisibleError(
+                "That habit could not be deleted.",
+                ephemeral=ephemeral,
+            )
+
+        deleted_payload = HabitEmbeds.deleted_habit_embed(
+            str(habit.get("name") or "Habit")
+        )
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            **deleted_payload,
+        )
+
+    @delete_habit.autocomplete("habit_name")
+    async def habit_delete_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        scope_value = self._default_scope_value(interaction)
+        habits = await asyncio.to_thread(
+            HabitFunctions.autocomplete_habits,
+            interaction.guild_id,
+            interaction.user.id,
+            interaction.channel_id,
+            current,
+            scope_value,
+            25,
+        )
+        return [
+            app_commands.Choice(
+                name=self._habit_choice_label(habit),
+                value=str(habit.get("_id") or ""),
+            )
+            for habit in habits
+            if habit.get("_id") is not None
+        ]
 
 
 async def setup(client: commands.Bot) -> None:

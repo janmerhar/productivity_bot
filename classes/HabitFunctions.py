@@ -27,6 +27,30 @@ class HabitFunctions:
         }
 
     @staticmethod
+    def _scope_query(
+        guild_id: Optional[int],
+        user_id: int,
+        channel_id: Optional[int],
+        scope: str = "channel",
+    ) -> Dict[str, Any]:
+        scope_value = HabitFunctions._normalize_scope(scope)
+        if guild_id is None:
+            scope_value = "personal"
+
+        if scope_value == "personal":
+            return {
+                "scope": "personal",
+                "user_id": user_id,
+            }
+
+        return {
+            "guild_id": guild_id,
+            "user_id": user_id,
+            "channel_id": channel_id,
+            **HabitFunctions._channel_scope_query(),
+        }
+
+    @staticmethod
     def insert_habit_task(
         habit: Dict[str, Any],
         reminder_time: datetime.time,
@@ -198,6 +222,91 @@ class HabitFunctions:
         return True
 
     @staticmethod
+    def fetch_habit_in_scope(
+        habit_id: str,
+        guild_id: Optional[int],
+        user_id: int,
+        channel_id: Optional[int],
+        scope: str = "channel",
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            object_id = ObjectId(habit_id)
+        except Exception:
+            return None
+
+        query = HabitFunctions._scope_query(
+            guild_id,
+            user_id,
+            channel_id,
+            scope,
+        )
+        query["_id"] = object_id
+        return mongo_db["habits"].find_one(query)
+
+    @staticmethod
+    def find_habits_by_name(
+        guild_id: Optional[int],
+        user_id: int,
+        channel_id: Optional[int],
+        name: str,
+        scope: str = "channel",
+    ) -> List[Dict[str, Any]]:
+        normalized_name = " ".join(str(name or "").strip().lower().split())
+        if not normalized_name:
+            return []
+
+        query = HabitFunctions._scope_query(
+            guild_id,
+            user_id,
+            channel_id,
+            scope,
+        )
+        habits = list(mongo_db["habits"].find(query).sort("_id", 1))
+        return [
+            habit
+            for habit in habits
+            if " ".join(str(habit.get("name") or "").strip().lower().split())
+            == normalized_name
+        ]
+
+    @staticmethod
+    def autocomplete_habits(
+        guild_id: Optional[int],
+        user_id: int,
+        channel_id: Optional[int],
+        query: str,
+        scope: str = "channel",
+        limit: int = 25,
+    ) -> List[Dict[str, Any]]:
+        resolved_limit = max(1, min(limit, 25))
+        normalized_query = " ".join(str(query or "").strip().lower().split())
+        mongo_query = HabitFunctions._scope_query(
+            guild_id,
+            user_id,
+            channel_id,
+            scope,
+        )
+        habits = list(
+            mongo_db["habits"]
+            .find(mongo_query)
+            .sort("_id", -1)
+            .limit(200)
+        )
+
+        if not normalized_query:
+            return habits[:resolved_limit]
+
+        matches: List[Dict[str, Any]] = []
+        for habit in habits:
+            habit_name = " ".join(str(habit.get("name") or "").strip().lower().split())
+            if normalized_query in habit_name:
+                matches.append(habit)
+            if len(matches) >= resolved_limit:
+                break
+
+        return matches
+
+    @staticmethod
     def list_habits(
         guild_id: Optional[int],
         user_id: int,
@@ -205,23 +314,12 @@ class HabitFunctions:
         mode: str = "all",
         scope: str = "channel",
     ) -> List[Dict[str, Any]]:
-        scope_value = HabitFunctions._normalize_scope(scope)
-        if guild_id is None:
-            scope_value = "personal"
-
-        query: Dict[str, Any]
-        if scope_value == "personal":
-            query = {
-                "scope": "personal",
-                "user_id": user_id,
-            }
-        else:
-            query = {
-                "guild_id": guild_id,
-                "user_id": user_id,
-                "channel_id": channel_id,
-                **HabitFunctions._channel_scope_query(),
-            }
+        query = HabitFunctions._scope_query(
+            guild_id,
+            user_id,
+            channel_id,
+            scope,
+        )
         cursor = mongo_db["habits"].find(query).sort("_id", 1)
         habits = list(cursor)
 
