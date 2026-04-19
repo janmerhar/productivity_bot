@@ -110,23 +110,14 @@ class PomodoroEmbeds:
 
     @staticmethod
     def timer_stopped_embed(
-        status_message: str,
         *,
         title: str = "Pomodoro Stopped",
-        description: str = "Your pomodoro timer has been stopped.",
-        status_label: str = "Status",
-        next_label: str = "Next",
-        next_message: str = "Start a new focus or break timer using the buttons below.",
+        description: str = "Start a focus or break session.",
     ) -> dict:
         embed = discord.Embed(
             title=title,
             description=description,
             color=discord.Colour.red(),
         )
-        embed.add_field(name=status_label, value=status_message, inline=False)
-        embed.add_field(
-            name=next_label,
-            value=next_message,
-            inline=False,
-        )
+        embed.set_footer(text="Default: Focus 30 min • Break 5 min")
         return {"embed": embed}

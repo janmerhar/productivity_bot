@@ -397,15 +397,12 @@ class PomodoroCog(commands.Cog):
                 )
                 return
 
-            payload = PomodoroEmbeds.timer_stopped_embed(
-                "No active pomodoro timers were running.",
-                description="No active pomodoro timers were found.",
-            )
+            payload = PomodoroEmbeds.timer_stopped_embed()
             payload["view"] = PomodoroStoppedView(interaction.user.id)
             await interaction.followup.send(ephemeral=ephemeral, **payload)
             return
 
-        payload = PomodoroEmbeds.timer_stopped_embed(result.message)
+        payload = PomodoroEmbeds.timer_stopped_embed()
         payload["view"] = PomodoroStoppedView(interaction.user.id)
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
@@ -426,10 +423,7 @@ class PomodoroCog(commands.Cog):
         if not result.ok:
             no_active_timer = "don't have an active pomodoro" in result.message.lower()
             if no_active_timer:
-                payload = PomodoroEmbeds.timer_stopped_embed(
-                    "No active pomodoro timers were running.",
-                    description="No active pomodoro timers were found.",
-                )
+                payload = PomodoroEmbeds.timer_stopped_embed()
                 payload["view"] = PomodoroStoppedView(interaction.user.id)
                 await interaction.followup.send(ephemeral=ephemeral, **payload)
                 return
@@ -499,10 +493,7 @@ class PomodoroCog(commands.Cog):
         if not result.ok:
             no_active_timer = "don't have an active pomodoro" in result.message.lower()
             if no_active_timer:
-                payload = PomodoroEmbeds.timer_stopped_embed(
-                    "No active pomodoro timers were running.",
-                    description="No active pomodoro timers were found.",
-                )
+                payload = PomodoroEmbeds.timer_stopped_embed()
                 payload["view"] = PomodoroStoppedView(interaction.user.id)
                 await interaction.followup.send(ephemeral=ephemeral, **payload)
                 return
@@ -578,10 +569,7 @@ class PomodoroCog(commands.Cog):
         if not result.ok:
             no_active_timer = "don't have an active pomodoro" in result.message.lower()
             if no_active_timer:
-                payload = PomodoroEmbeds.timer_stopped_embed(
-                    "No active pomodoro timers were running.",
-                    description="No active pomodoro timers were found.",
-                )
+                payload = PomodoroEmbeds.timer_stopped_embed()
                 payload["view"] = PomodoroStoppedView(interaction.user.id)
                 await interaction.followup.send(ephemeral=ephemeral, **payload)
                 return
@@ -640,10 +628,7 @@ class PomodoroCog(commands.Cog):
             ephemeral=ephemeral,
         )
         if payload is None:
-            payload = PomodoroEmbeds.timer_stopped_embed(
-                "No active pomodoro timers were running.",
-                description="No active pomodoro timers were found.",
-            )
+            payload = PomodoroEmbeds.timer_stopped_embed()
             payload["view"] = PomodoroStoppedView(interaction.user.id)
             await interaction.followup.send(ephemeral=ephemeral, **payload)
             return

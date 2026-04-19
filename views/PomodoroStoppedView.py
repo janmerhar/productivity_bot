@@ -302,7 +302,7 @@ class PomodoroStoppedView(discord.ui.View):
             message_id=posted_message.id,
         )
 
-    @discord.ui.button(label="Start Focus", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Start Focus", style=discord.ButtonStyle.success, row=0)
     async def start_focus(
         self,
         interaction: discord.Interaction,
@@ -317,7 +317,7 @@ class PomodoroStoppedView(discord.ui.View):
             skip_voice=False,
         )
 
-    @discord.ui.button(label="Start Break", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Start Break", style=discord.ButtonStyle.primary, row=0)
     async def start_break(
         self,
         interaction: discord.Interaction,
@@ -332,7 +332,7 @@ class PomodoroStoppedView(discord.ui.View):
             skip_voice=False,
         )
 
-    @discord.ui.button(label="Custom Timer", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Custom Timer", style=discord.ButtonStyle.secondary, row=0)
     async def custom_timer(
         self,
         interaction: discord.Interaction,
