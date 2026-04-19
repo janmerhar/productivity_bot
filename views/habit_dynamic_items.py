@@ -14,22 +14,6 @@ async def register_habit_dynamic_items(bot: commands.Bot) -> None:
     )
 
 
-async def _ensure_allowed(
-    interaction: discord.Interaction,
-    *,
-    user_id: int,
-    response_ephemeral: bool,
-) -> bool:
-    if interaction.user.id == user_id:
-        return True
-
-    await interaction.response.send_message(
-        ephemeral=response_ephemeral,
-        content="Only the habit owner can update this habit.",
-    )
-    return False
-
-
 async def _refresh_habit_message(
     interaction: discord.Interaction,
     *,
@@ -125,13 +109,6 @@ class HabitCompleteButton(
             interaction,
             default=True,
         )
-        if not await _ensure_allowed(
-            interaction,
-            user_id=self.user_id,
-            response_ephemeral=response_ephemeral,
-        ):
-            return
-
         await _record_completion(
             interaction,
             habit_id=self.habit_id,
@@ -183,13 +160,6 @@ class HabitSkipButton(
             interaction,
             default=True,
         )
-        if not await _ensure_allowed(
-            interaction,
-            user_id=self.user_id,
-            response_ephemeral=response_ephemeral,
-        ):
-            return
-
         await _record_completion(
             interaction,
             habit_id=self.habit_id,

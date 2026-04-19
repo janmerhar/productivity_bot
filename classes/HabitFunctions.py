@@ -29,7 +29,7 @@ class HabitFunctions:
     @staticmethod
     def _scope_query(
         guild_id: Optional[int],
-        user_id: int,
+        user_id: Optional[int],
         channel_id: Optional[int],
         scope: str = "channel",
     ) -> Dict[str, Any]:
@@ -45,7 +45,6 @@ class HabitFunctions:
 
         return {
             "guild_id": guild_id,
-            "user_id": user_id,
             "channel_id": channel_id,
             **HabitFunctions._channel_scope_query(),
         }
@@ -225,7 +224,7 @@ class HabitFunctions:
     def fetch_habit_in_scope(
         habit_id: str,
         guild_id: Optional[int],
-        user_id: int,
+        user_id: Optional[int],
         channel_id: Optional[int],
         scope: str = "channel",
     ) -> Optional[Dict[str, Any]]:
@@ -246,7 +245,7 @@ class HabitFunctions:
     @staticmethod
     def find_habits_by_name(
         guild_id: Optional[int],
-        user_id: int,
+        user_id: Optional[int],
         channel_id: Optional[int],
         name: str,
         scope: str = "channel",
@@ -272,7 +271,7 @@ class HabitFunctions:
     @staticmethod
     def autocomplete_habits(
         guild_id: Optional[int],
-        user_id: int,
+        user_id: Optional[int],
         channel_id: Optional[int],
         query: str,
         scope: str = "channel",
@@ -309,7 +308,7 @@ class HabitFunctions:
     @staticmethod
     def list_habits(
         guild_id: Optional[int],
-        user_id: int,
+        user_id: Optional[int],
         channel_id: Optional[int],
         mode: str = "all",
         scope: str = "channel",
@@ -348,7 +347,11 @@ class HabitFunctions:
         scope_value = HabitFunctions._normalize_scope(
             str(habit.get("scope") or "channel")
         )
-        if user_id is not None and int(habit.get("user_id") or 0) != int(user_id):
+        if (
+            scope_value == "personal"
+            and user_id is not None
+            and int(habit.get("user_id") or 0) != int(user_id)
+        ):
             return None
         if (
             scope_value == "channel"

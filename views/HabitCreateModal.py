@@ -251,13 +251,6 @@ class HabitCreateModal(discord.ui.Modal):
             )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        if interaction.user.id != self._user_id:
-            await interaction.response.send_message(
-                "This form is only for the user who started the command.",
-                ephemeral=self._response_ephemeral,
-            )
-            return
-
         await interaction.response.defer(ephemeral=self._response_ephemeral)
 
         reminder_value = str(self.reminder_input.value or "").strip() or None
@@ -447,13 +440,6 @@ class HabitCreatedActionView(HabitActionView):
         await interaction.response.send_modal(fallback_modal)
 
     async def _open_create_modal(self, interaction: discord.Interaction) -> None:
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "Only the habit owner can use these buttons.",
-                ephemeral=True,
-            )
-            return
-
         self.response_ephemeral = inherit_ephemeral_from_interaction(
             interaction,
             default=self.response_ephemeral,
@@ -464,7 +450,7 @@ class HabitCreatedActionView(HabitActionView):
             interaction,
             modal=HabitCreateModal(
                 self._cog,
-                user_id=self.user_id,
+                user_id=interaction.user.id,
                 scope_value=self.scope_value,
                 target_channel_id=self.target_channel_id,
                 response_ephemeral=self.response_ephemeral,
@@ -475,13 +461,6 @@ class HabitCreatedActionView(HabitActionView):
         )
 
     async def _open_edit_modal(self, interaction: discord.Interaction) -> None:
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "Only the habit owner can use these buttons.",
-                ephemeral=True,
-            )
-            return
-
         self.response_ephemeral = inherit_ephemeral_from_interaction(
             interaction,
             default=self.response_ephemeral,
@@ -517,7 +496,7 @@ class HabitCreatedActionView(HabitActionView):
             interaction,
             modal=HabitCreateModal(
                 self._cog,
-                user_id=self.user_id,
+                user_id=interaction.user.id,
                 scope_value=self.scope_value,
                 target_channel_id=self.target_channel_id,
                 response_ephemeral=self.response_ephemeral,
@@ -535,13 +514,6 @@ class HabitCreatedActionView(HabitActionView):
         )
 
     async def _open_delete_modal(self, interaction: discord.Interaction) -> None:
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "Only the habit owner can use these buttons.",
-                ephemeral=True,
-            )
-            return
-
         self.response_ephemeral = inherit_ephemeral_from_interaction(
             interaction,
             default=self.response_ephemeral,
