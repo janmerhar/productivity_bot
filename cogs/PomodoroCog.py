@@ -82,10 +82,10 @@ async def start_pomodoro_context_menu(
         posted_message = await interaction.followup.send(wait=True, **payload)
     else:
         posted_message = await interaction.channel.send(**payload)
-        await interaction.followup.send(
-            ephemeral=True,
-            content="Pomodoro started.",
-        )
+        try:
+            await interaction.delete_original_response()
+        except discord.HTTPException:
+            pass
 
     await PomodoroFunctions.bind_timer_message(
         job_id=str(created_job.id),
@@ -365,10 +365,10 @@ class PomodoroCog(commands.Cog):
             )
         else:
             posted_message = await interaction.channel.send(**payload)
-            await interaction.followup.send(
-                ephemeral=True,
-                content="Pomodoro started.",
-            )
+            try:
+                await interaction.delete_original_response()
+            except discord.HTTPException:
+                pass
 
         await PomodoroFunctions.bind_timer_message(
             job_id=str(created_job.id),
