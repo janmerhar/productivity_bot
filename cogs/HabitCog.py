@@ -61,6 +61,7 @@ class HabitCog(commands.Cog):
         reminder_text = (reminder or "").strip()
         timezone = None
         if reminder_text:
+
             async def _continue_with_timezone(
                 followup_interaction: discord.Interaction,
                 resolved_timezone: str,
@@ -197,8 +198,91 @@ class HabitCog(commands.Cog):
             view = HabitActionView(habit_id, habit_name, interaction.user.id)
             await interaction.followup.send(ephemeral=ephemeral, view=view, **payload)
 
+    @habit_group.command(name="show", description="Show one habit")
+    @app_commands.describe(
+        habit_name="Habit to show",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def show_habit(
+        self,
+        interaction: discord.Interaction,
+        habit_name: str,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        del habit_name
+        ephemeral = self._resolve_response_visibility(interaction, visibility)
+        await interaction.response.send_message(
+            "This slash command is not yet implemented.",
+            ephemeral=ephemeral,
+        )
+
+    @habit_group.command(name="status", description="Set today's status for a habit")
+    @app_commands.describe(
+        habit_name="Habit to update",
+        status="Today's status for the habit",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(
+        status=[
+            app_commands.Choice(name="Complete", value="complete"),
+            app_commands.Choice(name="Skip", value="skip"),
+            app_commands.Choice(name="Incomplete", value="incomplete"),
+        ],
+        visibility=VISIBILITY_CHOICES,
+    )
+    async def status_habit(
+        self,
+        interaction: discord.Interaction,
+        habit_name: str,
+        status: app_commands.Choice[str],
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        del habit_name, status
+        ephemeral = self._resolve_response_visibility(interaction, visibility)
+        await interaction.response.send_message(
+            "This slash command is not yet implemented.",
+            ephemeral=ephemeral,
+        )
+
+    @habit_group.command(name="edit", description="Edit an existing habit")
+    @app_commands.describe(
+        habit_name="Habit to edit",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def edit_habit(
+        self,
+        interaction: discord.Interaction,
+        habit_name: str,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        del habit_name
+        ephemeral = self._resolve_response_visibility(interaction, visibility)
+        await interaction.response.send_message(
+            "This slash command is not yet implemented.",
+            ephemeral=ephemeral,
+        )
+
+    @habit_group.command(name="delete", description="Delete a habit")
+    @app_commands.describe(
+        habit_name="Habit to delete",
+        visibility=VISIBILITY_DESC,
+    )
+    @app_commands.choices(visibility=VISIBILITY_CHOICES)
+    async def delete_habit(
+        self,
+        interaction: discord.Interaction,
+        habit_name: str,
+        visibility: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
+        del habit_name
+        ephemeral = self._resolve_response_visibility(interaction, visibility)
+        await interaction.response.send_message(
+            "This slash command is not yet implemented.",
+            ephemeral=ephemeral,
+        )
+
 
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(HabitCog(client))
-
-
