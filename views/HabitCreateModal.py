@@ -67,17 +67,10 @@ class HabitCreateModal(discord.ui.Modal):
             placeholder="8am, 20:30",
             default=str(default_reminder or ""),
         )
-        self.timezone_input = discord.ui.TextInput(
-            label="Timezone",
-            style=discord.TextStyle.short,
-            required=False,
-            placeholder="Only needed when adding a reminder",
-        )
 
         self.add_item(self.habit_input)
         self.add_item(self.description_input)
         self.add_item(self.reminder_input)
-        self.add_item(self.timezone_input)
 
         if include_scope_select:
             try:
@@ -272,44 +265,12 @@ class HabitCreateModal(discord.ui.Modal):
             UserSettingsFunctions.get_timezone,
             interaction.user.id,
         )
-        timezone_input_value = str(self.timezone_input.value or "").strip()
-        if timezone_input_value:
-            resolved_timezone = await asyncio.to_thread(
-                UserSettingsFunctions.resolve_timezone_input,
-                timezone_input_value,
-            )
-            if not resolved_timezone:
-                await handle_interaction_error(
-                    interaction,
-                    ValidationError(
-                        "I couldn't understand that timezone. Try `America/New_York`, `berlin`, `pst`, or `utc+2`.",
-                        ephemeral=self._response_ephemeral,
-                    ),
-                )
-                return
-            try:
-                await asyncio.to_thread(
-                    UserSettingsFunctions.set_timezone,
-                    interaction.user.id,
-                    resolved_timezone,
-                )
-            except Exception as exc:
-                await handle_interaction_error(
-                    interaction,
-                    ValidationError(
-                        "I couldn't save that timezone right now. Please try again.",
-                        ephemeral=self._response_ephemeral,
-                        cause=exc,
-                    ),
-                )
-                return
-            timezone = resolved_timezone
 
         if reminder_value and not timezone:
             await handle_interaction_error(
                 interaction,
                 ValidationError(
-                    "To save a reminder from this form, set your timezone or fill in the `Timezone` field.",
+                    "To save a reminder from this form, set your timezone with `/settings set timezone` first.",
                     ephemeral=self._response_ephemeral,
                 ),
             )
