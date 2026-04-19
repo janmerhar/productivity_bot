@@ -23,6 +23,9 @@ class HabitActionView(discord.ui.View):
         self.message: Optional[discord.Message] = None
         self._rebuild_items()
 
+    def button_view_kind(self) -> str:
+        return "basic"
+
     def _rebuild_items(self, *, disabled: bool = False) -> None:
         from views.habit_dynamic_items import (
             HabitCompleteButton,
@@ -34,6 +37,7 @@ class HabitActionView(discord.ui.View):
             HabitCompleteButton(
                 self.habit_id,
                 self.user_id,
+                view_kind=self.button_view_kind(),
                 disabled=disabled,
             )
         )
@@ -41,6 +45,7 @@ class HabitActionView(discord.ui.View):
             HabitSkipButton(
                 self.habit_id,
                 self.user_id,
+                view_kind=self.button_view_kind(),
                 disabled=disabled,
             )
         )
@@ -50,13 +55,15 @@ class HabitActionView(discord.ui.View):
         interaction: discord.Interaction,
         *,
         source_message: Optional[discord.Message] = None,
+        habit: Optional[dict] = None,
     ) -> bool:
-        habit = await asyncio.to_thread(
-            HabitFunctions.fetch_habit,
-            self.habit_id,
-            interaction.guild_id,
-            self.user_id,
-        )
+        if habit is None:
+            habit = await asyncio.to_thread(
+                HabitFunctions.fetch_habit,
+                self.habit_id,
+                interaction.guild_id,
+                self.user_id,
+            )
 
         if habit is None:
             self._rebuild_items(disabled=True)
@@ -75,18 +82,36 @@ class HabitActionView(discord.ui.View):
             )
             embed = payload["embed"]
 
-        candidates = [
-            source_message,
-            interaction.message,
-            self.message,
-        ]
-        for candidate in candidates:
+        candidates = []
+        for candidate in (source_message, interaction.message, self.message):
             if candidate is None:
                 continue
+            if any(
+                getattr(existing, "id", None) == getattr(candidate, "id", None)
+                for existing in candidates
+            ):
+                continue
+            candidates.append(candidate)
+
+        for candidate in candidates:
             try:
                 await candidate.edit(embed=embed, view=self)
                 self.message = candidate
                 return True
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 continue
+
+        source_message_id = getattr(source_message, "id", None)
+        if source_message_id is not None:
+            try:
+                await interaction.followup.edit_message(
+                    source_message_id,
+                    embed=embed,
+                    view=self,
+                )
+                self.message = source_message
+                return True
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                pass
+
         return False

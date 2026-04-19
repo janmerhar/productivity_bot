@@ -372,6 +372,9 @@ class HabitCreatedActionView(HabitActionView):
             timeout=timeout,
         )
 
+    def button_view_kind(self) -> str:
+        return "created"
+
     def _rebuild_items(self, *, disabled: bool = False) -> None:
         super()._rebuild_items(disabled=disabled)
         add_button = discord.ui.Button(
