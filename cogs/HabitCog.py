@@ -8,6 +8,7 @@ from discord.ext import commands
 from embeds.HabitEmbeds import HabitEmbeds
 from classes.HabitFunctions import HabitFunctions
 from views.HabitActionView import HabitActionView
+from views.HabitCreateModal import HabitCreatedActionView
 from services.discord_helpers import (
     habit_target_autocomplete,
     normalize_habit_target,
@@ -45,7 +46,7 @@ class HabitCog(commands.Cog):
 
     @habit_group.command(name="add", description="Create a new habit")
     @app_commands.describe(
-        name="Habit name",
+        habit="Habit name",
         description="Longer description for this habit",
         reminder="Daily reminder time",
         scope="This channel, another text channel, or personal",
@@ -55,7 +56,7 @@ class HabitCog(commands.Cog):
     async def habit(
         self,
         interaction: discord.Interaction,
-        name: str,
+        habit: str,
         description: Optional[str] = None,
         reminder: Optional[str] = None,
         scope: Optional[str] = None,
@@ -70,7 +71,7 @@ class HabitCog(commands.Cog):
             scope_value,
             visibility,
         )
-        if not name.strip():
+        if not habit.strip():
             raise ValidationError("Habit name cannot be empty.", ephemeral=ephemeral)
 
         reminder_text = (reminder or "").strip()
@@ -83,7 +84,7 @@ class HabitCog(commands.Cog):
             ) -> None:
                 await self._create_habit(
                     interaction=followup_interaction,
-                    name=name,
+                    habit=habit,
                     description=description,
                     reminder=reminder,
                     ephemeral=ephemeral,
@@ -104,7 +105,7 @@ class HabitCog(commands.Cog):
         await interaction.response.defer(ephemeral=ephemeral)
         await self._create_habit(
             interaction=interaction,
-            name=name,
+            habit=habit,
             description=description,
             reminder=reminder,
             ephemeral=ephemeral,
@@ -116,7 +117,7 @@ class HabitCog(commands.Cog):
     async def _create_habit(
         self,
         interaction: discord.Interaction,
-        name: str,
+        habit: str,
         description: Optional[str],
         reminder: Optional[str],
         ephemeral: bool,
@@ -124,13 +125,43 @@ class HabitCog(commands.Cog):
         scope_value: str,
         target_channel_id: Optional[int],
     ) -> None:
+        document, reminder_time, reminder_failed = await self._persist_habit(
+            interaction=interaction,
+            habit=habit,
+            description=description,
+            reminder=reminder,
+            ephemeral=ephemeral,
+            timezone=timezone,
+            scope_value=scope_value,
+            target_channel_id=target_channel_id,
+        )
+        await self._send_created_habit_response(
+            interaction,
+            document=document,
+            reminder_time=reminder_time,
+            reminder_failed=reminder_failed,
+            ephemeral=ephemeral,
+        )
+
+    async def _persist_habit(
+        self,
+        *,
+        interaction: discord.Interaction,
+        habit: str,
+        description: Optional[str],
+        reminder: Optional[str],
+        ephemeral: bool,
+        timezone: Optional[str],
+        scope_value: str,
+        target_channel_id: Optional[int],
+    ) -> tuple[dict, Optional[object], bool]:
         try:
             document, reminder_time = await asyncio.to_thread(
                 HabitFunctions.insert_habit,
                 interaction.guild_id,
                 interaction.user.id,
                 target_channel_id,
-                name,
+                habit,
                 description,
                 reminder,
                 timezone,
@@ -156,13 +187,37 @@ class HabitCog(commands.Cog):
             except Exception:
                 reminder_failed = True
 
-        payload = HabitEmbeds.insert_habit_embed(
-            name=document["name"],
-            description=document.get("description"),
-            reminder_time=reminder_time,
+        return document, reminder_time, reminder_failed
+
+    async def _send_created_habit_response(
+        self,
+        interaction: discord.Interaction,
+        *,
+        document: dict,
+        reminder_time,
+        reminder_failed: bool,
+        ephemeral: bool,
+    ) -> None:
+        status = HabitFunctions.today_status(document)
+        progress = HabitFunctions.recent_progress(document, days=5)
+        payload = HabitEmbeds.habit_item_embed(
+            document,
+            status,
+            progress,
         )
         if reminder_failed:
             payload["content"] = "Habit created, but I couldn't schedule the reminder."
+        payload["view"] = HabitCreatedActionView(
+            self,
+            habit_id=str(document.get("_id") or ""),
+            habit_name=str(document.get("name") or "Habit"),
+            user_id=int(document.get("user_id") or 0),
+            scope_value=HabitFunctions._normalize_scope(
+                str(document.get("scope") or "channel")
+            ),
+            target_channel_id=document.get("channel_id"),
+            response_ephemeral=ephemeral,
+        )
 
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 

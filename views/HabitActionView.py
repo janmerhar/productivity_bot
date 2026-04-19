@@ -24,7 +24,6 @@ class HabitActionView(discord.ui.View):
     def _rebuild_items(self, *, disabled: bool = False) -> None:
         from views.habit_dynamic_items import (
             HabitCompleteButton,
-            HabitIncompleteButton,
             HabitSkipButton,
         )
 
@@ -38,13 +37,6 @@ class HabitActionView(discord.ui.View):
         )
         self.add_item(
             HabitSkipButton(
-                self.habit_id,
-                self.user_id,
-                disabled=disabled,
-            )
-        )
-        self.add_item(
-            HabitIncompleteButton(
                 self.habit_id,
                 self.user_id,
                 disabled=disabled,

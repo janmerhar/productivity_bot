@@ -11,7 +11,6 @@ async def register_habit_dynamic_items(bot: commands.Bot) -> None:
     bot.add_dynamic_items(
         HabitCompleteButton,
         HabitSkipButton,
-        HabitIncompleteButton,
     )
 
 
@@ -196,63 +195,5 @@ class HabitSkipButton(
             habit_id=self.habit_id,
             user_id=self.user_id,
             mode="skip",
-            response_ephemeral=response_ephemeral,
-        )
-
-
-class HabitIncompleteButton(
-    discord.ui.DynamicItem[discord.ui.Button],
-    template=r"habit:incomplete:(?P<habit_id>[^:]+):(?P<user_id>\d+)",
-):
-    def __init__(
-        self,
-        habit_id: str,
-        user_id: int,
-        *,
-        disabled: bool = False,
-    ) -> None:
-        super().__init__(
-            discord.ui.Button(
-                label="incomplete",
-                style=discord.ButtonStyle.danger,
-                custom_id=f"habit:incomplete:{habit_id}:{user_id}",
-                disabled=disabled,
-            )
-        )
-        self.habit_id = habit_id
-        self.user_id = user_id
-
-    @classmethod
-    async def from_custom_id(
-        cls,
-        interaction: discord.Interaction,
-        item: discord.ui.Item,
-        match,
-        /,
-    ) -> "HabitIncompleteButton":
-        del interaction
-        return cls(
-            match.group("habit_id"),
-            int(match.group("user_id")),
-            disabled=getattr(item, "disabled", False),
-        )
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        response_ephemeral = inherit_ephemeral_from_interaction(
-            interaction,
-            default=True,
-        )
-        if not await _ensure_allowed(
-            interaction,
-            user_id=self.user_id,
-            response_ephemeral=response_ephemeral,
-        ):
-            return
-
-        await _record_completion(
-            interaction,
-            habit_id=self.habit_id,
-            user_id=self.user_id,
-            mode="incomplete",
             response_ephemeral=response_ephemeral,
         )

@@ -1,0 +1,308 @@
+import asyncio
+from typing import Any, Optional
+
+import discord
+
+from classes.UserSettingsFunctions import UserSettingsFunctions
+from services.discord_helpers import normalize_habit_target
+from services.error_reporting import ValidationError, handle_interaction_error
+from services.visibility import inherit_ephemeral_from_interaction
+from views.HabitActionView import HabitActionView
+
+_MODAL_SELECTS_SUPPORTED = True
+
+
+class HabitCreateModal(discord.ui.Modal):
+    def __init__(
+        self,
+        cog: Any,
+        *,
+        user_id: int,
+        scope_value: str,
+        target_channel_id: Optional[int],
+        response_ephemeral: bool,
+        guild_id: Optional[int],
+        channel_id: Optional[int],
+        include_scope_select: bool = True,
+    ) -> None:
+        super().__init__(title="Add Habit")
+        self._cog = cog
+        self._user_id = int(user_id)
+        self._scope_value = str(scope_value or "channel")
+        self._target_channel_id = target_channel_id
+        self._response_ephemeral = bool(response_ephemeral)
+        self._guild_id = guild_id
+        self._channel_id = channel_id
+        self.scope_select: Optional[discord.ui.Select] = None
+        self.scope_select_label: Optional[discord.ui.Label] = None
+
+        self.habit_input = discord.ui.TextInput(
+            label="Habit",
+            style=discord.TextStyle.short,
+            required=True,
+        )
+        self.description_input = discord.ui.TextInput(
+            label="Description",
+            style=discord.TextStyle.paragraph,
+            required=False,
+        )
+        self.reminder_input = discord.ui.TextInput(
+            label="Reminder",
+            style=discord.TextStyle.short,
+            required=False,
+            placeholder="8am, 20:30",
+        )
+        self.timezone_input = discord.ui.TextInput(
+            label="Timezone",
+            style=discord.TextStyle.short,
+            required=False,
+            placeholder="Only needed when adding a reminder",
+        )
+
+        self.add_item(self.habit_input)
+        self.add_item(self.description_input)
+        self.add_item(self.reminder_input)
+        self.add_item(self.timezone_input)
+
+        if include_scope_select:
+            try:
+                scope_options = self._build_scope_options()
+                if len(scope_options) > 1:
+                    self.scope_select = discord.ui.Select(
+                        placeholder="Scope",
+                        min_values=1,
+                        max_values=1,
+                        options=scope_options,
+                    )
+                    self.scope_select_label = discord.ui.Label(
+                        text="Scope",
+                        component=self.scope_select,
+                    )
+                    self.add_item(self.scope_select_label)
+            except Exception:
+                self.scope_select = None
+                self.scope_select_label = None
+
+    def _build_scope_options(self) -> list[discord.SelectOption]:
+        options: list[discord.SelectOption] = []
+        if self._guild_id is not None and self._channel_id is not None:
+            default_current = (
+                self._scope_value == "channel"
+                and self._target_channel_id == self._channel_id
+            )
+            options.append(
+                discord.SelectOption(
+                    label="This Channel",
+                    value="current",
+                    default=default_current,
+                )
+            )
+            guild = self._cog.client.get_guild(self._guild_id)
+            if guild is not None:
+                member = guild.get_member(self._user_id)
+                for channel in guild.text_channels:
+                    if len(options) >= 24:
+                        break
+                    if channel.id == self._channel_id:
+                        continue
+                    if member is not None and not channel.permissions_for(member).view_channel:
+                        continue
+                    options.append(
+                        discord.SelectOption(
+                            label=f"#{channel.name}"[:100],
+                            value=f"channel:{channel.id}",
+                            default=(
+                                self._scope_value == "channel"
+                                and self._target_channel_id == channel.id
+                            ),
+                        )
+                    )
+        options.append(
+            discord.SelectOption(
+                label="Personal",
+                value="personal",
+                default=self._scope_value == "personal",
+            )
+        )
+        return options
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id != self._user_id:
+            await interaction.response.send_message(
+                "This form is only for the user who started the command.",
+                ephemeral=self._response_ephemeral,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=self._response_ephemeral)
+
+        reminder_value = str(self.reminder_input.value or "").strip() or None
+        timezone = await asyncio.to_thread(
+            UserSettingsFunctions.get_timezone,
+            interaction.user.id,
+        )
+        timezone_input_value = str(self.timezone_input.value or "").strip()
+        if timezone_input_value:
+            resolved_timezone = await asyncio.to_thread(
+                UserSettingsFunctions.resolve_timezone_input,
+                timezone_input_value,
+            )
+            if not resolved_timezone:
+                await handle_interaction_error(
+                    interaction,
+                    ValidationError(
+                        "I couldn't understand that timezone. Try `America/New_York`, `berlin`, `pst`, or `utc+2`.",
+                        ephemeral=self._response_ephemeral,
+                    ),
+                )
+                return
+            try:
+                await asyncio.to_thread(
+                    UserSettingsFunctions.set_timezone,
+                    interaction.user.id,
+                    resolved_timezone,
+                )
+            except Exception as exc:
+                await handle_interaction_error(
+                    interaction,
+                    ValidationError(
+                        "I couldn't save that timezone right now. Please try again.",
+                        ephemeral=self._response_ephemeral,
+                        cause=exc,
+                    ),
+                )
+                return
+            timezone = resolved_timezone
+
+        if reminder_value and not timezone:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(
+                    "To add a reminder from this form, set your timezone or fill in the `Timezone` field.",
+                    ephemeral=self._response_ephemeral,
+                ),
+            )
+            return
+
+        selected_scope = self._scope_value
+        selected_channel_id = self._target_channel_id
+        if self.scope_select is not None and self.scope_select.values:
+            try:
+                selected_scope, selected_channel_id, _ = normalize_habit_target(
+                    interaction,
+                    self.scope_select.values[0],
+                )
+            except ValueError as exc:
+                await handle_interaction_error(
+                    interaction,
+                    ValidationError(
+                        str(exc),
+                        ephemeral=self._response_ephemeral,
+                        cause=exc,
+                    ),
+                )
+                return
+
+        try:
+            document, reminder_time, reminder_failed = await self._cog._persist_habit(
+                interaction=interaction,
+                habit=str(self.habit_input.value or ""),
+                description=str(self.description_input.value or "").strip() or None,
+                reminder=reminder_value,
+                ephemeral=self._response_ephemeral,
+                timezone=timezone,
+                scope_value=selected_scope,
+                target_channel_id=selected_channel_id,
+            )
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                exc,
+                ephemeral=self._response_ephemeral,
+            )
+            return
+
+        await self._cog._send_created_habit_response(
+            interaction,
+            document=document,
+            reminder_time=reminder_time,
+            reminder_failed=reminder_failed,
+            ephemeral=self._response_ephemeral,
+        )
+
+
+class HabitCreatedActionView(HabitActionView):
+    def __init__(
+        self,
+        cog: Any,
+        *,
+        habit_id: str,
+        habit_name: str,
+        user_id: int,
+        scope_value: str,
+        target_channel_id: Optional[int],
+        response_ephemeral: bool,
+        timeout: float | None = 300,
+    ) -> None:
+        self._cog = cog
+        self.scope_value = str(scope_value or "channel")
+        self.target_channel_id = target_channel_id
+        self.response_ephemeral = bool(response_ephemeral)
+        super().__init__(
+            habit_id=habit_id,
+            habit_name=habit_name,
+            user_id=user_id,
+            timeout=timeout,
+        )
+
+    def _rebuild_items(self, *, disabled: bool = False) -> None:
+        super()._rebuild_items(disabled=disabled)
+        add_button = discord.ui.Button(
+            label="Add Another",
+            style=discord.ButtonStyle.primary,
+            row=0,
+            disabled=disabled,
+        )
+        add_button.callback = self._open_create_modal
+        self.add_item(add_button)
+
+    async def _open_create_modal(self, interaction: discord.Interaction) -> None:
+        global _MODAL_SELECTS_SUPPORTED
+        self.response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=self.response_ephemeral,
+        )
+
+        if _MODAL_SELECTS_SUPPORTED:
+            try:
+                await interaction.response.send_modal(
+                    HabitCreateModal(
+                        self._cog,
+                        user_id=self.user_id,
+                        scope_value=self.scope_value,
+                        target_channel_id=self.target_channel_id,
+                        response_ephemeral=self.response_ephemeral,
+                        guild_id=interaction.guild_id,
+                        channel_id=interaction.channel_id,
+                        include_scope_select=True,
+                    )
+                )
+                return
+            except discord.HTTPException as exc:
+                if exc.code == 50035 and "must be one of (4,)" in str(exc):
+                    _MODAL_SELECTS_SUPPORTED = False
+                else:
+                    raise
+
+        await interaction.response.send_modal(
+            HabitCreateModal(
+                self._cog,
+                user_id=self.user_id,
+                scope_value=self.scope_value,
+                target_channel_id=self.target_channel_id,
+                response_ephemeral=self.response_ephemeral,
+                guild_id=interaction.guild_id,
+                channel_id=interaction.channel_id,
+                include_scope_select=False,
+            )
+        )
