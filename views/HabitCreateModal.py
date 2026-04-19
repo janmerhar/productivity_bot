@@ -362,6 +362,38 @@ def _format_reminder_input(reminder_time) -> Optional[str]:
         return None
 
 
+class HabitDeleteConfirmModal(discord.ui.Modal):
+    def __init__(
+        self,
+        parent_view: "HabitCreatedActionView",
+        *,
+        source_message: Optional[discord.Message],
+    ) -> None:
+        habit_name = str(parent_view.habit_name or "").strip()
+        modal_title = f"Delete {habit_name or 'Habit'}"
+        if len(modal_title) > 45:
+            modal_title = modal_title[:42].rstrip() + "..."
+        super().__init__(title=modal_title)
+        self.parent_view = parent_view
+        self.source_message = source_message
+
+        if habit_name:
+            habit_ref = f"`{habit_name[:80]}`"
+        else:
+            habit_ref = "this habit"
+        self.add_item(
+            discord.ui.TextDisplay(
+                f"This will permanently delete {habit_ref}."
+            )
+        )
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await self.parent_view._confirm_delete(
+            interaction,
+            source_message=self.source_message,
+        )
+
+
 class HabitCreatedActionView(HabitActionView):
     def __init__(
         self,
@@ -404,6 +436,14 @@ class HabitCreatedActionView(HabitActionView):
         )
         edit_button.callback = self._open_edit_modal
         self.add_item(edit_button)
+        delete_button = discord.ui.Button(
+            label="Delete",
+            style=discord.ButtonStyle.danger,
+            row=0,
+            disabled=disabled,
+        )
+        delete_button.callback = self._open_delete_modal
+        self.add_item(delete_button)
 
     async def _open_modal(
         self,
@@ -531,4 +571,74 @@ class HabitCreatedActionView(HabitActionView):
                 source_view=self,
                 source_message=interaction.message,
             ),
+        )
+
+    async def _open_delete_modal(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "Only the habit owner can use these buttons.",
+                ephemeral=True,
+            )
+            return
+
+        self.response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=self.response_ephemeral,
+        )
+        self.message = interaction.message
+
+        await interaction.response.send_modal(
+            HabitDeleteConfirmModal(
+                self,
+                source_message=interaction.message,
+            )
+        )
+
+    async def _confirm_delete(
+        self,
+        interaction: discord.Interaction,
+        *,
+        source_message: Optional[discord.Message] = None,
+    ) -> None:
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
+        try:
+            deleted = await asyncio.to_thread(
+                HabitFunctions.delete_habit,
+                self.habit_id,
+                interaction.guild_id,
+                self.user_id,
+            )
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                exc,
+                ephemeral=self.response_ephemeral,
+            )
+            return
+
+        if not deleted:
+            await interaction.followup.send(
+                "That habit is no longer available.",
+                ephemeral=self.response_ephemeral,
+            )
+            return
+
+        deleted_payload = HabitEmbeds.deleted_habit_embed(self.habit_name)
+        if source_message is not None:
+            try:
+                await source_message.edit(view=None, **deleted_payload)
+                self.message = source_message
+                return
+            except discord.NotFound:
+                pass
+            except Exception:
+                await interaction.followup.send(
+                    "Habit deleted, but updating the card failed.",
+                    ephemeral=self.response_ephemeral,
+                )
+                return
+
+        await interaction.followup.send(
+            ephemeral=self.response_ephemeral,
+            **deleted_payload,
         )

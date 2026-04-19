@@ -167,6 +167,37 @@ class HabitFunctions:
         return updated_habit, reminder_time
 
     @staticmethod
+    def delete_habit(
+        habit_id: str,
+        guild_id: Optional[int],
+        user_id: Optional[int] = None,
+    ) -> bool:
+        habit = HabitFunctions.fetch_habit(
+            habit_id,
+            guild_id=guild_id,
+            user_id=user_id,
+        )
+        if habit is None:
+            return False
+
+        habit_jobs = HabitFunctions.list_habit_tasks(
+            habit_id,
+            habit.get("guild_id"),
+        )
+        deleted = mongo_db["habits"].delete_one({"_id": habit["_id"]})
+        if deleted.deleted_count <= 0:
+            return False
+
+        manager = DailyJobManager()
+        for job in habit_jobs:
+            try:
+                manager.delete_job(str(job.id), guild_id=job.guild_id)
+            except Exception:
+                continue
+
+        return True
+
+    @staticmethod
     def list_habits(
         guild_id: Optional[int],
         user_id: int,

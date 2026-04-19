@@ -67,6 +67,15 @@ class HabitEmbeds:
         return {"embed": embed}
 
     @staticmethod
+    def deleted_habit_embed(name: str) -> dict:
+        embed = discord.Embed(
+            title=str(name or "Habit"),
+            description="This habit was deleted.",
+            color=discord.Colour.red(),
+        )
+        return {"embed": embed}
+
+    @staticmethod
     def habit_item_embed(
         habit: Dict[str, Any],
         status: Optional[str],
