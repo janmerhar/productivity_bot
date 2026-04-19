@@ -296,6 +296,7 @@ class PomodoroStartView(discord.ui.View):
         mode: str = "focus",
         end_time: Optional[datetime.datetime] = None,
         is_paused: bool = False,
+        auto_cycle_enabled: bool = False,
         voice_channel_select_enabled: bool = True,
         *,
         timeout: float = 21600,
@@ -305,6 +306,7 @@ class PomodoroStartView(discord.ui.View):
         self._mode = mode
         self._end_time = end_time
         self._is_paused = is_paused
+        self._auto_cycle_enabled = auto_cycle_enabled
         self._voice_channel_select_enabled = voice_channel_select_enabled
 
         if not self._voice_channel_select_enabled:
@@ -363,6 +365,13 @@ class PomodoroStartView(discord.ui.View):
         return updated
 
     def _sync_play_pause_button(self) -> None:
+        if self._auto_cycle_enabled:
+            self.auto_cycle_button.label = "Auto On"
+            self.auto_cycle_button.style = discord.ButtonStyle.success
+        else:
+            self.auto_cycle_button.label = "Auto Off"
+            self.auto_cycle_button.style = discord.ButtonStyle.secondary
+
         if self._is_paused:
             self.play_pause_button.label = "Resume"
             self.play_pause_button.emoji = "▶️"
@@ -661,7 +670,7 @@ class PomodoroStartView(discord.ui.View):
         await self._handle_select_voice_channel(interaction)
 
     @discord.ui.button(
-        label="Auto",
+        label="Auto Off",
         style=discord.ButtonStyle.secondary,
         emoji="🔄",
     )
@@ -675,10 +684,23 @@ class PomodoroStartView(discord.ui.View):
             )
             return
 
-        await interaction.response.send_message(
-            ephemeral=False,
-            content="Auto-cycle toggle is not implemented yet.",
+        from classes.PomodoroFunctions import PomodoroFunctions
+
+        ok, enabled, message = await PomodoroFunctions.toggle_auto_cycle(
+            interaction,
+            expected_end_time=self._end_time,
+            is_paused=self._is_paused,
         )
+        if not ok or enabled is None:
+            await interaction.response.send_message(
+                ephemeral=False,
+                content=message,
+            )
+            return
+
+        self._auto_cycle_enabled = enabled
+        self._sync_play_pause_button()
+        await interaction.response.edit_message(view=self)
 
     @discord.ui.button(label="Stop", style=discord.ButtonStyle.danger)
     async def stop_button(

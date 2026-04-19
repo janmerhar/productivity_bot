@@ -218,6 +218,7 @@ class PomodoroFunctions:
             "duration": str(resolved_duration),
             "total_duration_minutes": str(resolved_duration),
             "user": str(user_id),
+            "auto_cycle": False,
         }
 
         return end_time, resolved_duration, data, schedule
@@ -274,6 +275,91 @@ class PomodoroFunctions:
             )
         except Exception:
             return
+
+    @staticmethod
+    async def toggle_auto_cycle(
+        interaction: discord.Interaction,
+        *,
+        expected_end_time: Optional[datetime.datetime] = None,
+        is_paused: Optional[bool] = None,
+    ) -> Tuple[bool, Optional[bool], str]:
+        manager = DailyJobManager()
+
+        try:
+            jobs = await PomodoroFunctions._list_scope_jobs(manager, interaction)
+        except Exception:
+            return False, None, "Something went wrong while updating auto-cycle."
+
+        user_id = str(interaction.user.id)
+        user_jobs = [
+            job
+            for job in jobs
+            if job.type == "pomodoro" and str((job.data or {}).get("user")) == user_id
+        ]
+        if not user_jobs:
+            return (
+                False,
+                None,
+                "You don't have an active pomodoro "
+                f"{PomodoroFunctions._scope_message(interaction)}.",
+            )
+
+        normalized_expected = PomodoroFunctions._normalize_datetime(expected_end_time)
+        selected_job: Optional[DailyJob] = None
+        best_distance_seconds: Optional[float] = None
+
+        for job in user_jobs:
+            paused = PomodoroFunctions._is_truthy((job.data or {}).get("paused"))
+            if is_paused is not None and paused != is_paused:
+                continue
+
+            scheduled_end_time = PomodoroFunctions._normalize_datetime(
+                PomodoroFunctions.parse_schedule_datetime(job.schedule)
+            )
+
+            if normalized_expected is None or scheduled_end_time is None:
+                if selected_job is None:
+                    selected_job = job
+                continue
+
+            distance_seconds = abs(
+                (scheduled_end_time - normalized_expected).total_seconds()
+            )
+            if (
+                best_distance_seconds is None
+                or distance_seconds < best_distance_seconds
+            ):
+                best_distance_seconds = distance_seconds
+                selected_job = job
+
+        if selected_job is None:
+            return False, None, "I couldn't find that pomodoro."
+
+        data = dict(selected_job.data or {})
+        enabled = not PomodoroFunctions._is_truthy(data.get("auto_cycle"))
+        data["auto_cycle"] = enabled
+
+        try:
+            updated = await asyncio.to_thread(
+                manager.update_job,
+                str(selected_job.id),
+                data=data,
+                channel_id=(
+                    interaction.channel_id if interaction.guild_id is None else None
+                ),
+                guild_id=interaction.guild_id,
+            )
+        except Exception:
+            return False, None, "Something went wrong while updating auto-cycle."
+
+        if not updated:
+            return False, None, "I couldn't update auto-cycle. Please try again."
+
+        return (
+            True,
+            enabled,
+            ("Auto-cycle enabled." if enabled else "Auto-cycle disabled."),
+        )
 
     @staticmethod
     def pomodoro_payload(job: DailyJob) -> Dict[str, Any]:

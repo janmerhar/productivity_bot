@@ -160,13 +160,17 @@ class PomodoroCog(commands.Cog):
         mode = str(data.get("mode", "focus")).strip().lower()
         if mode not in ("focus", "break"):
             mode = "focus"
+
         duration_minutes = PomodoroFunctions._resolve_total_duration_minutes(data)
         duration = str(duration_minutes) if duration_minutes > 0 else "?"
+
         paused_value = data.get("paused")
         if isinstance(paused_value, str):
             is_paused = paused_value.strip().lower() in ("1", "true", "yes", "on")
         else:
             is_paused = bool(paused_value)
+
+        auto_cycle_enabled = PomodoroFunctions._is_truthy(data.get("auto_cycle"))
 
         if is_paused:
             remaining_seconds_raw = str(
@@ -225,6 +229,7 @@ class PomodoroCog(commands.Cog):
             mode=mode,
             end_time=selected_end_time,
             is_paused=is_paused,
+            auto_cycle_enabled=auto_cycle_enabled,
             voice_channel_select_enabled=interaction.guild is not None,
         )
         return payload
