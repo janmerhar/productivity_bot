@@ -666,7 +666,7 @@ class HabitCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         habit: str,
-        status: app_commands.Choice[str],
+        status: Optional[app_commands.Choice[str]] = None,
         date: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
@@ -677,11 +677,15 @@ class HabitCog(commands.Cog):
             visibility,
         )
         locale_code = str(getattr(interaction, "locale", "") or "").strip() or None
+        status_choice = status or app_commands.Choice(
+            name="Complete",
+            value="complete",
+        )
         await self._start_habit_mark_flow(
             interaction,
             habit=habit,
-            status_value=status.value,
-            status_label=status.name,
+            status_value=status_choice.value,
+            status_label=status_choice.name,
             date=date,
             scope_value=scope_value,
             ephemeral=ephemeral,
