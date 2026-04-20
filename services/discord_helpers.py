@@ -601,6 +601,6 @@ def resolve_habit_ephemeral(
         scope_value=scope_value,
         visibility=visibility,
         private_scope_values=("personal",),
-        guild_default_visibility="private",
+        guild_default_visibility="public",
         dm_default_visibility="private",
     )

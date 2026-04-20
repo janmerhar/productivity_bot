@@ -474,13 +474,6 @@ class HabitCog(commands.Cog):
                 cause=exc,
             )
 
-        if not habits:
-            await interaction.followup.send(
-                ephemeral=ephemeral,
-                **HabitEmbeds.habits_empty_embed(status_value),
-            )
-            return
-
         view = HabitListView(
             habits=habits,
             scope_label=str(scope_label),
