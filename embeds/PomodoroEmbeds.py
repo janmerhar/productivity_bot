@@ -11,10 +11,14 @@ class PomodoroEmbeds:
     def _duration_footer(
         focus_duration: Optional[int],
         break_duration: Optional[int],
+        streak: int = 0,
     ) -> str:
         f_min = focus_duration if focus_duration is not None else 30
         b_min = break_duration if break_duration is not None else 5
-        return f"Focus: {f_min} min • Break: {b_min} min"
+        base = f"Focus {f_min}m • Break {b_min}m"
+        if streak > 0:
+            return f"{base} • 🔥 {streak}"
+        return base
 
     @staticmethod
     def _round_half_up(value: float) -> int:
@@ -80,6 +84,7 @@ class PomodoroEmbeds:
         ends_label: str = "Ends",
         focus_duration: Optional[int] = None,
         break_duration: Optional[int] = None,
+        streak: int = 0,
     ) -> dict:
         resolved_title = title if title is not None else f"{mode.capitalize()} Session"
         resolved_description = (
@@ -92,7 +97,7 @@ class PomodoroEmbeds:
             description=resolved_description,
             color=discord.Colour.green(),
         )
-        embed.set_footer(text=PomodoroEmbeds._duration_footer(focus_duration, break_duration))
+        embed.set_footer(text=PomodoroEmbeds._duration_footer(focus_duration, break_duration, streak))
         return {"embed": embed}
 
     @staticmethod
@@ -103,6 +108,7 @@ class PomodoroEmbeds:
         user_id: Optional[Union[int, str]] = None,
         focus_duration: Optional[int] = None,
         break_duration: Optional[int] = None,
+        streak: int = 0,
     ) -> dict:
         resolved_mode = str(mode).strip().lower()
         if resolved_mode not in ("focus", "break"):
@@ -118,7 +124,7 @@ class PomodoroEmbeds:
             description=f"{mention}Your {resolved_mode} session has finished.",
             color=discord.Colour.green(),
         )
-        embed.set_footer(text=PomodoroEmbeds._duration_footer(focus_duration, break_duration))
+        embed.set_footer(text=PomodoroEmbeds._duration_footer(focus_duration, break_duration, streak))
         return {"embed": embed}
 
     @staticmethod

@@ -138,6 +138,12 @@ class PomodoroFunctions:
         return selected_job, selected_end_time
 
     @staticmethod
+    def _next_streak(mode: str, streak: int) -> int:
+        if mode == "focus":
+            return streak + 1
+        return streak
+
+    @staticmethod
     def create_timer(
         guild_id: Optional[int],
         channel_id: int,
@@ -146,6 +152,7 @@ class PomodoroFunctions:
         user_id: Union[int, str],
         break_duration: Optional[int] = None,
         focus_duration: Optional[int] = None,
+        streak: int = 0,
     ) -> Tuple[datetime.datetime, int, DailyJob]:
         end_time, resolved_duration, data, schedule = (
             PomodoroFunctions.insert_pomodoro_timer(
@@ -155,6 +162,7 @@ class PomodoroFunctions:
                 user_id=user_id,
                 break_duration=break_duration,
                 focus_duration=focus_duration,
+                streak=streak,
             )
         )
         manager = DailyJobManager()
@@ -202,6 +210,7 @@ class PomodoroFunctions:
         user_id: Union[int, str],
         break_duration: Optional[int] = None,
         focus_duration: Optional[int] = None,
+        streak: int = 0,
     ) -> Tuple[datetime.datetime, int, Dict[str, Any], OneTimeSchedule2]:
         normalized_mode = mode.lower()
         if normalized_mode not in ("focus", "break"):
@@ -225,6 +234,7 @@ class PomodoroFunctions:
             "total_duration_minutes": str(resolved_duration),
             "user": str(user_id),
             "auto_cycle": False,
+            "streak": streak,
         }
         if focus_duration is not None:
             data["focus_duration"] = str(focus_duration)
@@ -372,7 +382,7 @@ class PomodoroFunctions:
         )
 
     @staticmethod
-    def pomodoro_payload(job: DailyJob) -> Dict[str, Any]:
+    def pomodoro_payload(job: DailyJob, streak: int = 0) -> Dict[str, Any]:
         data = job.data or {}
         mode = str(data.get("mode", "focus")).strip().lower()
         if mode not in ("focus", "break"):
@@ -391,6 +401,7 @@ class PomodoroFunctions:
             user_id=user_id or None,
             focus_duration=int(raw_focus) if raw_focus.isdigit() else None,
             break_duration=int(raw_break) if raw_break.isdigit() else None,
+            streak=streak,
         )
 
         if user_id.isdigit():

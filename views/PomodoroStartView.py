@@ -300,6 +300,7 @@ class PomodoroStartView(discord.ui.View):
         voice_channel_select_enabled: bool = True,
         focus_duration: Optional[int] = None,
         break_duration: Optional[int] = None,
+        streak: int = 0,
         *,
         timeout: float = 21600,
     ) -> None:
@@ -312,6 +313,7 @@ class PomodoroStartView(discord.ui.View):
         self._voice_channel_select_enabled = voice_channel_select_enabled
         self._focus_duration = focus_duration
         self._break_duration = break_duration
+        self._streak = streak
 
         if not self._voice_channel_select_enabled:
             self.select_voice_channel_button.disabled = True
@@ -349,7 +351,11 @@ class PomodoroStartView(discord.ui.View):
             return None
         updated = embed.copy()
         updated.description = PomodoroEmbeds.running_description(end_time)
-        updated.set_footer(text=PomodoroEmbeds._duration_footer(self._focus_duration, self._break_duration))
+        updated.set_footer(
+            text=PomodoroEmbeds._duration_footer(
+                self._focus_duration, self._break_duration, self._streak
+            )
+        )
         for idx, field in enumerate(updated.fields):
             field_name = (field.name or "").strip().lower()
             if field_name == "ends":
@@ -406,7 +412,11 @@ class PomodoroStartView(discord.ui.View):
             remaining_minutes=remaining_minutes,
         )
         updated.color = discord.Colour.orange()
-        updated.set_footer(text=PomodoroEmbeds._duration_footer(self._focus_duration, self._break_duration))
+        updated.set_footer(
+            text=PomodoroEmbeds._duration_footer(
+                self._focus_duration, self._break_duration, self._streak
+            )
+        )
 
         for idx, field in enumerate(updated.fields):
             field_name = (field.name or "").strip().lower()
@@ -438,7 +448,6 @@ class PomodoroStartView(discord.ui.View):
             return None
 
         updated.title = self._mode_title(mode)
-        updated.description = PomodoroEmbeds.running_description(end_time)
         updated.color = discord.Colour.green()
         return updated
 

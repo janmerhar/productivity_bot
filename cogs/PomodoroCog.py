@@ -171,6 +171,7 @@ class PomodoroCog(commands.Cog):
             is_paused = bool(paused_value)
 
         auto_cycle_enabled = PomodoroFunctions._is_truthy(data.get("auto_cycle"))
+        streak = PomodoroFunctions._safe_int(data.get("streak"), default=0)
 
         if is_paused:
             remaining_seconds_raw = str(
@@ -205,6 +206,7 @@ class PomodoroCog(commands.Cog):
             selected_end_time,
             title=title_override,
             description=resolved_description,
+            streak=streak,
         )
         embed = payload.get("embed")
         if is_paused and isinstance(embed, discord.Embed):
@@ -231,6 +233,7 @@ class PomodoroCog(commands.Cog):
             is_paused=is_paused,
             auto_cycle_enabled=auto_cycle_enabled,
             voice_channel_select_enabled=interaction.guild is not None,
+            streak=streak,
         )
         return payload
 

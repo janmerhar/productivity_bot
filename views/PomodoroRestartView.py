@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 from typing import Optional
 
 import discord
@@ -20,16 +21,24 @@ class PomodoroRestartView(discord.ui.View):
         *,
         focus_duration: Optional[int] = None,
         break_duration: Optional[int] = None,
+        streak: int = 0,
+        chain_expires_at: Optional[datetime.datetime] = None,
         timeout: float = 21600,
     ) -> None:
         super().__init__(timeout=timeout)
         self._focus_duration = focus_duration
         self._break_duration = break_duration
+        self._streak = streak
+        self._chain_expires_at = chain_expires_at
 
     async def _start(
         self, interaction: discord.Interaction, mode: str, duration: Optional[int]
     ) -> None:
         await interaction.response.defer(ephemeral=False)
+
+        streak = self._streak
+        if self._chain_expires_at is not None and datetime.datetime.now() > self._chain_expires_at:
+            streak = 0
 
         try:
             end_time, resolved_duration, created_job = await asyncio.to_thread(
@@ -41,6 +50,7 @@ class PomodoroRestartView(discord.ui.View):
                 interaction.user.id,
                 self._break_duration,
                 self._focus_duration,
+                streak,
             )
         except ValueError as exc:
             await handle_interaction_error(
@@ -86,12 +96,16 @@ class PomodoroRestartView(discord.ui.View):
                     mode,
                 )
 
+        job_streak = PomodoroFunctions._safe_int(
+            (created_job.data or {}).get("streak"), default=0
+        )
         payload = PomodoroEmbeds.insert_timer_embed(
             mode,
             resolved_duration,
             end_time,
             focus_duration=self._focus_duration,
             break_duration=self._break_duration,
+            streak=job_streak,
         )
         join_url = target_channel.jump_url if target_channel else None
         payload["view"] = PomodoroStartView(
@@ -102,6 +116,7 @@ class PomodoroRestartView(discord.ui.View):
             voice_channel_select_enabled=interaction.guild is not None,
             focus_duration=self._focus_duration,
             break_duration=self._break_duration,
+            streak=job_streak,
         )
         payload["content"] = voice_error or None
 
