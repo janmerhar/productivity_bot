@@ -384,6 +384,93 @@ def habit_target_autocomplete(
     return choices[:25]
 
 
+def normalize_habit_list_scope(
+    interaction: discord.Interaction,
+    target: Optional[str],
+) -> Tuple[str, Optional[int], str]:
+    if interaction.guild is None:
+        return "personal", None, "Personal"
+
+    cleaned = str(target or "").strip().lower()
+    if not cleaned:
+        return "guild", None, "All Server Habits"
+
+    if cleaned in {"guild", "server", "all server", "all guild", "all"}:
+        return "guild", None, "All Server Habits"
+
+    return normalize_habit_target(interaction, target)
+
+
+def habit_list_scope_autocomplete(
+    interaction: discord.Interaction,
+    current: str = "",
+) -> List[app_commands.Choice[str]]:
+    if interaction.guild is None:
+        return [app_commands.Choice(name="Personal", value="personal")]
+
+    query = (current or "").strip().lower()
+    choices: List[app_commands.Choice[str]] = []
+
+    if (
+        not query
+        or "all" in query
+        or "guild" in query
+        or "server" in query
+    ):
+        choices.append(
+            app_commands.Choice(
+                name="All Server Habits",
+                value="guild",
+            )
+        )
+
+    current_channel_id = interaction.channel_id
+    if current_channel_id and (
+        not query or "current" in query or "here" in query or "channel" in query
+    ):
+        choices.append(
+            app_commands.Choice(
+                name="This Channel",
+                value="current",
+            )
+        )
+
+    for channel in interaction.guild.text_channels:
+        if len(choices) >= 24:
+            break
+        if current_channel_id and channel.id == current_channel_id:
+            continue
+        if (
+            query
+            and query not in channel.name.lower()
+            and query not in str(channel.id)
+        ):
+            continue
+        if not channel.permissions_for(interaction.user).view_channel:
+            continue
+        choices.append(
+            app_commands.Choice(
+                name=f"#{channel.name}"[:100],
+                value=f"channel:{channel.id}",
+            )
+        )
+
+    if len(choices) < 25 and (
+        not query
+        or "personal" in query
+        or "private" in query
+        or "dm" in query
+    ):
+        choices.append(
+            app_commands.Choice(
+                name="Personal",
+                value="personal",
+            )
+        )
+
+    return choices[:25]
+
+
 def format_reminder_mentions(
     guild: Optional[discord.Guild],
     raw_value: Optional[str],

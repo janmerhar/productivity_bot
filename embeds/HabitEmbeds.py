@@ -62,6 +62,8 @@ class HabitEmbeds:
         )
         if mode == "incomplete":
             embed.description = "No incomplete habits for today."
+        elif mode == "skipped":
+            embed.description = "No skipped habits for today."
         else:
             embed.description = "No habits found."
         return {"embed": embed}

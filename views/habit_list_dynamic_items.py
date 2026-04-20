@@ -7,6 +7,8 @@ async def register_habit_list_dynamic_items(bot: commands.Bot) -> None:
         HabitListShowButton,
         HabitListPrevButton,
         HabitListNextButton,
+        HabitListAddButton,
+        HabitListOptionsButton,
     )
 
 
@@ -155,3 +157,89 @@ class HabitListNextButton(
             return
         view.page += 1
         await view._safe_refresh_message(interaction)
+
+
+class HabitListAddButton(
+    discord.ui.DynamicItem[discord.ui.Button],
+    template=r"habitlist:add:(?P<session_id>[a-f0-9]+)",
+):
+    def __init__(self, session_id: str) -> None:
+        super().__init__(
+            discord.ui.Button(
+                style=discord.ButtonStyle.success,
+                emoji="\u2795",
+                row=1,
+                custom_id=f"habitlist:add:{session_id}",
+            )
+        )
+        self.session_id = session_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Item,
+        match,
+        /,
+    ) -> "HabitListAddButton":
+        del interaction, item
+        return cls(match.group("session_id"))
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view = await _ensure_view(interaction, session_id=self.session_id)
+        if view is None:
+            return
+        view.message = interaction.message
+        await view.open_create_modal(
+            interaction,
+            source_message=interaction.message,
+        )
+
+
+class HabitListOptionsButton(
+    discord.ui.DynamicItem[discord.ui.Button],
+    template=r"habitlist:options:(?P<session_id>[a-f0-9]+)",
+):
+    def __init__(
+        self,
+        session_id: str,
+        *,
+        active: bool = False,
+    ) -> None:
+        super().__init__(
+            discord.ui.Button(
+                style=(
+                    discord.ButtonStyle.success
+                    if active
+                    else discord.ButtonStyle.secondary
+                ),
+                emoji="\U0001F50E",
+                row=1,
+                custom_id=f"habitlist:options:{session_id}",
+            )
+        )
+        self.session_id = session_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Item,
+        match,
+        /,
+    ) -> "HabitListOptionsButton":
+        del interaction
+        return cls(
+            match.group("session_id"),
+            active=getattr(item, "style", None) == discord.ButtonStyle.success,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view = await _ensure_view(interaction, session_id=self.session_id)
+        if view is None:
+            return
+        view.message = interaction.message
+        await view.open_options_modal(
+            interaction,
+            source_message=interaction.message,
+        )

@@ -162,6 +162,25 @@ class HabitCreateModal(discord.ui.Modal):
             )
             return
 
+        refresh_method = getattr(self._source_view, "refresh_message", None)
+        if callable(refresh_method):
+            try:
+                await refresh_method(
+                    interaction,
+                    source_message=self._source_message,
+                    jump_to_last_page=True,
+                )
+            except TypeError:
+                try:
+                    await refresh_method(
+                        interaction,
+                        source_message=self._source_message,
+                    )
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
         await self._cog._send_created_habit_response(
             interaction,
             document=document,

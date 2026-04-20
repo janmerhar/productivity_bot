@@ -11,8 +11,10 @@ from views.HabitActionView import HabitActionView
 from views.HabitListView import HabitListView
 from views.HabitCreateModal import HabitCreateModal, HabitCreatedActionView
 from services.discord_helpers import (
+    habit_list_scope_autocomplete,
     habit_target_autocomplete,
     normalize_habit_target,
+    normalize_habit_list_scope,
     resolve_habit_ephemeral,
 )
 from services.error_reporting import UserVisibleError, ValidationError
@@ -409,26 +411,33 @@ class HabitCog(commands.Cog):
 
     @habit_group.command(name="list", description="List habits")
     @app_commands.describe(
-        mode="Show all habits or only incomplete habits",
-        scope="This channel, another text channel, or personal",
+        status="Show all habits, only incomplete habits, or skipped habits",
+        sort="Sort order for habits",
+        scope="This server, this channel, another text channel, or personal",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
-        mode=[
+        status=[
             app_commands.Choice(name="All", value="all"),
             app_commands.Choice(name="Incomplete", value="incomplete"),
+            app_commands.Choice(name="Skipped", value="skipped"),
+        ],
+        sort=[
+            app_commands.Choice(name="Ascending", value="ascending"),
+            app_commands.Choice(name="Descending", value="descending"),
         ],
         visibility=VISIBILITY_CHOICES,
     )
     async def habits(
         self,
         interaction: discord.Interaction,
-        mode: Optional[app_commands.Choice[str]] = None,
+        status: Optional[app_commands.Choice[str]] = None,
+        sort: Optional[app_commands.Choice[str]] = None,
         scope: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         try:
-            scope_value, target_channel_id, _ = normalize_habit_target(
+            scope_value, target_channel_id, scope_label = normalize_habit_list_scope(
                 interaction, scope
             )
         except ValueError as exc:
@@ -438,19 +447,14 @@ class HabitCog(commands.Cog):
             scope_value,
             visibility,
         )
-        mode_value = mode.value if mode else "incomplete"
-        scope_label = "Habits"
-
-        if scope_value == "personal":
-            scope_label = "Personal"
-        elif interaction.guild is not None and target_channel_id is not None:
+        status_value = status.value if status else "all"
+        sort_value = sort.value if sort else "ascending"
+        if scope_value == "channel" and interaction.guild is not None and target_channel_id is not None:
             selected_channel = interaction.guild.get_channel(target_channel_id)
             if isinstance(selected_channel, discord.TextChannel):
                 scope_label = f"#{selected_channel.name}"
             else:
                 scope_label = f"Channel {target_channel_id}"
-        else:
-            scope_label = "Habits"
 
         await interaction.response.defer(ephemeral=ephemeral)
 
@@ -460,7 +464,7 @@ class HabitCog(commands.Cog):
                 interaction.guild_id,
                 interaction.user.id,
                 target_channel_id,
-                mode_value,
+                status_value,
                 scope_value,
             )
         except Exception as exc:
@@ -473,7 +477,7 @@ class HabitCog(commands.Cog):
         if not habits:
             await interaction.followup.send(
                 ephemeral=ephemeral,
-                **HabitEmbeds.habits_empty_embed(mode_value),
+                **HabitEmbeds.habits_empty_embed(status_value),
             )
             return
 
@@ -481,7 +485,8 @@ class HabitCog(commands.Cog):
             habits=habits,
             scope_label=str(scope_label),
             scope_value=scope_value,
-            mode=mode_value,
+            mode=status_value,
+            sort=sort_value,
             guild_id=interaction.guild_id,
             channel_id=target_channel_id,
             user_id=interaction.user.id,
@@ -510,7 +515,7 @@ class HabitCog(commands.Cog):
         interaction: discord.Interaction,
         current: str,
     ) -> list[app_commands.Choice[str]]:
-        return habit_target_autocomplete(interaction, current)
+        return habit_list_scope_autocomplete(interaction, current)
 
     @habit_group.command(name="show", description="Show one habit")
     @app_commands.describe(

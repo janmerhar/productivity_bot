@@ -37,6 +37,7 @@ def _state_document(state: Dict[str, Any]) -> Dict[str, Any]:
         "scope_label": str(state.get("scope_label") or "").strip(),
         "scope_value": str(state.get("scope_value") or "channel").strip(),
         "mode": str(state.get("mode") or "all").strip(),
+        "sort": str(state.get("sort") or "ascending").strip(),
         "guild_id": state.get("guild_id"),
         "channel_id": state.get("channel_id"),
         "user_id": state.get("user_id"),

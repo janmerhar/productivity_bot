@@ -166,7 +166,20 @@ class HabitFunctions:
         channel_id: Optional[int],
         scope: str = "channel",
     ) -> Dict[str, Any]:
-        scope_value = HabitFunctions._normalize_scope(scope)
+        raw_scope = str(scope or "").strip().lower()
+        if guild_id is None:
+            return {
+                "scope": "personal",
+                "user_id": user_id,
+            }
+
+        if raw_scope in {"guild", "server", "all_server"}:
+            return {
+                "guild_id": guild_id,
+                **HabitFunctions._channel_scope_query(),
+            }
+
+        scope_value = HabitFunctions._normalize_scope(raw_scope)
         if guild_id is None:
             scope_value = "personal"
 
@@ -458,6 +471,12 @@ class HabitFunctions:
         if mode == "incomplete":
             habits = [
                 habit for habit in habits if HabitFunctions.needs_completion_today(habit)
+            ]
+        elif mode == "skipped":
+            habits = [
+                habit
+                for habit in habits
+                if HabitFunctions.today_status(habit) == "skip"
             ]
 
         return habits
