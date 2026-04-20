@@ -22,7 +22,10 @@ class HabitEmbeds:
                 dt = datetime.datetime.fromisoformat(str(value))
             except ValueError:
                 return str(value)
-        return dt.strftime("%Y-%m-%d")
+        try:
+            return f"<t:{int(dt.timestamp())}:D>"
+        except (OverflowError, OSError, ValueError):
+            return dt.strftime("%Y-%m-%d")
 
     @staticmethod
     def _format_status(status: Optional[str]) -> str:
