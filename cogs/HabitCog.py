@@ -8,6 +8,7 @@ from discord.ext import commands
 from embeds.HabitEmbeds import HabitEmbeds
 from classes.HabitFunctions import HabitFunctions
 from views.HabitActionView import HabitActionView
+from views.HabitListView import HabitListView
 from views.HabitCreateModal import HabitCreateModal, HabitCreatedActionView
 from services.discord_helpers import (
     habit_target_autocomplete,
@@ -438,6 +439,18 @@ class HabitCog(commands.Cog):
             visibility,
         )
         mode_value = mode.value if mode else "incomplete"
+        scope_label = "Habits"
+
+        if scope_value == "personal":
+            scope_label = "Personal"
+        elif interaction.guild is not None and target_channel_id is not None:
+            selected_channel = interaction.guild.get_channel(target_channel_id)
+            if isinstance(selected_channel, discord.TextChannel):
+                scope_label = f"#{selected_channel.name}"
+            else:
+                scope_label = f"Channel {target_channel_id}"
+        else:
+            scope_label = "Habits"
 
         await interaction.response.defer(ephemeral=ephemeral)
 
@@ -464,14 +477,24 @@ class HabitCog(commands.Cog):
             )
             return
 
-        for habit in habits:
-            status = HabitFunctions.today_status(habit)
-            progress = HabitFunctions.recent_progress(habit, days=5)
-            habit_id = str(habit.get("_id") or "")
-            habit_name = str(habit.get("name") or "Habit")
-            payload = HabitEmbeds.habit_item_embed(habit, status, progress)
-            view = HabitActionView(habit_id, habit_name, interaction.user.id)
-            await interaction.followup.send(ephemeral=ephemeral, view=view, **payload)
+        view = HabitListView(
+            habits=habits,
+            scope_label=str(scope_label),
+            scope_value=scope_value,
+            mode=mode_value,
+            guild_id=interaction.guild_id,
+            channel_id=target_channel_id,
+            user_id=interaction.user.id,
+            response_ephemeral=ephemeral,
+        )
+        await view.ensure_session()
+        message = await interaction.followup.send(
+            ephemeral=ephemeral,
+            view=view,
+            wait=True,
+            **view.payload(),
+        )
+        view.message = message
 
     @habit.autocomplete("destination")
     async def habit_create_destination_autocomplete(
