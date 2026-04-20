@@ -59,10 +59,16 @@ async def _build_habit_view(
                 scope_value=scope_value,
                 target_channel_id=target_channel_id,
                 response_ephemeral=response_ephemeral,
+                today_status=HabitFunctions.today_status(habit or {}),
             )
             return view, habit
 
-    view = HabitActionView(habit_id, habit_name, user_id)
+    view = HabitActionView(
+        habit_id,
+        habit_name,
+        user_id,
+        today_status=HabitFunctions.today_status(habit or {}),
+    )
     return view, habit
 
 
@@ -73,7 +79,6 @@ async def _refresh_habit_message(
     user_id: int,
     view_kind: str,
     response_ephemeral: bool,
-    mode: str | None = None,
 ) -> bool:
     view, habit = await _build_habit_view(
         interaction,
@@ -83,17 +88,11 @@ async def _refresh_habit_message(
         response_ephemeral=response_ephemeral,
     )
     view.message = interaction.message
-    content = MISSING
-    if mode and habit is not None:
-        content = (
-            f"Marked `{str(habit.get('name') or 'Habit')}` as "
-            f"{mode.capitalize()} for today."
-        )
     return await view.refresh_message(
         interaction,
         source_message=interaction.message,
         habit=habit,
-        content=content,
+        content=MISSING,
     )
 
 
@@ -107,6 +106,34 @@ async def _record_completion(
     response_ephemeral: bool,
 ) -> None:
     await interaction.response.defer(ephemeral=response_ephemeral)
+    current_habit = await asyncio.to_thread(
+        HabitFunctions.fetch_habit,
+        habit_id,
+        interaction.guild_id,
+        interaction.user.id,
+    )
+    if current_habit is None:
+        await interaction.followup.send(
+            ephemeral=response_ephemeral,
+            content="That habit is no longer available.",
+        )
+        return
+    if HabitFunctions.today_status(current_habit) == mode:
+        refreshed = await _refresh_habit_message(
+            interaction,
+            habit_id=habit_id,
+            user_id=user_id,
+            view_kind=view_kind,
+            response_ephemeral=response_ephemeral,
+        )
+        if refreshed:
+            return
+        await interaction.followup.send(
+            ephemeral=response_ephemeral,
+            content="That habit is already set to that status for today.",
+        )
+        return
+
     updated = await asyncio.to_thread(
         HabitFunctions.add_completion,
         habit_id,
@@ -127,7 +154,6 @@ async def _record_completion(
         user_id=user_id,
         view_kind=view_kind,
         response_ephemeral=response_ephemeral,
-        mode=mode,
     )
     if refreshed:
         return
@@ -156,7 +182,7 @@ class HabitCompleteButton(
         self.view_kind = _normalize_view_kind(view_kind)
         super().__init__(
             discord.ui.Button(
-                label="complete",
+                emoji="✅",
                 style=discord.ButtonStyle.success,
                 custom_id=f"habit:complete:{habit_id}:{user_id}:{self.view_kind}",
                 disabled=disabled,
@@ -214,7 +240,7 @@ class HabitSkipButton(
         self.view_kind = _normalize_view_kind(view_kind)
         super().__init__(
             discord.ui.Button(
-                label="skip",
+                emoji="⏭️",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"habit:skip:{habit_id}:{user_id}:{self.view_kind}",
                 disabled=disabled,

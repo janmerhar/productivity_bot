@@ -15,23 +15,34 @@ class HabitActionView(discord.ui.View):
         habit_name: str,
         user_id: int,
         *,
+        today_status: Optional[str] = None,
         timeout: float | None = None,
     ) -> None:
         super().__init__(timeout=timeout)
         self.habit_id = habit_id
         self.habit_name = habit_name
         self.user_id = user_id
+        self.today_status = today_status
         self.message: Optional[discord.Message] = None
-        self._rebuild_items()
+        self._rebuild_items(today_status=self.today_status)
 
     def button_view_kind(self) -> str:
         return "basic"
 
-    def _rebuild_items(self, *, disabled: bool = False) -> None:
+    def _rebuild_items(
+        self,
+        *,
+        disabled: bool = False,
+        today_status: Optional[str] = None,
+    ) -> None:
         from views.habit_dynamic_items import (
             HabitCompleteButton,
             HabitSkipButton,
         )
+
+        normalized_status = str(today_status or "").strip().lower() or None
+        complete_disabled = disabled or normalized_status == "complete"
+        skip_disabled = disabled or normalized_status == "skip"
 
         self.clear_items()
         self.add_item(
@@ -39,7 +50,7 @@ class HabitActionView(discord.ui.View):
                 self.habit_id,
                 self.user_id,
                 view_kind=self.button_view_kind(),
-                disabled=disabled,
+                disabled=complete_disabled,
             )
         )
         self.add_item(
@@ -47,7 +58,7 @@ class HabitActionView(discord.ui.View):
                 self.habit_id,
                 self.user_id,
                 view_kind=self.button_view_kind(),
-                disabled=disabled,
+                disabled=skip_disabled,
             )
         )
 
@@ -68,6 +79,7 @@ class HabitActionView(discord.ui.View):
             )
 
         if habit is None:
+            self.today_status = None
             self._rebuild_items(disabled=True)
             embed = discord.Embed(
                 title=self.habit_name or "Habit",
@@ -76,10 +88,11 @@ class HabitActionView(discord.ui.View):
             )
         else:
             self.habit_name = str(habit.get("name") or self.habit_name or "Habit")
-            self._rebuild_items()
+            self.today_status = HabitFunctions.today_status(habit)
+            self._rebuild_items(today_status=self.today_status)
             payload = HabitEmbeds.habit_item_embed(
                 habit,
-                HabitFunctions.today_status(habit),
+                self.today_status,
                 HabitFunctions.recent_progress(habit, days=5),
             )
             embed = payload["embed"]

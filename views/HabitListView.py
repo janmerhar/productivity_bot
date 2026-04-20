@@ -611,6 +611,7 @@ class HabitListView(discord.ui.View):
                 habit_id,
                 str(current_habit.get("name") or "Habit"),
                 interaction.user.id,
+                today_status=HabitFunctions.today_status(current_habit),
             )
 
         await interaction.response.defer(ephemeral=self.response_ephemeral)

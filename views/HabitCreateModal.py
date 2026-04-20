@@ -383,6 +383,7 @@ class HabitCreatedActionView(HabitActionView):
         scope_value: str,
         target_channel_id: Optional[int],
         response_ephemeral: bool,
+        today_status: Optional[str] = None,
         timeout: float | None = 300,
     ) -> None:
         self._cog = cog
@@ -393,16 +394,25 @@ class HabitCreatedActionView(HabitActionView):
             habit_id=habit_id,
             habit_name=habit_name,
             user_id=user_id,
+            today_status=today_status,
             timeout=timeout,
         )
 
     def button_view_kind(self) -> str:
         return "created"
 
-    def _rebuild_items(self, *, disabled: bool = False) -> None:
-        super()._rebuild_items(disabled=disabled)
+    def _rebuild_items(
+        self,
+        *,
+        disabled: bool = False,
+        today_status: Optional[str] = None,
+    ) -> None:
+        super()._rebuild_items(
+            disabled=disabled,
+            today_status=today_status,
+        )
         add_button = discord.ui.Button(
-            label="Add Another",
+            emoji="➕",
             style=discord.ButtonStyle.primary,
             row=0,
             disabled=disabled,
@@ -410,7 +420,7 @@ class HabitCreatedActionView(HabitActionView):
         add_button.callback = self._open_create_modal
         self.add_item(add_button)
         edit_button = discord.ui.Button(
-            label="Edit Habit",
+            emoji="✏️",
             style=discord.ButtonStyle.secondary,
             row=0,
             disabled=disabled,
@@ -418,7 +428,7 @@ class HabitCreatedActionView(HabitActionView):
         edit_button.callback = self._open_edit_modal
         self.add_item(edit_button)
         delete_button = discord.ui.Button(
-            label="Delete",
+            emoji="🗑️",
             style=discord.ButtonStyle.danger,
             row=0,
             disabled=disabled,

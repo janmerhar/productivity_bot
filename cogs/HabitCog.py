@@ -75,6 +75,7 @@ class HabitCog(commands.Cog):
             ),
             target_channel_id=document.get("channel_id"),
             response_ephemeral=ephemeral,
+            today_status=HabitFunctions.today_status(document),
         )
 
     async def _resolve_habit_reference(
@@ -512,27 +513,47 @@ class HabitCog(commands.Cog):
 
     @habit_group.command(name="show", description="Show one habit")
     @app_commands.describe(
-        habit_name="Habit to show",
+        habit="Habit to show",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def show_habit(
         self,
         interaction: discord.Interaction,
-        habit_name: str,
+        habit: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        del habit_name
         scope_value = self._default_scope_value(interaction)
         ephemeral = self._resolve_response_visibility(
             interaction,
             scope_value,
             visibility,
         )
-        await interaction.response.send_message(
-            "This slash command is not yet implemented.",
+        await interaction.response.defer(ephemeral=ephemeral)
+
+        habit_document = await self._resolve_habit_reference(
+            interaction,
+            habit,
+            scope_value=scope_value,
             ephemeral=ephemeral,
         )
+        payload = HabitEmbeds.habit_item_embed(
+            habit_document,
+            HabitFunctions.today_status(habit_document),
+            HabitFunctions.recent_progress(habit_document, days=5),
+        )
+        payload["view"] = self._build_created_habit_view(
+            habit_document,
+            ephemeral=ephemeral,
+        )
+        posted_message = await interaction.followup.send(
+            ephemeral=ephemeral,
+            wait=True,
+            **payload,
+        )
+        view = payload["view"]
+        if isinstance(view, HabitActionView):
+            view.message = posted_message
 
     async def _start_habit_mark_flow(
         self,
@@ -831,6 +852,14 @@ class HabitCog(commands.Cog):
 
     @delete_habit.autocomplete("habit_name")
     async def habit_delete_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        return await self._habit_reference_autocomplete(interaction, current)
+
+    @show_habit.autocomplete("habit")
+    async def habit_show_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
