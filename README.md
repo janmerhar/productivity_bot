@@ -21,40 +21,17 @@ POMODORO_AUDIO_VOLUME=
 ALIAS_DISABLED=
 ```
 
-2. Edit `.env` with your values.
-
-Current runtime essentials:
-
-- Required: `DISCORD_TOKEN`, `MONGO_URI`, `OPENAI_API_KEY`, `POMODORO_AUDIO_VOLUME`
-- Common dev settings: `DEV_MODE`, `DEV_GUILD_ID`, `SYNC_COMMANDS_ON_START`
-
-3. Activate the virtual environment:
-
-```powershell
-source .venv/bin/activate
-```
-
-4. Install dependencies:
+2. Install dependencies:
 
 ```powershell
 pip install -r packages.pip
 ```
 
-5. Start the bot:
+3. Start the bot:
 
 ```powershell
 python main.py
 ```
-
-## Docker
-
-Run with Docker Compose:
-
-```powershell
-docker compose up --build
-```
-
-The current Docker setup runs command cleanup before starting the bot and reads configuration from the root `.env`.
 
 ## Command Highlights
 
