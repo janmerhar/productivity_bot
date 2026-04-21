@@ -6,33 +6,6 @@ It brings shared to-dos, personal reminders, habits, Pomodoro focus sessions, an
 
 What makes it more useful than a plain command pack is the workflow design: messages can be turned into reminders, todos, Pomodoros, or timers from context-menu shortcuts, shared server workflows and private personal workflows both exist in the same bot, and common actions use buttons, selects, and modals instead of pushing everything through raw command syntax. It also includes `/assistant run` for translating natural language into existing slash commands.
 
-## Setup
-
-1. Create a root `.env` file. The current setup uses variables like:
-
-```bash
-DISCORD_TOKEN=
-DEV_MODE=
-DEV_GUILD_ID=
-TICK_DISABLED=
-MONGO_URI=
-OPENAI_API_KEY=
-POMODORO_AUDIO_VOLUME=
-ALIAS_DISABLED=
-```
-
-2. Install dependencies:
-
-```powershell
-pip install -r packages.pip
-```
-
-3. Start the bot:
-
-```powershell
-python main.py
-```
-
 ## Commands
 
 ### Message shortcuts
@@ -112,6 +85,33 @@ Parameters marked `?` are optional.
 - **`/bug report`**: `visibility?`
 - **`/feature request`**: `visibility?`
 - **`/assistant run`**: `query`, `visibility?`
+
+## Setup
+
+1. Create a root `.env` file. The current setup uses variables like:
+
+```bash
+DISCORD_TOKEN=
+DEV_MODE=
+DEV_GUILD_ID=
+TICK_DISABLED=
+MONGO_URI=
+OPENAI_API_KEY=
+POMODORO_AUDIO_VOLUME=
+ALIAS_DISABLED=
+```
+
+2. Install dependencies:
+
+```powershell
+pip install -r packages.pip
+```
+
+3. Start the bot:
+
+```powershell
+python main.py
+```
 
 ## Development
 
