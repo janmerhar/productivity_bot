@@ -10,6 +10,8 @@ What makes it more useful than a plain command pack is the workflow design: mess
 
 ### Message shortcuts
 
+Use Discord message context actions to turn existing conversations into work without retyping content. These shortcuts are the fastest way to create reminders, todos, focus sessions, or timers from messages already in front of you.
+
 - `Create Reminder`
 - `Add to Todo`
 - `Add to Personal Todo`
@@ -19,6 +21,8 @@ What makes it more useful than a plain command pack is the workflow design: mess
 Parameters marked `?` are optional.
 
 ### To-dos
+
+The todo commands cover both personal and shared task management. You can create tasks, organize them into lists, assign ownership, update status, and keep server-level or personal workflows separated.
 
 - **`/todo overview`**: `sort?`, `status?`, `assignee?`, `visibility?`
 - **`/todo add`**: `todo`, `description?`, `due?`, `list?`, `status?`, `assignee?`, `notify_assignee?`, `visibility?`
@@ -37,6 +41,8 @@ Parameters marked `?` are optional.
 
 ### Reminders
 
+Reminder commands handle both recurring and one-off scheduling. They support flexible schedules, private or channel destinations, and pause or resume flows when plans change.
+
 - **`/reminder add`**: `reminder`, `schedule`, `add_pings?`, `description?`, `expires?`, `destination?`, `visibility?`
 - **`/reminder list`**: `destination?`, `sort?`, `status?`, `visibility?`
 - **`/reminder show`**: `reminder`, `visibility?`
@@ -47,6 +53,8 @@ Parameters marked `?` are optional.
 
 ### Habits
 
+Habit tracking is meant for lightweight daily consistency rather than heavy journaling. You can create habits, review progress, mark outcomes, and optionally attach reminders to keep the routine active.
+
 - **`/habit add`**: `habit`, `description?`, `reminder?`, `destination?`, `visibility?`
 - **`/habit list`**: `status?`, `sort?`, `scope?`, `visibility?`
 - **`/habit show`**: `habit`, `visibility?`
@@ -56,6 +64,8 @@ Parameters marked `?` are optional.
 
 ### Pomodoro
 
+Pomodoro commands handle focus and break sessions directly in Discord. They support active session control, time extensions, and voice-channel playback for users who want the bot to participate in focus rooms.
+
 - **`/pomodoro start`**: `mode?`, `duration?`, `voice_channel?`, `autojoin?`, `visibility?`
 - **`/pomodoro active`**: `visibility?`
 - **`/pomodoro pause`**: `visibility?`
@@ -64,6 +74,8 @@ Parameters marked `?` are optional.
 - **`/pomodoro stop`**: `visibility?`
 
 ### Toggl
+
+The Toggl commands let Discord act as a lightweight time-tracking surface. You can start and stop timers, inspect active entries, manage projects and tags, and insert time manually when needed.
 
 - **`/toggl account`**: `visibility?`
 - **`/toggl timer start`**: `project?`, `description?`, `billable?`, `visibility?`
@@ -78,6 +90,8 @@ Parameters marked `?` are optional.
 - **`/toggl tag show`**: `tag`, `visibility?`
 
 ### Other commands
+
+These commands cover the surrounding bot experience rather than one specific workflow. Use them for setup, general bot info, and direct feedback through bug reports or feature requests.
 
 - **`/info`**
 - **`/settings set timezone`**
