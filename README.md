@@ -9,6 +9,10 @@ What makes it more useful than a plain command pack is the workflow design: mess
 <!-- HERO GIF: Show the most visually impressive interaction, e.g. starting a Pomodoro session and seeing the active embed with buttons appear. -->
 <!-- ![Demo](docs/assets/hero.gif) -->
 
+## Add to Your Server
+
+> **Beta coming soon.** An invite link will be available here once the public beta is ready.
+
 ## Commands
 
 ### Message shortcuts
