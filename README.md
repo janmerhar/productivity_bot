@@ -35,7 +35,7 @@ python main.py
 
 ## Commands
 
-Message shortcuts:
+### Message shortcuts
 
 - `Create Reminder`
 - `Add to Todo`
