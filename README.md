@@ -18,8 +18,6 @@ Use Discord message context actions to turn existing conversations into work wit
 - `Start Pomodoro`
 - `Start Timer`
 
-Parameters marked `?` are optional.
-
 ### To-dos
 
 The todo commands cover both personal and shared task management. You can create tasks, organize them into lists, assign ownership, update status, and keep server-level or personal workflows separated.
