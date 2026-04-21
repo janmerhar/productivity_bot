@@ -197,6 +197,80 @@ class OpenAIFunctions:
         return due_dt
 
     @staticmethod
+    def parse_habit_record_datetime(
+        value: str,
+        api_key: Optional[str] = None,
+        model: str = DEFAULT_OPENAI_MODEL,
+        timezone: Optional[str] = None,
+    ) -> Optional[datetime.datetime]:
+        text = value.strip()
+        if not text:
+            return None
+
+        timezone_value = (timezone or "").strip()
+        tzinfo = None
+        if timezone_value:
+            try:
+                tzinfo = ZoneInfo(timezone_value)
+            except ZoneInfoNotFoundError:
+                tzinfo = None
+
+        now = datetime.datetime.now(tzinfo) if tzinfo else datetime.datetime.now()
+        system_prompt = (
+            "You convert natural language habit record dates into local datetimes. "
+            "Return JSON with a single key 'datetime' whose value is an ISO 8601 "
+            "datetime without timezone (YYYY-MM-DDTHH:MM). "
+            "If the input cannot be understood, set 'datetime' to null. "
+            "Prefer the most plausible past or current datetime and never return "
+            "a future datetime."
+        )
+        timezone_line = (
+            f"Timezone: {timezone_value}\n"
+            if timezone_value
+            else "Timezone: server local timezone\n"
+        )
+        user_prompt = (
+            timezone_line
+            + f"Current local datetime: {now.strftime('%Y-%m-%d %H:%M')}\n"
+            + f"Input: {text}"
+        )
+
+        payload = OpenAIFunctions._chat_json_safe(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model=model,
+            api_key=api_key,
+        )
+        if not payload:
+            return None
+
+        raw_value = payload.get("datetime")
+        if not raw_value:
+            return None
+
+        try:
+            parsed_dt = datetime.datetime.fromisoformat(str(raw_value))
+        except ValueError:
+            return None
+
+        if tzinfo is not None:
+            if parsed_dt.tzinfo is None:
+                parsed_dt = parsed_dt.replace(tzinfo=tzinfo)
+            else:
+                parsed_dt = parsed_dt.astimezone(tzinfo)
+        elif parsed_dt.tzinfo is not None:
+            parsed_dt = parsed_dt.astimezone().replace(tzinfo=None)
+
+        parsed_dt = parsed_dt.replace(second=0, microsecond=0)
+        if parsed_dt > now:
+            return None
+
+        if parsed_dt.tzinfo is not None:
+            parsed_dt = parsed_dt.astimezone().replace(tzinfo=None)
+
+        return parsed_dt
+
+    @staticmethod
     def parse_alert_expiration_datetime(
         expires_in: str,
         api_key: Optional[str] = None,

@@ -9,6 +9,7 @@ from discord.ext import commands
 from config.env import settings
 from config.logger import setup_logging
 from services.error_reporting import handle_app_command_error
+from views.habit_list_dynamic_items import register_habit_list_dynamic_items
 from views.habit_dynamic_items import register_habit_dynamic_items
 from views.pomodoro_dynamic_items import register_pomodoro_dynamic_items
 from views.reminder_dynamic_items import register_reminder_dynamic_items
@@ -175,6 +176,7 @@ async def load():
 
 async def main():
     await load()
+    await register_habit_list_dynamic_items(bot)
     await register_habit_dynamic_items(bot)
     await register_pomodoro_dynamic_items(bot)
     await register_reminder_dynamic_items(bot)

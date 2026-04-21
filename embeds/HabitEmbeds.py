@@ -22,7 +22,10 @@ class HabitEmbeds:
                 dt = datetime.datetime.fromisoformat(str(value))
             except ValueError:
                 return str(value)
-        return dt.strftime("%Y-%m-%d")
+        try:
+            return f"<t:{int(dt.timestamp())}:D>"
+        except (OverflowError, OSError, ValueError):
+            return dt.strftime("%Y-%m-%d")
 
     @staticmethod
     def _format_status(status: Optional[str]) -> str:
@@ -62,8 +65,19 @@ class HabitEmbeds:
         )
         if mode == "incomplete":
             embed.description = "No incomplete habits for today."
+        elif mode == "skipped":
+            embed.description = "No skipped habits for today."
         else:
             embed.description = "No habits found."
+        return {"embed": embed}
+
+    @staticmethod
+    def deleted_habit_embed(name: str) -> dict:
+        embed = discord.Embed(
+            title=str(name or "Habit"),
+            description="This habit was deleted.",
+            color=discord.Colour.red(),
+        )
         return {"embed": embed}
 
     @staticmethod
