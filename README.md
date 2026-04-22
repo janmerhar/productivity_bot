@@ -1,147 +1,152 @@
-# About The project
+# Productivity Bot
 
-The productivity bot is a self-hosted discord bot that helps users manage their time, tasks, and events more effectively. The bot connects to three popular APIs: Toggl, TickTick, and Google Calendar, and allows users to access their features through various commands.
+A Discord productivity bot for individuals and teams — works in servers and DMs.
 
-With the productivity bot, users can:
+It brings shared to-dos, personal reminders, habits, Pomodoro focus sessions, and Toggl time tracking into one bot, with support for both server channels and DMs. The current bot covers to-dos with custom lists, assignees, and status tracking, reminders with flexible schedules and private destinations, habits with optional reminders, Pomodoro timers with voice playback, and Toggl timer, project, and tag management.
 
-- Track their time entries with Toggl. Users can start, stop, and view their time entries on Toggl, a time tracking app that helps users monitor their work hours and productivity.
-- Manage their tasks and lists with TickTick. Users can create, delete, and view their tasks and lists on TickTick, a task management app that helps users organize their to-do lists and deadlines.
-- Schedule and view their events and calendars with Google Calendar. Users can create, delete, and view their events and calendars on Google Calendar, a calendar app that helps users plan their meetings and appointments.
-- Check crypto and stock prices on demand.
-- Schedule one-time reminders or recurring jobs in cron or natural language that can post messages or daily market updates.
+What makes it more useful than a plain command pack is the workflow design: messages can be turned into reminders, todos, Pomodoros, or timers from context-menu shortcuts, shared server workflows and private DM workflows both exist in the same bot, and common actions use buttons, selects, and modals instead of pushing everything through raw command syntax.
 
-## Built with
+![Demo](docs/media/pomodoro-create-example.gif)
 
-- Python
-- Discord.py
-- Google Calendar API
-- TickTick API
-- Toggl API
+## Add to Your Server
 
-# Getting started
+> **Beta coming soon.** An invite link will be available here once the public beta is ready.
 
-To get started you need to complete the following steps.
+## Commands
 
-## Prerequisites
+### Message shortcuts
 
-- Python 3.10.7 or greater
-- MongoDB database instance
-- Discord bot token
-- Google Calendar API credentials
-- TickTick API credentials
-- OpenAI API key (optional - natural language schedule parsing)
+![Message shortcuts demo](docs/media/context-menu-todo-example.gif)
 
-## Installation
+Use Discord message context actions to turn existing conversations into work without retyping content. These shortcuts are the fastest way to create reminders, todos, focus sessions, or timers from messages already in front of you.
 
-### Configuration
+- `Create Reminder`
+- `Add to Todo`
+- `Add to Personal Todo`
+- `Start Pomodoro`
+- `Start Timer`
 
-In order to provide API access to the bot, you need to create a `.env` file in the root directory of the project and add the following variables:
+### To-dos
+
+![Todo demo](docs/media/todo-create-example.gif)
+
+The todo commands cover both personal and shared task management. You can create tasks, organize them into lists, assign ownership, update status, and keep server-level or personal workflows separated.
+
+- **`/todo overview`**: `sort?`, `status?`, `assignee?`, `visibility?`
+- **`/todo add`**: `todo`, `description?`, `due?`, `list?`, `status?`, `assignee?`, `notify_assignee?`, `visibility?`
+- **`/todo show`**: `todo`, `visibility?`
+- **`/todo edit`**: `todo`, `visibility?`
+- **`/todo status`**: `todo`, `status`, `visibility?`
+- **`/todo assign`**: `todo`, `assignee`, `visibility?`
+- **`/todo complete`**: `todo`, `visibility?`
+- **`/todo delete`**: `todo`, `visibility?`
+- **`/list show`**: `sort?`, `status?`, `list?`, `assignee?`, `visibility?`
+- **`/list directory`**: `scope?`, `visibility?`
+- **`/list create`**: `name`, `scope?`, `visibility?`
+- **`/list edit`**: `list`, `name`, `visibility?`
+- **`/list clear`**: `list?`, `visibility?`
+- **`/list delete`**: `list`, `visibility?`
+
+### Reminders
+
+![Reminder demo](docs/media/reminder-create-example.gif)
+
+Reminder commands handle both recurring and one-off scheduling. They support flexible schedules, private or channel destinations, and pause or resume flows when plans change.
+
+- **`/reminder add`**: `reminder`, `schedule`, `add_pings?`, `description?`, `expires?`, `destination?`, `visibility?`
+- **`/reminder list`**: `destination?`, `sort?`, `status?`, `visibility?`
+- **`/reminder show`**: `reminder`, `visibility?`
+- **`/reminder edit`**: `reminder`, `visibility?`
+- **`/reminder pause`**: `reminder`, `until?`, `visibility?`
+- **`/reminder resume`**: `reminder`, `visibility?`
+- **`/reminder remove`**: `reminder`, `visibility?`
+
+### Habits
+
+![Habit demo](docs/media/habit-create-example.gif)
+
+Habit tracking is meant for lightweight daily consistency rather than heavy journaling. You can create habits, review progress, mark outcomes, and optionally attach reminders to keep the routine active.
+
+- **`/habit add`**: `habit`, `description?`, `reminder?`, `destination?`, `visibility?`
+- **`/habit list`**: `status?`, `sort?`, `scope?`, `visibility?`
+- **`/habit show`**: `habit`, `visibility?`
+- **`/habit mark`**: `habit`, `status?`, `date?`, `visibility?`
+- **`/habit edit`**: `habit`, `visibility?`
+- **`/habit delete`**: `habit_name`, `visibility?`
+
+### Pomodoro
+
+![Pomodoro demo](docs/media/pomodoro-create-example.gif)
+
+Pomodoro commands handle focus and break sessions directly in Discord. They support active session control, time extensions, and voice-channel playback for users who want the bot to participate in focus rooms.
+
+- **`/pomodoro start`**: `mode?`, `duration?`, `voice_channel?`, `autojoin?`, `visibility?`
+- **`/pomodoro active`**: `visibility?`
+- **`/pomodoro pause`**: `visibility?`
+- **`/pomodoro resume`**: `visibility?`
+- **`/pomodoro extend`**: `minutes?`, `visibility?`
+- **`/pomodoro stop`**: `visibility?`
+
+### Toggl
+
+![Toggl demo](docs/media/toggl-create-example.gif)
+
+The Toggl commands let Discord act as a lightweight time-tracking surface. You can start and stop timers, inspect active entries, manage projects and tags, and insert time manually when needed.
+
+- **`/toggl account`**: `visibility?`
+- **`/toggl timer start`**: `project?`, `description?`, `billable?`, `visibility?`
+- **`/toggl timer active`**: `visibility?`
+- **`/toggl timer stop`**: `visibility?`
+- **`/toggl timer insert`**: `start`, `stop`, `project?`, `description?`, `tags?`, `billable?`, `visibility?`
+- **`/toggl timer list`**: `visibility?`
+- **`/toggl project create`**: `name`, `visibility?`
+- **`/toggl project list`**: `visibility?`
+- **`/toggl project get`**: `project`, `visibility?`
+- **`/toggl tag add`**: `name`, `visibility?`
+- **`/toggl tag show`**: `tag`, `visibility?`
+
+### Other commands
+
+These commands cover the surrounding bot experience rather than one specific workflow. Use them for setup, general bot info, and direct feedback through bug reports or feature requests.
+
+- **`/info`**
+- **`/settings set timezone`**
+- **`/settings set toggl`**
+- **`/bug report`**: `visibility?`
+- **`/feature request`**: `visibility?`
+
+## Setup
+
+1. Create a root `.env` file. The current setup uses variables like:
 
 ```bash
-DISCORD_TOKEN
-
-DEV_MODE
-DEV_GUILD_ID
-
-TOGGL_TOKEN
-
-TICK_ID
-TICK_SECRET
-TICK_URI
-TICK_EMAIL
-TICK_PASSWORD
-
-MONGO_URI
-
-OPENAI_API_KEY
-
-POMODORO_AUDIO_PATH
-POMODORO_BREAK_AUDIO_PATH
-POMODORO_AUDIO_VOLUME
+DISCORD_TOKEN=
+DEV_MODE=
+DEV_GUILD_ID=
+TICK_DISABLED=
+MONGO_URI=
+OPENAI_API_KEY=
+POMODORO_AUDIO_VOLUME=
+ALIAS_DISABLED=
 ```
 
-### Setup
+2. Install dependencies:
 
-1. Provide `.env` file in the root directory of the project
-2. Install Python and Pip
-3. Clone the repository
-   `git clone https://github.com/janmerhar/productivity_bot`
-4. Install the required packages
-   `pip install -r packages.txt`
+```bash
+pip install -r packages.pip
+```
 
-## Usage
+3. Start the bot:
 
-To start the bot run the following command:
-`python main.py`
+```bash
+python main.py
+```
 
-For fast local development with automatic restart on code changes, run:
-`python dev.py`
+## Development
 
-`dev.py` watches `main.py`, `.env`, and the Python source directories, then restarts the bot when files change. If `watchfiles` is installed it uses native file system events for near-instant reloads; otherwise it falls back to a fast polling watcher.
+When `DEV_MODE=true` and `DEV_GUILD_ID` is set, the bot uses dev-mode command sync. In development mode commands are synced on each startup by default.
 
-### Commands
-
-Toggl commands:
-
-- `aboutme` Returns information about the Toggl user.
-- `tag add` Creates a new Toggl tag in the default workspace.
-- `tag show` Shows details for a Toggl tag.
-- `start` Starts a new Toggl timer with an optional project and description.
-- `timer` Returns information about the active Toggl timer.
-- `stop` Stops the active Toggl timer.
-- `inserttimer` Inserts a past Toggl timer.
-- `savetimer` Saves a Toggl timer with an optional workspace ID, billable status, description, project ID, and tags.
-- `removetimer` Removes a saved Toggl timer.
-- `startsaved` Starts a saved Toggl timer by its identifier.
-- `populartimers` Returns the most popular Toggl timers.
-- `timerhistory` Returns a history of Toggl timers.
-- `newproject` Creates a new Toggl project with a given name.
-- `workspaceprojects` Returns all Toggl projects in the current workspace.
-- `getproject` Returns a Toggl project by its ID.
-- `createalias` Creates an alias for a Toggl command with optional arguments.
-
-TickTick commands:
-
-- `newtask` Adds a new task to TickTick with optional parameters. This command takes several optional parameters, including project_id, content, desc, start_date, due_date, time_zone, reminders, repeat, priority, sort_order, and items.
-- `newsubtask` Adds a new subtask to an existing task in TickTick with optional parameters. This command takes several optional parameters, including parent, project_id, content, desc, start_date, due_date, time_zone, reminders, repeat, priority, sort_order, and items.
-- `complete` Marks a task as completed in TickTick. This command takes one required parameter: name (the name of the task to be completed).
-- `updatetask` Updates an existing task in TickTick with optional parameters. This command takes several optional parameters, including name, project_id, content, desc, start_date, due_date, time_zone, reminders, repeat, priority, sort_order, and items.
-- `movetask` Moves a task to a different list in TickTick. This command takes two required parameters: task_details (the name of the task to be moved) and list (the name of the destination list).
-- `deletetask` Deletes a task from TickTick. This command takes one required parameter: name (the name of the task to be deleted).
-- `getlist` Returns information about a list in TickTick. This command takes one required parameter: identifier (the name of the list to retrieve).
-- `newlist` Creates a new list in TickTick with optional parameters. This command takes several optional parameters, including name, color, project_type, and folder_id.
-- `changelist` Updates an existing list in TickTick with optional parameters. This command takes several optional parameters, including name, color, project_type, and folder_id.
-- `deletelist` Deletes a list from TickTick. This command takes one required parameter: identifier (the name of the list to be deleted).
-
-Alias commands:
-
-- `usealias` Shortcuts use alias. This command takes one required parameter: alias (the alias of the command to be used).
-- `findaliases` Shortcuts find aliases. This command takes one required parameter: alias (the alias of the command to be found).
-- `popularalias` Most popular aliases. This command takes one optional parameter: n (the number of most popular aliases to display).
-
-Crypto commands:
-
-- `crypto` Returns the current price and recent change information for a cryptocurrency.
-
-Stocks commands:
-
-- `stock` Returns the current price and recent change information for a stock or ETF.
-
-Reminders and scheduled jobs:
-
-- `reminder` Schedules a one-time reminder
-- `job` Schedules a recurring job using a cron expression or natural language schedule for a `message`, `crypto`, or `stock`.
-
-### Demo
-
-![Toggl Example](docs/media/toggl_example.gif)
-
-## Contributing
-
-To contribute to this project follow these steps:
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/NewFeature`)
-3. Commit changes (`git commit -m 'Add some changes'`)
-4. Push to the branch (`git push origin feature/NewFeature`)
-5. Open a pull request
+```bash
+DEV_MODE=true
+DEV_GUILD_ID=123456789012345678
+```
