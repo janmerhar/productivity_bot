@@ -132,13 +132,13 @@ ALIAS_DISABLED=
 
 2. Install dependencies:
 
-```powershell
+```bash
 pip install -r packages.pip
 ```
 
 3. Start the bot:
 
-```powershell
+```bash
 python main.py
 ```
 
