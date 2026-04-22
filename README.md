@@ -6,8 +6,7 @@ It brings shared to-dos, personal reminders, habits, Pomodoro focus sessions, an
 
 What makes it more useful than a plain command pack is the workflow design: messages can be turned into reminders, todos, Pomodoros, or timers from context-menu shortcuts, shared server workflows and private personal workflows both exist in the same bot, and common actions use buttons, selects, and modals instead of pushing everything through raw command syntax.
 
-<!-- HERO GIF: Show the most visually impressive interaction, e.g. starting a Pomodoro session and seeing the active embed with buttons appear. -->
-<!-- ![Demo](docs/assets/hero.gif) -->
+![Demo](docs/media/pomodoro-create-example.gif)
 
 ## Add to Your Server
 
@@ -16,6 +15,8 @@ What makes it more useful than a plain command pack is the workflow design: mess
 ## Commands
 
 ### Message shortcuts
+
+![Message shortcuts demo](docs/media/context-menu-todo-example.gif)
 
 Use Discord message context actions to turn existing conversations into work without retyping content. These shortcuts are the fastest way to create reminders, todos, focus sessions, or timers from messages already in front of you.
 
@@ -27,8 +28,7 @@ Use Discord message context actions to turn existing conversations into work wit
 
 ### To-dos
 
-<!-- GIF: Create a todo, then show the overview embed with status buttons. -->
-<!-- ![Todo demo](docs/assets/todo-demo.gif) -->
+![Todo demo](docs/media/todo-create-example.gif)
 
 The todo commands cover both personal and shared task management. You can create tasks, organize them into lists, assign ownership, update status, and keep server-level or personal workflows separated.
 
@@ -49,8 +49,7 @@ The todo commands cover both personal and shared task management. You can create
 
 ### Reminders
 
-<!-- GIF: Set a reminder and show it firing in a channel or DM. -->
-<!-- ![Reminder demo](docs/assets/reminder-demo.gif) -->
+![Reminder demo](docs/media/reminder-create-example.gif)
 
 Reminder commands handle both recurring and one-off scheduling. They support flexible schedules, private or channel destinations, and pause or resume flows when plans change.
 
@@ -64,8 +63,7 @@ Reminder commands handle both recurring and one-off scheduling. They support fle
 
 ### Habits
 
-<!-- GIF: Show the habit list embed and marking a habit as done. -->
-<!-- ![Habit demo](docs/assets/habit-demo.gif) -->
+![Habit demo](docs/media/habit-create-example.gif)
 
 Habit tracking is meant for lightweight daily consistency rather than heavy journaling. You can create habits, review progress, mark outcomes, and optionally attach reminders to keep the routine active.
 
@@ -78,8 +76,7 @@ Habit tracking is meant for lightweight daily consistency rather than heavy jour
 
 ### Pomodoro
 
-<!-- GIF: Start a session and show the active embed with pause/extend/stop controls. -->
-<!-- ![Pomodoro demo](docs/assets/pomodoro-demo.gif) -->
+![Pomodoro demo](docs/media/pomodoro-create-example.gif)
 
 Pomodoro commands handle focus and break sessions directly in Discord. They support active session control, time extensions, and voice-channel playback for users who want the bot to participate in focus rooms.
 
@@ -92,8 +89,7 @@ Pomodoro commands handle focus and break sessions directly in Discord. They supp
 
 ### Toggl
 
-<!-- GIF: Start a timer with a project, then stop it and show the time entry. -->
-<!-- ![Toggl demo](docs/assets/toggl-demo.gif) -->
+![Toggl demo](docs/media/toggl-create-example.gif)
 
 The Toggl commands let Discord act as a lightweight time-tracking surface. You can start and stop timers, inspect active entries, manage projects and tags, and insert time manually when needed.
 
