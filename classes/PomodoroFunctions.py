@@ -18,6 +18,7 @@ import discord
 class PomodoroStopResult:
     ok: bool
     message: str
+    streak: int = 0
 
 
 @dataclass
@@ -413,6 +414,30 @@ class PomodoroFunctions:
         return payload
 
     @staticmethod
+    def fetch_last_pomodoro_streak(
+        user_id: int,
+        guild_id: Optional[int],
+        channel_id: int,
+    ) -> int:
+        query: Dict[str, Any] = {
+            "type": "pomodoro",
+            "data.user": str(user_id),
+            "last_run": {"$ne": None},
+        }
+        if guild_id is not None:
+            query["guild_id"] = guild_id
+        else:
+            query["channel_id"] = channel_id
+
+        doc = mongo_db["tasks"].find_one(query, sort=[("last_run", -1)])
+        if doc is None:
+            return 0
+        data = doc.get("data") or {}
+        streak = PomodoroFunctions._safe_int(data.get("streak"), default=0)
+        mode = str(data.get("mode", "")).strip().lower()
+        return PomodoroFunctions._next_streak(mode, streak)
+
+    @staticmethod
     async def stop_user_pomodoro(
         interaction: discord.Interaction,
     ) -> PomodoroStopResult:
@@ -441,6 +466,9 @@ class PomodoroFunctions:
                     f"{PomodoroFunctions._scope_message(interaction)}."
                 ),
             )
+
+        first_job_data = user_jobs[0].data or {}
+        last_streak = PomodoroFunctions._safe_int(first_job_data.get("streak"), default=0)
 
         deleted_count = 0
         for job in user_jobs:
@@ -483,7 +511,13 @@ class PomodoroFunctions:
         elif interaction.guild is not None:
             message += " Voice stays connected while other pomodoros run."
 
-        return PomodoroStopResult(ok=True, message=message)
+        return PomodoroStopResult(
+            ok=True,
+            message=message,
+            streak=last_streak,
+            focus_duration=last_focus_duration,
+            break_duration=last_break_duration,
+        )
 
     @staticmethod
     async def pause_user_pomodoro(

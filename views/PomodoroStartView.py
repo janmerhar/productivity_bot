@@ -736,7 +736,11 @@ class PomodoroStartView(discord.ui.View):
             await interaction.followup.send(ephemeral=False, content=result.message)
             return
 
-        payload = PomodoroEmbeds.timer_stopped_embed()
+        payload = PomodoroEmbeds.timer_stopped_embed(
+            streak=result.streak,
+            focus_duration=self._focus_duration,
+            break_duration=self._break_duration,
+        )
         payload["view"] = PomodoroStoppedView(interaction.user.id)
         payload["content"] = None
 
