@@ -414,6 +414,33 @@ class PomodoroFunctions:
         return payload
 
     @staticmethod
+    def update_best_pomodoro_streak(user_id: int, streak: int) -> None:
+        mongo_db["user_stats"].update_one(
+            {"user_id": str(user_id)},
+            {"$max": {"pomodoro.best_streak": streak}},
+            upsert=True,
+        )
+
+    @staticmethod
+    def fetch_best_pomodoro_streak(user_id: int) -> int:
+        doc = mongo_db["user_stats"].find_one({"user_id": str(user_id)})
+        if doc is None:
+            return 0
+        return PomodoroFunctions._safe_int(
+            (doc.get("pomodoro") or {}).get("best_streak"), default=0
+        )
+
+    @staticmethod
+    def fetch_pomodoro_streak_info(
+        user_id: int,
+        guild_id: Optional[int],
+        channel_id: int,
+    ) -> Tuple[int, int]:
+        last = PomodoroFunctions.fetch_last_pomodoro_streak(user_id, guild_id, channel_id)
+        best = PomodoroFunctions.fetch_best_pomodoro_streak(user_id)
+        return last, best
+
+    @staticmethod
     def fetch_last_pomodoro_streak(
         user_id: int,
         guild_id: Optional[int],
@@ -511,13 +538,7 @@ class PomodoroFunctions:
         elif interaction.guild is not None:
             message += " Voice stays connected while other pomodoros run."
 
-        return PomodoroStopResult(
-            ok=True,
-            message=message,
-            streak=last_streak,
-            focus_duration=last_focus_duration,
-            break_duration=last_break_duration,
-        )
+        return PomodoroStopResult(ok=True, message=message, streak=last_streak)
 
     @staticmethod
     async def pause_user_pomodoro(

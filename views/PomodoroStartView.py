@@ -1,5 +1,6 @@
 # PomodoroStartView.py
 
+import asyncio
 import datetime
 from typing import List, Optional
 
@@ -736,8 +737,13 @@ class PomodoroStartView(discord.ui.View):
             await interaction.followup.send(ephemeral=False, content=result.message)
             return
 
+        best_streak = await asyncio.to_thread(
+            PomodoroFunctions.fetch_best_pomodoro_streak,
+            interaction.user.id,
+        )
         payload = PomodoroEmbeds.timer_stopped_embed(
             streak=result.streak,
+            best_streak=best_streak,
             focus_duration=self._focus_duration,
             break_duration=self._break_duration,
         )

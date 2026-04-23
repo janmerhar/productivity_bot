@@ -110,13 +110,13 @@ class PomodoroCog(commands.Cog):
         interaction: discord.Interaction,
         user_id: int,
     ) -> dict:
-        streak = await asyncio.to_thread(
-            PomodoroFunctions.fetch_last_pomodoro_streak,
+        last_streak, best_streak = await asyncio.to_thread(
+            PomodoroFunctions.fetch_pomodoro_streak_info,
             user_id,
             interaction.guild_id,
             interaction.channel_id,
         )
-        payload = PomodoroEmbeds.timer_stopped_embed(streak=streak)
+        payload = PomodoroEmbeds.timer_stopped_embed(streak=last_streak, best_streak=best_streak)
         payload["view"] = PomodoroStoppedView(user_id)
         return payload
 

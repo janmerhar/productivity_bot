@@ -210,6 +210,12 @@ class DailyTaskCog(commands.Cog):
                     next_duration_min = stored_break_dur if next_mode == "break" else stored_focus_dur
                     current_streak = PomodoroFunctions._safe_int(data.get("streak"), default=0)
                     next_streak = PomodoroFunctions._next_streak(mode, current_streak)
+                    if mode == "focus" and owner_id:
+                        await asyncio.to_thread(
+                            PomodoroFunctions.update_best_pomodoro_streak,
+                            owner_id,
+                            next_streak,
+                        )
                     next_end_time, next_duration, next_data, next_schedule = (
                         PomodoroFunctions.insert_pomodoro_timer(
                             channel_id=job.channel_id or channel.id,
@@ -303,6 +309,12 @@ class DailyTaskCog(commands.Cog):
                 raw_break_dur = str(data.get("break_duration") or "").strip()
                 current_streak = PomodoroFunctions._safe_int(data.get("streak"), default=0)
                 next_streak = PomodoroFunctions._next_streak(mode, current_streak)
+                if mode == "focus" and owner_id:
+                    await asyncio.to_thread(
+                        PomodoroFunctions.update_best_pomodoro_streak,
+                        owner_id,
+                        next_streak,
+                    )
                 pomodoro_payload = PomodoroFunctions.pomodoro_payload(job, streak=next_streak)
                 chain_expires_at = datetime.datetime.now() + datetime.timedelta(minutes=20)
                 pomodoro_payload["view"] = PomodoroRestartView(
