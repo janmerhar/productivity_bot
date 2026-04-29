@@ -324,6 +324,10 @@ class DailyTaskCog(commands.Cog):
                     chain_expires_at=chain_expires_at,
                 )
 
+                end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
+                if guild is not None:
+                    await PomodoroVoiceManager.stop_for_guild(guild.id, end_time)
+
                 if not message_id_raw.isdigit():
                     continue
 
@@ -335,11 +339,7 @@ class DailyTaskCog(commands.Cog):
                     discord.Forbidden,
                     discord.HTTPException,
                 ):
-                    continue
-
-                end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
-                if guild is not None:
-                    await PomodoroVoiceManager.stop_for_guild(guild.id, end_time)
+                    pass
                 continue
             if job.type == "todo":
                 task_id = job.data.get("task_id")

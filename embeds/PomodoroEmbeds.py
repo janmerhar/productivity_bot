@@ -136,7 +136,7 @@ class PomodoroEmbeds:
     ) -> dict:
         resolved_description = (
             "New best streak! 🎉"
-            if streak > 0 and streak >= best_streak
+            if streak > 0 and streak > best_streak
             else None
         )
         embed = discord.Embed(

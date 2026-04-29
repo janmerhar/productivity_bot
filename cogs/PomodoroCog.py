@@ -419,7 +419,11 @@ class PomodoroCog(commands.Cog):
             await interaction.followup.send(ephemeral=ephemeral, **payload)
             return
 
-        payload = PomodoroEmbeds.timer_stopped_embed(streak=result.streak)
+        best_streak = await asyncio.to_thread(
+            PomodoroFunctions.fetch_best_pomodoro_streak,
+            interaction.user.id,
+        )
+        payload = PomodoroEmbeds.timer_stopped_embed(streak=result.streak, best_streak=best_streak)
         payload["view"] = PomodoroStoppedView(interaction.user.id)
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 

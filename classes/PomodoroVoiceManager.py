@@ -51,7 +51,9 @@ class PomodoroVoiceManager:
 
     @classmethod
     def _build_audio_source(cls, audio_path: Path) -> discord.AudioSource:
-        before_options = "-stream_loop -1"
+        # -re caps ffmpeg to realtime output rate, preventing unbounded pipe
+        # accumulation and disk thrashing when the player is stopped.
+        before_options = "-re -stream_loop -1"
         source = discord.FFmpegPCMAudio(
             str(audio_path),
             before_options=before_options,
@@ -101,7 +103,18 @@ class PomodoroVoiceManager:
 
         try:
             if voice_client.is_playing() or voice_client.is_paused():
+                # Grab the process reference before stop() so we can force-kill
+                # it regardless of whether the AudioPlayer cleanup thread runs
+                # promptly. Without this, zombied ffmpeg processes accumulate.
+                old_source = voice_client.source
+                underlying = getattr(old_source, "original", old_source)
+                old_proc = getattr(underlying, "_process", None)
                 voice_client.stop()
+                if old_proc is not None and old_proc.poll() is None:
+                    try:
+                        old_proc.kill()
+                    except Exception:
+                        pass
 
             source = cls._build_audio_source(audio_path)
             voice_client.play(source)
@@ -149,10 +162,7 @@ class PomodoroVoiceManager:
 
         voice_client = session.voice_client
         try:
-            if voice_client.is_playing() or voice_client.is_paused():
-                voice_client.stop()
-            if voice_client.is_connected():
-                await voice_client.disconnect(force=True)
+            await voice_client.disconnect(force=True)
         except (discord.Forbidden, discord.HTTPException, discord.ClientException):
             logger.exception("Failed to disconnect voice client for guild %s", guild_id)
         finally:
