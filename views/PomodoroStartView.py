@@ -353,7 +353,6 @@ class PomodoroStartView(discord.ui.View):
         self,
         embed: Optional[discord.Embed],
         end_time: datetime.datetime,
-        duration_minutes: int,
     ) -> Optional[discord.Embed]:
         if embed is None:
             return None
@@ -364,22 +363,6 @@ class PomodoroStartView(discord.ui.View):
                 self._focus_duration, self._break_duration, self._streak
             )
         )
-        for idx, field in enumerate(updated.fields):
-            field_name = (field.name or "").strip().lower()
-            if field_name == "ends":
-                updated.set_field_at(
-                    idx,
-                    name=field.name,
-                    value=PomodoroStartView._relative_timestamp(end_time),
-                    inline=field.inline,
-                )
-            elif field_name == "duration":
-                updated.set_field_at(
-                    idx,
-                    name=field.name,
-                    value=f"{duration_minutes} minutes",
-                    inline=field.inline,
-                )
         return updated
 
     def _sync_play_pause_button(self) -> None:
@@ -406,7 +389,6 @@ class PomodoroStartView(discord.ui.View):
         self,
         embed: Optional[discord.Embed],
         mode: str,
-        duration_minutes: int,
         remaining_minutes: int,
         remaining_seconds: Optional[int] = None,
     ) -> Optional[discord.Embed]:
@@ -425,23 +407,6 @@ class PomodoroStartView(discord.ui.View):
                 self._focus_duration, self._break_duration, self._streak
             )
         )
-
-        for idx, field in enumerate(updated.fields):
-            field_name = (field.name or "").strip().lower()
-            if field_name == "ends":
-                updated.set_field_at(
-                    idx,
-                    name=field.name,
-                    value="Paused",
-                    inline=field.inline,
-                )
-            elif field_name == "duration":
-                updated.set_field_at(
-                    idx,
-                    name=field.name,
-                    value=f"{duration_minutes} minutes",
-                    inline=field.inline,
-                )
         return updated
 
     def _with_resumed_timer_fields(
@@ -449,9 +414,8 @@ class PomodoroStartView(discord.ui.View):
         embed: Optional[discord.Embed],
         mode: str,
         end_time: datetime.datetime,
-        duration_minutes: int,
     ) -> Optional[discord.Embed]:
-        updated = self._with_updated_timer_fields(embed, end_time, duration_minutes)
+        updated = self._with_updated_timer_fields(embed, end_time)
         if updated is None:
             return None
 
@@ -553,7 +517,6 @@ class PomodoroStartView(discord.ui.View):
                 ),
                 self._mode,
                 result.end_time,
-                result.duration_minutes,
             )
             if updated_embed is None:
                 await interaction.response.send_message(
@@ -577,7 +540,6 @@ class PomodoroStartView(discord.ui.View):
             return
 
         remaining_minutes = result.remaining_minutes or 1
-        duration_minutes = result.duration_minutes or remaining_minutes
         if result.mode:
             self._mode = result.mode
         self._end_time = None
@@ -591,7 +553,6 @@ class PomodoroStartView(discord.ui.View):
                 else None
             ),
             self._mode,
-            duration_minutes,
             remaining_minutes,
             result.remaining_seconds,
         )
@@ -644,7 +605,6 @@ class PomodoroStartView(discord.ui.View):
                 else None
             ),
             result.end_time,
-            result.duration_minutes,
         )
         if updated_embed is None:
             await interaction.response.send_message(

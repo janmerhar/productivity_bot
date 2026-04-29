@@ -80,8 +80,6 @@ class PomodoroEmbeds:
         end_time: Optional[datetime.datetime],
         title: Optional[str] = None,
         description: Optional[str] = None,
-        duration_label: str = "Duration",
-        ends_label: str = "Ends",
         focus_duration: Optional[int] = None,
         break_duration: Optional[int] = None,
         streak: int = 0,
@@ -131,18 +129,22 @@ class PomodoroEmbeds:
     def timer_stopped_embed(
         *,
         title: str = "Pomodoro Stopped",
-        description: str = "Start a focus or break session.\n",
         streak: int = 0,
         best_streak: int = 0,
         focus_duration: Optional[int] = None,
         break_duration: Optional[int] = None,
     ) -> dict:
+        resolved_description = (
+            "New best streak! 🎉"
+            if streak > 0 and streak >= best_streak
+            else None
+        )
         embed = discord.Embed(
             title=title,
-            description=description,
+            description=resolved_description,
             color=discord.Colour.red(),
         )
-        embed.add_field(name="Best", value=str(best_streak) if best_streak > 0 else "—", inline=True)
-        embed.add_field(name="Last", value=str(streak) if streak > 0 else "—", inline=True)
+        embed.add_field(name="Best", value="🏆 " + (str(best_streak) if best_streak > 0 else "—"), inline=True)
+        embed.add_field(name="Last", value="🔥 " + (str(streak) if streak > 0 else "—"), inline=True)
         embed.set_footer(text=PomodoroEmbeds._duration_footer(focus_duration, break_duration))
         return {"embed": embed}

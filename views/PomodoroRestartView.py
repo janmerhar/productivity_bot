@@ -76,10 +76,7 @@ class PomodoroRestartView(discord.ui.View):
         voice_error: Optional[str] = None
         target_channel: Optional[discord.VoiceChannel] = None
 
-        if interaction.guild is None or (
-            isinstance(interaction.user, discord.Member)
-            and interaction.user.voice is None
-        ):
+        if interaction.guild is None:
             voice_error = "Audio off — not in a voice channel."
         else:
             member = interaction.user

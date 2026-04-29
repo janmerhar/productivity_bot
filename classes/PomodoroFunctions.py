@@ -482,7 +482,7 @@ class PomodoroFunctions:
         user_jobs = [
             job
             for job in jobs
-            if job.type == "pomodoro" and str(job.data.get("user")) == user_id
+            if job.type == "pomodoro" and str((job.data or {}).get("user")) == user_id
         ]
 
         if not user_jobs:
@@ -559,7 +559,7 @@ class PomodoroFunctions:
         user_jobs = [
             job
             for job in jobs
-            if job.type == "pomodoro" and str(job.data.get("user")) == user_id
+            if job.type == "pomodoro" and str((job.data or {}).get("user")) == user_id
         ]
         if not user_jobs:
             return PomodoroPauseResult(
@@ -660,7 +660,7 @@ class PomodoroFunctions:
         user_jobs = [
             job
             for job in jobs
-            if job.type == "pomodoro" and str(job.data.get("user")) == user_id
+            if job.type == "pomodoro" and str((job.data or {}).get("user")) == user_id
         ]
         if not user_jobs:
             return PomodoroResumeResult(
@@ -781,7 +781,7 @@ class PomodoroFunctions:
         user_jobs = [
             job
             for job in jobs
-            if job.type == "pomodoro" and str(job.data.get("user")) == user_id
+            if job.type == "pomodoro" and str((job.data or {}).get("user")) == user_id
         ]
         if not user_jobs:
             return PomodoroExtendResult(
