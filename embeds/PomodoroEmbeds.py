@@ -67,10 +67,7 @@ class PomodoroEmbeds:
         value = str(remaining_minutes).strip() if remaining_minutes is not None else ""
         if value.isdigit():
             minute_value = int(value)
-            return (
-                f"**Ends in {minute_value} minute{'s' if minute_value != 1 else ''} "
-                "0 seconds**"
-            )
+            return f"**Ends in {minute_value} minute{'s' if minute_value != 1 else ''}**"
         return "**Ends soon**"
 
     @staticmethod

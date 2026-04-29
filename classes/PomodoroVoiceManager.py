@@ -162,6 +162,16 @@ class PomodoroVoiceManager:
 
         voice_client = session.voice_client
         try:
+            if voice_client.is_playing() or voice_client.is_paused():
+                old_source = voice_client.source
+                underlying = getattr(old_source, "original", old_source)
+                old_proc = getattr(underlying, "_process", None)
+                voice_client.stop()
+                if old_proc is not None and old_proc.poll() is None:
+                    try:
+                        old_proc.kill()
+                    except Exception:
+                        pass
             await voice_client.disconnect(force=True)
         except (discord.Forbidden, discord.HTTPException, discord.ClientException):
             logger.exception("Failed to disconnect voice client for guild %s", guild_id)
