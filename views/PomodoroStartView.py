@@ -192,7 +192,7 @@ class PomodoroVoiceChannelSelectModal(discord.ui.Modal):
         user_id: int,
         mode: str,
         end_time: Optional[datetime.datetime],
-        voice_channel_options: List[discord.SelectOption],
+        interaction: discord.Interaction,
         source_message: Optional[discord.Message],
     ) -> None:
         super().__init__(title="Select Voice Channel")
@@ -200,11 +200,23 @@ class PomodoroVoiceChannelSelectModal(discord.ui.Modal):
         self._mode = mode
         self._end_time = end_time
         self._source_message = source_message
-        self.voice_select = discord.ui.Select(
-            placeholder="Voice channel",
-            min_values=1,
+
+        default_values: List[discord.SelectDefaultValue] = []
+        member = interaction.user
+        if isinstance(member, discord.Member) and member.voice and isinstance(member.voice.channel, discord.VoiceChannel):
+            default_values = [
+                discord.SelectDefaultValue(
+                    id=member.voice.channel.id,
+                    type=discord.SelectDefaultValueType.channel,
+                )
+            ]
+
+        self.voice_select = discord.ui.ChannelSelect(
+            placeholder="None",
+            channel_types=[discord.ChannelType.voice],
+            min_values=0,
             max_values=1,
-            options=voice_channel_options[:25],
+            default_values=default_values,
         )
         self.voice_select_label = discord.ui.Label(
             text="Voice channel",
@@ -229,10 +241,9 @@ class PomodoroVoiceChannelSelectModal(discord.ui.Modal):
             )
             return
 
-        selected_value = self.voice_select.values[0] if self.voice_select.values else ""
-        if selected_value == "__none__":
-            from classes.PomodoroVoiceManager import PomodoroVoiceManager
+        from classes.PomodoroVoiceManager import PomodoroVoiceManager
 
+        if not self.voice_select.values:
             await PomodoroVoiceManager.stop_for_guild(
                 interaction.guild.id,
                 force=True,
@@ -252,18 +263,14 @@ class PomodoroVoiceChannelSelectModal(discord.ui.Modal):
             )
             return
 
-        channel = PomodoroVoiceChannelSelectView._resolve_selected_voice_channel(
-            interaction.guild,
-            selected_value,
-        )
-        if channel is None:
+        selected = self.voice_select.values[0]
+        channel = interaction.guild.get_channel(selected.id)
+        if not isinstance(channel, discord.VoiceChannel):
             await interaction.followup.send(
                 ephemeral=False,
                 content="That voice channel was not found.",
             )
             return
-
-        from classes.PomodoroVoiceManager import PomodoroVoiceManager
 
         error = await PomodoroVoiceManager.start_session(
             interaction.guild,
@@ -471,16 +478,6 @@ class PomodoroStartView(discord.ui.View):
             )
             return
 
-        voice_channel_options = (
-            PomodoroVoiceChannelSelectView._build_voice_channel_options(interaction)
-        )
-        if not voice_channel_options:
-            await interaction.response.send_message(
-                ephemeral=False,
-                content="No available voice channels found.",
-            )
-            return
-
         if _POMODORO_MODAL_SELECTS_SUPPORTED:
             try:
                 await interaction.response.send_modal(
@@ -488,7 +485,7 @@ class PomodoroStartView(discord.ui.View):
                         user_id=self._user_id,
                         mode=self._mode,
                         end_time=self._end_time,
-                        voice_channel_options=voice_channel_options,
+                        interaction=interaction,
                         source_message=interaction.message,
                     )
                 )

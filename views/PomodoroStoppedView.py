@@ -23,6 +23,7 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
         self,
         *,
         parent_view: "PomodoroStoppedView",
+        interaction: discord.Interaction,
     ) -> None:
         super().__init__(title="Custom Pomodoro")
         self._parent_view = parent_view
@@ -41,11 +42,22 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
         )
         self.add_item(self.break_duration_input)
 
+        default_values: list[discord.SelectDefaultValue] = []
+        member = interaction.user
+        if isinstance(member, discord.Member) and member.voice and isinstance(member.voice.channel, discord.VoiceChannel):
+            default_values = [
+                discord.SelectDefaultValue(
+                    id=member.voice.channel.id,
+                    type=discord.SelectDefaultValueType.channel,
+                )
+            ]
+
         self.voice_select = discord.ui.ChannelSelect(
-            placeholder="Voice channel",
+            placeholder="None",
             channel_types=[discord.ChannelType.voice],
             min_values=0,
             max_values=1,
+            default_values=default_values,
         )
         self.voice_select_label = discord.ui.Label(
             text="Voice playback",
@@ -356,6 +368,7 @@ class PomodoroStoppedView(discord.ui.View):
                 await interaction.response.send_modal(
                     PomodoroCustomTimerModal(
                         parent_view=self,
+                        interaction=interaction,
                     )
                 )
                 return
