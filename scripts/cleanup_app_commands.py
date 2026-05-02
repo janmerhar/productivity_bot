@@ -217,6 +217,13 @@ async def _remote_root_count(
     return len(commands)
 
 
+async def _bot_guilds() -> list[discord.Guild]:
+    return sorted(
+        [guild async for guild in main.bot.fetch_guilds(limit=None)],
+        key=lambda item: item.id,
+    )
+
+
 def _desired_root_count() -> int:
     return len(main.bot.tree.get_commands(type=None))
 
@@ -278,7 +285,7 @@ async def _build_reports() -> list[ScopeReport]:
             )
         )
 
-    for guild in sorted(main.bot.guilds, key=lambda item: item.id):
+    for guild in await _bot_guilds():
         if guild.id == dev_guild_id:
             continue
         remote_guild = await _remote_paths(guild=guild)
@@ -317,7 +324,7 @@ async def _apply_cleanup(args: argparse.Namespace) -> list[str]:
         )
 
     if not args.skip_legacy_guilds:
-        for guild in sorted(main.bot.guilds, key=lambda item: item.id):
+        for guild in await _bot_guilds():
             if guild.id == dev_guild_id:
                 continue
             current = await main.bot.tree.fetch_commands(guild=guild)
@@ -338,49 +345,42 @@ async def _run(args: argparse.Namespace) -> int:
     await main.load()
     pruned_commands = _prune_unloaded_extension_commands()
 
-    completed = asyncio.Event()
     exit_code = 0
 
-    @main.bot.listen("on_ready")
-    async def _once_ready() -> None:
-        nonlocal exit_code
-        if completed.is_set():
-            return
+    try:
+        await main.bot.login(settings.discord_token)
 
-        try:
-            if pruned_commands:
-                print("Ignored local commands from unloaded extensions")
-                print("============================================")
-                for command in pruned_commands:
-                    print(command)
-                print()
+        if pruned_commands:
+            print("Ignored local commands from unloaded extensions")
+            print("============================================")
+            for command in pruned_commands:
+                print(command)
+            print()
 
-            reports = await _build_reports()
-            print("Command scope audit")
-            print("===================")
-            for report in reports:
+        reports = await _build_reports()
+        print("Command scope audit")
+        print("===================")
+        for report in reports:
+            print(_render_report(report))
+            print()
+
+        if args.apply:
+            print("Applying cleanup")
+            print("================")
+            for line in await _apply_cleanup(args):
+                print(line)
+            print()
+            print("Post-cleanup audit")
+            print("==================")
+            for report in await _build_reports():
                 print(_render_report(report))
                 print()
+    except Exception:
+        exit_code = 1
+        raise
+    finally:
+        await main.bot.close()
 
-            if args.apply:
-                print("Applying cleanup")
-                print("================")
-                for line in await _apply_cleanup(args):
-                    print(line)
-                print()
-                print("Post-cleanup audit")
-                print("==================")
-                for report in await _build_reports():
-                    print(_render_report(report))
-                    print()
-        except Exception:
-            exit_code = 1
-            raise
-        finally:
-            completed.set()
-            await main.bot.close()
-
-    await main.bot.start(settings.discord_token)
     return exit_code
 
 
