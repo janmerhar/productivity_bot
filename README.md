@@ -1,5 +1,7 @@
 # Productivity Bot
 
+> **Public beta is live.** [Add the bot to your server](https://discord.com/oauth2/authorize?client_id=865552224825245697).
+
 A Discord productivity bot for individuals and teams — works in servers and DMs.
 
 It brings shared to-dos, personal reminders, habits, Pomodoro focus sessions, and Toggl time tracking into one bot, with support for both server channels and DMs. The current bot covers to-dos with custom lists, assignees, and status tracking, reminders with flexible schedules and private destinations, habits with optional reminders, Pomodoro timers with voice playback, and Toggl timer, project, and tag management.
@@ -7,10 +9,6 @@ It brings shared to-dos, personal reminders, habits, Pomodoro focus sessions, an
 What makes it more useful than a plain command pack is the workflow design: messages can be turned into reminders, todos, Pomodoros, or timers from context-menu shortcuts, shared server workflows and private DM workflows both exist in the same bot, and common actions use buttons, selects, and modals instead of pushing everything through raw command syntax.
 
 ![Demo](docs/media/pomodoro-create-example.gif)
-
-## Add to Your Server
-
-> **Beta coming soon.** An invite link will be available here once the public beta is ready.
 
 ## Commands
 
