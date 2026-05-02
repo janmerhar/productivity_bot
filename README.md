@@ -1,6 +1,6 @@
 # Productivity Bot
 
-> **Public beta is live.** [Add the bot to your server](https://discord.com/oauth2/authorize?client_id=865552224825245697).
+[![Add to Discord](https://img.shields.io/badge/Add%20to%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/oauth2/authorize?client_id=865552224825245697)
 
 A Discord productivity bot for individuals and teams — works in servers and DMs.
 
