@@ -1,6 +1,6 @@
 # Productivity Bot
 
-> **Beta coming soon.** An invite link will be available here once the public beta is ready
+[![Add to Discord](https://img.shields.io/badge/Add%20to%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/oauth2/authorize?client_id=865552224825245697)
 
 A Discord productivity bot for individuals and teams — works in servers and DMs.
 
@@ -9,7 +9,6 @@ It brings shared to-dos, personal reminders, habits, Pomodoro focus sessions, an
 What makes it more useful than a plain command pack is the workflow design: messages can be turned into reminders, todos, Pomodoros, or timers from context-menu shortcuts, shared server workflows and private DM workflows both exist in the same bot, and common actions use buttons, selects, and modals instead of pushing everything through raw command syntax.
 
 ![Demo](docs/media/pomodoro-create-example.gif)
-
 
 ## Commands
 
