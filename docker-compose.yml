@@ -1,5 +1,8 @@
+name: productivity_bot
+
 services:
   bot:
+    container_name: productivity_bot
     build:
       context: .
       dockerfile: Dockerfile
