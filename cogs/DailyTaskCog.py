@@ -9,6 +9,7 @@ from discord.ext import commands, tasks
 
 from classes.DailyJob import CronSchedule, DailyJob
 from classes.DailyJobManager import DailyJobManager
+from config.env import settings
 from classes.PomodoroFunctions import PomodoroFunctions
 from classes.ReminderFunctions import ReminderFunctions
 from classes.TodoFunctions import TodoFunctions
@@ -39,7 +40,8 @@ from views.ReminderOutputView import ReminderOutputView
 
 
 class DailyTaskCog(commands.Cog):
-    jobs = app_commands.Group(name="jobs", description="Manage scheduled jobs")
+    if not settings.jobs_commands_disabled:
+        jobs = app_commands.Group(name="jobs", description="Manage scheduled jobs")
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -129,62 +131,63 @@ class DailyTaskCog(commands.Cog):
         if self._runner.is_running():
             self._runner.cancel()
 
-    @jobs.command(name="create", description="Create a recurring job")
-    @app_commands.describe(
-        schedule="Cron expression or natural language schedule",
-        type="Type of the job to create",
-        data="Payload for the job; plain text for message jobs and ticker/coin id for crypto jobs",
-        visibility=VISIBILITY_DESC,
-    )
-    @app_commands.choices(
-        type=[
-            app_commands.Choice(name="Crypto", value="crypto"),
-            app_commands.Choice(name="Message", value="message"),
-        ],
-        visibility=VISIBILITY_CHOICES,
-    )
-    async def job(
-        self,
-        interaction: discord.Interaction,
-        schedule: str,
-        type: app_commands.Choice[str],
-        data: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ) -> None:
-        ephemeral = self._resolve_response_visibility(interaction, visibility)
-        timezone = None
-        if not is_valid_cron_expression(schedule):
-            async def _continue_with_timezone(
-                followup_interaction: discord.Interaction,
-                resolved_timezone: str,
-            ) -> None:
-                await self._create_job(
-                    interaction=followup_interaction,
-                    schedule=schedule,
-                    job_type=type.value,
-                    data=data,
-                    ephemeral=ephemeral,
-                    timezone=resolved_timezone,
-                )
-
-            timezone = await ensure_user_timezone(
-                interaction,
-                _continue_with_timezone,
-                continue_message="Timezone saved as `{timezone}`. Continuing `/jobs create`.",
-                response_ephemeral=ephemeral,
-            )
-            if timezone is None:
-                return
-
-        await interaction.response.defer(ephemeral=ephemeral)
-        await self._create_job(
-            interaction=interaction,
-            schedule=schedule,
-            job_type=type.value,
-            data=data,
-            ephemeral=ephemeral,
-            timezone=timezone,
+    if not settings.jobs_commands_disabled:
+        @jobs.command(name="create", description="Create a recurring job")
+        @app_commands.describe(
+            schedule="Cron expression or natural language schedule",
+            type="Type of the job to create",
+            data="Payload for the job; plain text for message jobs and ticker/coin id for crypto jobs",
+            visibility=VISIBILITY_DESC,
         )
+        @app_commands.choices(
+            type=[
+                app_commands.Choice(name="Crypto", value="crypto"),
+                app_commands.Choice(name="Message", value="message"),
+            ],
+            visibility=VISIBILITY_CHOICES,
+        )
+        async def job(
+            self,
+            interaction: discord.Interaction,
+            schedule: str,
+            type: app_commands.Choice[str],
+            data: str,
+            visibility: Optional[app_commands.Choice[str]] = None,
+        ) -> None:
+            ephemeral = self._resolve_response_visibility(interaction, visibility)
+            timezone = None
+            if not is_valid_cron_expression(schedule):
+                async def _continue_with_timezone(
+                    followup_interaction: discord.Interaction,
+                    resolved_timezone: str,
+                ) -> None:
+                    await self._create_job(
+                        interaction=followup_interaction,
+                        schedule=schedule,
+                        job_type=type.value,
+                        data=data,
+                        ephemeral=ephemeral,
+                        timezone=resolved_timezone,
+                    )
+
+                timezone = await ensure_user_timezone(
+                    interaction,
+                    _continue_with_timezone,
+                    continue_message="Timezone saved as `{timezone}`. Continuing `/jobs create`.",
+                    response_ephemeral=ephemeral,
+                )
+                if timezone is None:
+                    return
+
+            await interaction.response.defer(ephemeral=ephemeral)
+            await self._create_job(
+                interaction=interaction,
+                schedule=schedule,
+                job_type=type.value,
+                data=data,
+                ephemeral=ephemeral,
+                timezone=timezone,
+            )
 
     async def _create_job(
         self,
@@ -446,71 +449,72 @@ class DailyTaskCog(commands.Cog):
 
         return f"- `{job.id}` {data_label} ({schedule_label})"
 
-    @jobs.command(name="list", description="List scheduled jobs for this channel")
-    @app_commands.describe(visibility=VISIBILITY_DESC)
-    @app_commands.choices(visibility=VISIBILITY_CHOICES)
-    async def jobs_list(
-        self,
-        interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ) -> None:
-        ephemeral = self._resolve_response_visibility(interaction, visibility)
-        await interaction.response.defer(ephemeral=ephemeral)
-        manager = DailyJobManager()
-        jobs = await asyncio.to_thread(
-            manager.list_jobs,
-            interaction.channel_id,
-            interaction.guild_id,
-        )
-
-        lines = [self._format_job(job) for job in jobs]
-        await interaction.followup.send(
-            ephemeral=ephemeral, **DailyTaskEmbeds.jobs_list_embed(lines)
-        )
-
-    @jobs.command(name="delete", description="Delete a scheduled job")
-    @app_commands.describe(
-        job_id="Job id from /jobs list",
-        visibility=VISIBILITY_DESC,
-    )
-    @app_commands.choices(visibility=VISIBILITY_CHOICES)
-    async def jobs_cancel(
-        self,
-        interaction: discord.Interaction,
-        job_id: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ) -> None:
-        ephemeral = self._resolve_response_visibility(interaction, visibility)
-        await interaction.response.defer(ephemeral=ephemeral)
-        manager = DailyJobManager()
-
-        try:
-            deleted = await asyncio.to_thread(
-                manager.delete_job,
-                job_id.strip(),
+    if not settings.jobs_commands_disabled:
+        @jobs.command(name="list", description="List scheduled jobs for this channel")
+        @app_commands.describe(visibility=VISIBILITY_DESC)
+        @app_commands.choices(visibility=VISIBILITY_CHOICES)
+        async def jobs_list(
+            self,
+            interaction: discord.Interaction,
+            visibility: Optional[app_commands.Choice[str]] = None,
+        ) -> None:
+            ephemeral = self._resolve_response_visibility(interaction, visibility)
+            await interaction.response.defer(ephemeral=ephemeral)
+            manager = DailyJobManager()
+            jobs = await asyncio.to_thread(
+                manager.list_jobs,
                 interaction.channel_id,
                 interaction.guild_id,
             )
-        except ValueError as exc:
-            raise ValidationError(
-                "That job id is invalid.",
-                ephemeral=ephemeral,
-                cause=exc,
-            )
 
-        if deleted:
+            lines = [self._format_job(job) for job in jobs]
             await interaction.followup.send(
-                ephemeral=ephemeral,
-                **DailyTaskEmbeds.jobs_cancel_embed(
-                    f"Deleted job `{job_id}`.", ok=True
-                ),
+                ephemeral=ephemeral, **DailyTaskEmbeds.jobs_list_embed(lines)
             )
-            return
 
-        raise ValidationError(
-            "No job found with that id in this channel.",
-            ephemeral=ephemeral,
+        @jobs.command(name="delete", description="Delete a scheduled job")
+        @app_commands.describe(
+            job_id="Job id from /jobs list",
+            visibility=VISIBILITY_DESC,
         )
+        @app_commands.choices(visibility=VISIBILITY_CHOICES)
+        async def jobs_cancel(
+            self,
+            interaction: discord.Interaction,
+            job_id: str,
+            visibility: Optional[app_commands.Choice[str]] = None,
+        ) -> None:
+            ephemeral = self._resolve_response_visibility(interaction, visibility)
+            await interaction.response.defer(ephemeral=ephemeral)
+            manager = DailyJobManager()
+
+            try:
+                deleted = await asyncio.to_thread(
+                    manager.delete_job,
+                    job_id.strip(),
+                    interaction.channel_id,
+                    interaction.guild_id,
+                )
+            except ValueError as exc:
+                raise ValidationError(
+                    "That job id is invalid.",
+                    ephemeral=ephemeral,
+                    cause=exc,
+                )
+
+            if deleted:
+                await interaction.followup.send(
+                    ephemeral=ephemeral,
+                    **DailyTaskEmbeds.jobs_cancel_embed(
+                        f"Deleted job `{job_id}`.", ok=True
+                    ),
+                )
+                return
+
+            raise ValidationError(
+                "No job found with that id in this channel.",
+                ephemeral=ephemeral,
+            )
 
 
 async def setup(client: commands.Bot) -> None:

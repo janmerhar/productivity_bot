@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     alias_disabled: bool = True
     stock_disabled: bool = True
     crypto_disabled: bool = True
+    jobs_commands_disabled: bool = True
 
     mongo_uri: NonEmptyStr
     mongo_db: str = "productivity_bot"
