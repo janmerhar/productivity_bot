@@ -11,5 +11,6 @@ token.json
 token.pickle
 *.log*
 discord.log
+assets/
 tmp/
 Nacrti/

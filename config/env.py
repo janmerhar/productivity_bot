@@ -59,7 +59,6 @@ class Settings(BaseSettings):
     pomodoro_audio_path: str | None = None
     pomodoro_break_audio_path: str | None = None
     pomodoro_audio_volume: float = 1.0
-    pomodoro_voice_assets: str | None = None
 
     @model_validator(mode="after")
     def validate_conditional_requirements(self) -> "Settings":

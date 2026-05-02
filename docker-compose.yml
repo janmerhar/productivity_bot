@@ -18,6 +18,6 @@ services:
         target: /app/.env
         read_only: true
       - type: bind
-        source: ${POMODORO_VOICE_ASSETS}
+        source: ./assets
         target: /app/assets
         read_only: true

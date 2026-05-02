@@ -12,5 +12,6 @@ token.pickle
 # Log files
 *.log*
 assets/*
+!assets/README.md
 
 .venv
