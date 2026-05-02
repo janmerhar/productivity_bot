@@ -3,7 +3,10 @@ import importlib
 import logging
 import discord
 import asyncio
-from datetime import datetime
+import os
+import uuid
+from datetime import datetime, timezone
+from discord import app_commands
 from discord.ext import commands
 
 from config.env import settings
@@ -42,9 +45,62 @@ def should_sync_commands_on_start() -> bool:
 
 setup_logging()
 
+INSTANCE_ID = os.environ.get("BOT_INSTANCE_ID") or str(uuid.uuid4())[:8]
+os.environ.setdefault("BOT_INSTANCE_ID", INSTANCE_ID)
+
+
+class InstrumentedCommandTree(app_commands.CommandTree):
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        logger = logging.getLogger(__name__)
+        created_at = getattr(interaction, "created_at", None)
+        age_ms: int | None = None
+        if created_at is not None:
+            age_ms = int(
+                (datetime.now(timezone.utc) - created_at).total_seconds() * 1000
+            )
+
+        command = getattr(interaction, "command", None)
+        command_name = getattr(command, "qualified_name", None) or getattr(
+            command,
+            "name",
+            None,
+        )
+        log_context = {
+            "instance": INSTANCE_ID,
+            "pid": os.getpid(),
+            "id": interaction.id,
+            "type": getattr(interaction.type, "name", interaction.type),
+            "command": command_name,
+            "age_ms": age_ms,
+            "user": getattr(getattr(interaction, "user", None), "id", None),
+            "guild": getattr(getattr(interaction, "guild", None), "id", None),
+            "channel": getattr(getattr(interaction, "channel", None), "id", None),
+        }
+
+        if age_ms is not None and age_ms >= 2500:
+            logger.warning(
+                "Received stale interaction | instance=%(instance)s pid=%(pid)s "
+                "interaction=%(id)s type=%(type)s command=%(command)s "
+                "age_ms=%(age_ms)s user=%(user)s guild=%(guild)s channel=%(channel)s",
+                log_context,
+            )
+        else:
+            logger.info(
+                "Received interaction | instance=%(instance)s pid=%(pid)s "
+                "interaction=%(id)s type=%(type)s command=%(command)s "
+                "age_ms=%(age_ms)s user=%(user)s guild=%(guild)s channel=%(channel)s",
+                log_context,
+            )
+        return True
+
+
 intents = discord.Intents.default()
 # intents.message_content = True
-bot = commands.Bot(command_prefix=".", intents=intents)
+bot = commands.Bot(
+    command_prefix=".",
+    intents=intents,
+    tree_cls=InstrumentedCommandTree,
+)
 
 _sync_done = False
 _global_sync_task: asyncio.Task | None = None
@@ -98,6 +154,17 @@ def _start_import_prewarm() -> None:
 @bot.event
 async def on_ready():
     global _sync_done
+    logging.getLogger(__name__).info(
+        "Bot ready | instance=%s pid=%s user=%s app_id=%s guilds=%s "
+        "dev_mode=%s sync_on_start=%s",
+        INSTANCE_ID,
+        os.getpid(),
+        bot.user,
+        getattr(bot.user, "id", None),
+        len(bot.guilds),
+        settings.dev_mode,
+        should_sync_commands_on_start(),
+    )
     if not _sync_done:
         if not should_sync_commands_on_start():
             logging.getLogger(__name__).info(
