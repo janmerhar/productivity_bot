@@ -4,6 +4,12 @@ __pycache__/
 .mypy_cache/
 .git
 .gitignore
+.env
+.env.*
+credentials.json
+token.json
+token.pickle
+*.log*
 discord.log
 tmp/
 Nacrti/

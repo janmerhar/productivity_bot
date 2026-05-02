@@ -19,8 +19,9 @@ class SettingsCog(commands.Cog):
         name="settings", description="Manage your personal bot settings"
     )
     set_group = app_commands.Group(
-        name="set", description="Update a setting", parent=settings_group
+        name="set", description="Update a setting"
     )
+    settings_group.add_command(set_group)
 
     def __init__(self, client: commands.Bot) -> None:
         self.client = client

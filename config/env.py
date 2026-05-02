@@ -20,8 +20,8 @@ class Settings(BaseSettings):
 
     discord_token: NonEmptyStr
 
-    dev_mode: bool
-    dev_guild_id: int
+    dev_mode: bool = False
+    dev_guild_id: int | None = None
     dev_guild_only_commands: str = ""
     dev_dm_only_commands: str = ""
     sync_commands_on_start: bool = True
@@ -57,7 +57,7 @@ class Settings(BaseSettings):
 
     pomodoro_audio_path: str | None = None
     pomodoro_break_audio_path: str | None = None
-    pomodoro_audio_volume: float
+    pomodoro_audio_volume: float = 1.0
     pomodoro_voice_assets: str | None = None
 
     @model_validator(mode="after")
