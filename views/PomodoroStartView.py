@@ -129,60 +129,65 @@ class PomodoroVoiceChannelSelectView(discord.ui.View):
             return
 
         selected_value = self.voice_select.values[0]
-        if selected_value == "__none__":
-            from classes.PomodoroVoiceManager import PomodoroVoiceManager
 
+        resolved_channel: Optional[discord.VoiceChannel] = None
+        if selected_value != "__none__":
+            resolved_channel = self._resolve_selected_voice_channel(
+                interaction.guild, selected_value
+            )
+            if resolved_channel is None:
+                await interaction.response.send_message(
+                    ephemeral=False,
+                    content="That voice channel was not found.",
+                )
+                return
+
+        await interaction.response.defer()
+
+        from classes.PomodoroVoiceManager import PomodoroVoiceManager
+
+        if resolved_channel is None:
             await PomodoroVoiceManager.stop_for_guild(
                 interaction.guild.id,
                 force=True,
             )
-
             status_message = "Selected voice channel: None (left voice)."
             if self._source_message is not None:
                 try:
                     await self._source_message.edit(content=status_message)
                 except discord.HTTPException:
                     pass
-
-            await interaction.response.edit_message(
-                content="Voice channel updated.",
-                view=None,
-            )
+            try:
+                await interaction.message.edit(content="Voice channel updated.", view=None)
+            except discord.HTTPException:
+                await interaction.followup.send(
+                    ephemeral=False, content="Voice channel updated."
+                )
             return
-
-        channel = self._resolve_selected_voice_channel(
-            interaction.guild, selected_value
-        )
-        if channel is None:
-            await interaction.response.send_message(
-                ephemeral=False,
-                content="That voice channel was not found.",
-            )
-            return
-
-        from classes.PomodoroVoiceManager import PomodoroVoiceManager
 
         error = await PomodoroVoiceManager.start_session(
             interaction.guild,
-            channel,
+            resolved_channel,
             self._end_time,
             self._mode,
         )
         if error:
-            await interaction.response.send_message(ephemeral=False, content=error)
+            await interaction.followup.send(ephemeral=False, content=error)
             return
 
-        status_message = f"Selected voice channel: {channel.name}"
+        status_message = f"Selected voice channel: {resolved_channel.name}"
         if self._source_message is not None:
             try:
                 await self._source_message.edit(content=status_message)
             except discord.HTTPException:
                 pass
 
-        await interaction.response.edit_message(
-            content="Voice channel updated.",
-            view=None,
-        )
+        try:
+            await interaction.message.edit(content="Voice channel updated.", view=None)
+        except discord.HTTPException:
+            await interaction.followup.send(
+                ephemeral=False, content="Voice channel updated."
+            )
 
 
 class PomodoroVoiceChannelSelectModal(discord.ui.Modal):
@@ -488,6 +493,8 @@ class PomodoroStartView(discord.ui.View):
             )
             return
 
+        await interaction.response.defer()
+
         from classes.PomodoroFunctions import PomodoroFunctions
 
         if self._is_paused:
@@ -497,7 +504,7 @@ class PomodoroStartView(discord.ui.View):
                 or result.end_time is None
                 or result.duration_minutes is None
             ):
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     ephemeral=False,
                     content=result.message,
                 )
@@ -519,7 +526,7 @@ class PomodoroStartView(discord.ui.View):
                 result.end_time,
             )
             if updated_embed is None:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     ephemeral=False,
                     content=(
                         "Pomodoro resumed, but I couldn't refresh the timer card. "
@@ -528,12 +535,21 @@ class PomodoroStartView(discord.ui.View):
                 )
                 return
 
-            await interaction.response.edit_message(embed=updated_embed, view=self)
+            try:
+                await interaction.message.edit(embed=updated_embed, view=self)
+            except discord.HTTPException:
+                await interaction.followup.send(
+                    ephemeral=False,
+                    content=(
+                        "Pomodoro resumed, but I couldn't refresh the timer card. "
+                        f"New end: {self._relative_timestamp(result.end_time)}"
+                    ),
+                )
             return
 
         result = await PomodoroFunctions.pause_user_pomodoro(interaction)
         if not result.ok:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 ephemeral=False,
                 content=result.message,
             )
@@ -557,13 +573,19 @@ class PomodoroStartView(discord.ui.View):
             result.remaining_seconds,
         )
         if updated_embed is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 ephemeral=False,
                 content=f"Paused with {remaining_minutes} minute(s) remaining.",
             )
             return
 
-        await interaction.response.edit_message(embed=updated_embed, view=self)
+        try:
+            await interaction.message.edit(embed=updated_embed, view=self)
+        except discord.HTTPException:
+            await interaction.followup.send(
+                ephemeral=False,
+                content=f"Paused with {remaining_minutes} minute(s) remaining.",
+            )
 
     @discord.ui.button(label="+5 min", style=discord.ButtonStyle.secondary)
     async def extend_timer_button(
@@ -583,6 +605,8 @@ class PomodoroStartView(discord.ui.View):
             )
             return
 
+        await interaction.response.defer()
+
         from classes.PomodoroFunctions import PomodoroFunctions
 
         result = await PomodoroFunctions.extend_user_pomodoro(
@@ -591,7 +615,7 @@ class PomodoroStartView(discord.ui.View):
             expected_end_time=self._end_time,
         )
         if not result.ok or result.end_time is None or result.duration_minutes is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 ephemeral=False,
                 content=result.message,
             )
@@ -607,7 +631,7 @@ class PomodoroStartView(discord.ui.View):
             result.end_time,
         )
         if updated_embed is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 ephemeral=False,
                 content=(
                     "Extended by 5 minutes, but I couldn't refresh the timer card. "
@@ -617,22 +641,15 @@ class PomodoroStartView(discord.ui.View):
             return
 
         try:
-            await interaction.response.edit_message(embed=updated_embed, view=self)
+            await interaction.message.edit(embed=updated_embed, view=self)
         except discord.HTTPException:
-            fallback_message = (
-                "Extended by 5 minutes, but that timer message no longer exists. "
-                f"New end: {self._relative_timestamp(result.end_time)}"
+            await interaction.followup.send(
+                ephemeral=False,
+                content=(
+                    "Extended by 5 minutes, but that timer message no longer exists. "
+                    f"New end: {self._relative_timestamp(result.end_time)}"
+                ),
             )
-            if interaction.response.is_done():
-                await interaction.followup.send(
-                    ephemeral=False,
-                    content=fallback_message,
-                )
-            else:
-                await interaction.response.send_message(
-                    ephemeral=False,
-                    content=fallback_message,
-                )
 
     @discord.ui.button(label="Voice", style=discord.ButtonStyle.primary)
     async def select_voice_channel_button(
@@ -655,6 +672,8 @@ class PomodoroStartView(discord.ui.View):
             )
             return
 
+        await interaction.response.defer()
+
         from classes.PomodoroFunctions import PomodoroFunctions
 
         ok, enabled, message = await PomodoroFunctions.toggle_auto_cycle(
@@ -663,7 +682,7 @@ class PomodoroStartView(discord.ui.View):
             is_paused=self._is_paused,
         )
         if not ok or enabled is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 ephemeral=False,
                 content=message,
             )
@@ -671,7 +690,13 @@ class PomodoroStartView(discord.ui.View):
 
         self._auto_cycle_enabled = enabled
         self._sync_play_pause_button()
-        await interaction.response.edit_message(view=self)
+        try:
+            await interaction.message.edit(view=self)
+        except discord.HTTPException:
+            await interaction.followup.send(
+                ephemeral=False,
+                content=f"Auto-cycle {'enabled' if enabled else 'disabled'}.",
+            )
 
     @discord.ui.button(label="Stop", style=discord.ButtonStyle.danger)
     async def stop_button(

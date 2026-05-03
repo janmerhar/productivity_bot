@@ -176,7 +176,6 @@ class DailyTaskCog(commands.Cog):
     @tasks.loop(seconds=5)
     async def _runner(self) -> None:
         manager = DailyJobManager()
-        manager.get_due_jobs()
         runs = await asyncio.to_thread(manager.run_due_jobs)
 
         if not runs:
@@ -204,11 +203,19 @@ class DailyTaskCog(commands.Cog):
                 if auto_cycle_enabled:
                     next_mode = "break" if mode == "focus" else "focus"
                     raw_break = str(data.get("break_duration") or "").strip()
-                    stored_break_dur: Optional[int] = int(raw_break) if raw_break.isdigit() else None
+                    stored_break_dur: Optional[int] = (
+                        int(raw_break) if raw_break.isdigit() else None
+                    )
                     raw_focus = str(data.get("focus_duration") or "").strip()
-                    stored_focus_dur: Optional[int] = int(raw_focus) if raw_focus.isdigit() else None
-                    next_duration_min = stored_break_dur if next_mode == "break" else stored_focus_dur
-                    current_streak = PomodoroFunctions._safe_int(data.get("streak"), default=0)
+                    stored_focus_dur: Optional[int] = (
+                        int(raw_focus) if raw_focus.isdigit() else None
+                    )
+                    next_duration_min = (
+                        stored_break_dur if next_mode == "break" else stored_focus_dur
+                    )
+                    current_streak = PomodoroFunctions._safe_int(
+                        data.get("streak"), default=0
+                    )
                     next_streak = PomodoroFunctions._next_streak(mode, current_streak)
                     if mode == "focus" and owner_id:
                         await asyncio.to_thread(
@@ -307,7 +314,9 @@ class DailyTaskCog(commands.Cog):
 
                 raw_focus_dur = str(data.get("focus_duration") or "").strip()
                 raw_break_dur = str(data.get("break_duration") or "").strip()
-                current_streak = PomodoroFunctions._safe_int(data.get("streak"), default=0)
+                current_streak = PomodoroFunctions._safe_int(
+                    data.get("streak"), default=0
+                )
                 next_streak = PomodoroFunctions._next_streak(mode, current_streak)
                 if mode == "focus" and owner_id:
                     await asyncio.to_thread(
@@ -315,11 +324,20 @@ class DailyTaskCog(commands.Cog):
                         owner_id,
                         next_streak,
                     )
-                pomodoro_payload = PomodoroFunctions.pomodoro_payload(job, streak=next_streak)
-                chain_expires_at = datetime.datetime.now() + datetime.timedelta(minutes=20)
+                pomodoro_payload = PomodoroFunctions.pomodoro_payload(
+                    job, streak=next_streak
+                )
+                chain_expires_at = datetime.datetime.now() + datetime.timedelta(
+                    minutes=20
+                )
                 pomodoro_payload["view"] = PomodoroRestartView(
-                    focus_duration=int(raw_focus_dur) if raw_focus_dur.isdigit() else None,
-                    break_duration=int(raw_break_dur) if raw_break_dur.isdigit() else None,
+                    user_id=owner_id,
+                    focus_duration=(
+                        int(raw_focus_dur) if raw_focus_dur.isdigit() else None
+                    ),
+                    break_duration=(
+                        int(raw_break_dur) if raw_break_dur.isdigit() else None
+                    ),
                     streak=next_streak,
                     chain_expires_at=chain_expires_at,
                 )

@@ -179,6 +179,11 @@ class PomodoroCog(commands.Cog):
         duration_minutes = PomodoroFunctions._resolve_total_duration_minutes(data)
         duration = str(duration_minutes) if duration_minutes > 0 else "?"
 
+        raw_focus = str(data.get("focus_duration") or "").strip()
+        raw_break = str(data.get("break_duration") or "").strip()
+        focus_duration_stored: Optional[int] = int(raw_focus) if raw_focus.isdigit() else None
+        break_duration_stored: Optional[int] = int(raw_break) if raw_break.isdigit() else None
+
         paused_value = data.get("paused")
         if isinstance(paused_value, str):
             is_paused = paused_value.strip().lower() in ("1", "true", "yes", "on")
@@ -221,6 +226,8 @@ class PomodoroCog(commands.Cog):
             selected_end_time,
             title=title_override,
             description=resolved_description,
+            focus_duration=focus_duration_stored,
+            break_duration=break_duration_stored,
             streak=streak,
         )
         embed = payload.get("embed")
@@ -248,6 +255,8 @@ class PomodoroCog(commands.Cog):
             is_paused=is_paused,
             auto_cycle_enabled=auto_cycle_enabled,
             voice_channel_select_enabled=interaction.guild is not None,
+            focus_duration=focus_duration_stored,
+            break_duration=break_duration_stored,
             streak=streak,
         )
         return payload

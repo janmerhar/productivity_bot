@@ -19,6 +19,7 @@ class PomodoroRestartView(discord.ui.View):
     def __init__(
         self,
         *,
+        user_id: int = 0,
         focus_duration: Optional[int] = None,
         break_duration: Optional[int] = None,
         streak: int = 0,
@@ -26,6 +27,7 @@ class PomodoroRestartView(discord.ui.View):
         timeout: float = 21600,
     ) -> None:
         super().__init__(timeout=timeout)
+        self._user_id = user_id
         self._focus_duration = focus_duration
         self._break_duration = break_duration
         self._streak = streak
@@ -34,6 +36,12 @@ class PomodoroRestartView(discord.ui.View):
     async def _start(
         self, interaction: discord.Interaction, mode: str, duration: Optional[int]
     ) -> None:
+        if self._user_id and interaction.user.id != self._user_id:
+            await interaction.response.send_message(
+                ephemeral=False,
+                content="Only the user who completed this pomodoro can do this.",
+            )
+            return
         await interaction.response.defer(ephemeral=False)
 
         streak = self._streak
