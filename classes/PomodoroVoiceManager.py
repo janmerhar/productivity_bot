@@ -139,11 +139,10 @@ class PomodoroVoiceManager:
             return "I joined the voice channel, but audio playback could not start."
 
         existing = cls.sessions.get(guild.id)
-        session_end_time = end_time
-        if existing and existing.end_time and end_time:
-            session_end_time = max(existing.end_time, end_time)
-        elif existing and existing.end_time and end_time is None:
-            session_end_time = existing.end_time
+        if existing and existing.end_time:
+            session_end_time = max(existing.end_time, end_time) if end_time else existing.end_time
+        else:
+            session_end_time = end_time
 
         cls.sessions[guild.id] = PomodoroVoiceSession(
             guild_id=guild.id,

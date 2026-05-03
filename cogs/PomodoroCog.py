@@ -184,12 +184,7 @@ class PomodoroCog(commands.Cog):
         focus_duration_stored: Optional[int] = int(raw_focus) if raw_focus.isdigit() else None
         break_duration_stored: Optional[int] = int(raw_break) if raw_break.isdigit() else None
 
-        paused_value = data.get("paused")
-        if isinstance(paused_value, str):
-            is_paused = paused_value.strip().lower() in ("1", "true", "yes", "on")
-        else:
-            is_paused = bool(paused_value)
-
+        is_paused = PomodoroFunctions._is_truthy(data.get("paused"))
         auto_cycle_enabled = PomodoroFunctions._is_truthy(data.get("auto_cycle"))
         streak = PomodoroFunctions._safe_int(data.get("streak"), default=0)
 
@@ -432,8 +427,17 @@ class PomodoroCog(commands.Cog):
             PomodoroFunctions.fetch_best_pomodoro_streak,
             interaction.user.id,
         )
-        payload = PomodoroEmbeds.timer_stopped_embed(streak=result.streak, best_streak=best_streak, focus_duration=result.focus_duration, break_duration=result.break_duration)
-        payload["view"] = PomodoroStoppedView(interaction.user.id, focus_duration=result.focus_duration, break_duration=result.break_duration)
+        payload = PomodoroEmbeds.timer_stopped_embed(
+            streak=result.streak,
+            best_streak=best_streak,
+            focus_duration=result.focus_duration,
+            break_duration=result.break_duration,
+        )
+        payload["view"] = PomodoroStoppedView(
+            interaction.user.id,
+            focus_duration=result.focus_duration,
+            break_duration=result.break_duration,
+        )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
     @pomodoro_group.command(

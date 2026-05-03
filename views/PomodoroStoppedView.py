@@ -159,7 +159,14 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
 
 
 class PomodoroStoppedView(discord.ui.View):
-    def __init__(self, user_id: int, *, focus_duration: Optional[int] = None, break_duration: Optional[int] = None, timeout: float = 21600) -> None:
+    def __init__(
+        self,
+        user_id: int,
+        *,
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
+        timeout: float = 21600,
+    ) -> None:
         super().__init__(timeout=timeout)
         self._user_id = user_id
         self._focus_duration = focus_duration
