@@ -152,6 +152,7 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
             interaction,
             mode=mode,
             duration=duration_value,
+            focus_duration=duration_value,
             break_duration=break_duration_value,
             target_channel=target_channel,
             use_member_voice=use_member_voice,
@@ -160,9 +161,11 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
 
 
 class PomodoroStoppedView(discord.ui.View):
-    def __init__(self, user_id: int, *, timeout: float = 21600) -> None:
+    def __init__(self, user_id: int, *, focus_duration: Optional[int] = None, break_duration: Optional[int] = None, timeout: float = 21600) -> None:
         super().__init__(timeout=timeout)
         self._user_id = user_id
+        self._focus_duration = focus_duration
+        self._break_duration = break_duration
 
     async def _ensure_user(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self._user_id:
@@ -213,6 +216,7 @@ class PomodoroStoppedView(discord.ui.View):
         *,
         mode: str,
         duration: Optional[int],
+        focus_duration: Optional[int] = None,
         break_duration: Optional[int] = None,
         target_channel: Optional[discord.VoiceChannel],
         use_member_voice: bool,
@@ -232,7 +236,7 @@ class PomodoroStoppedView(discord.ui.View):
                 duration,
                 interaction.user.id,
                 break_duration,
-                duration if mode == "focus" else None,
+                focus_duration,
             )
         except ValueError as exc:
             await handle_interaction_error(
@@ -278,12 +282,11 @@ class PomodoroStoppedView(discord.ui.View):
                     mode,
                 )
 
-        focus_dur = duration if mode == "focus" else None
         payload = PomodoroEmbeds.insert_timer_embed(
             mode,
             resolved_duration,
             end_time,
-            focus_duration=focus_dur,
+            focus_duration=focus_duration,
             break_duration=break_duration,
         )
         join_url = resolved_target_channel.jump_url if resolved_target_channel else None
@@ -293,7 +296,7 @@ class PomodoroStoppedView(discord.ui.View):
             mode=mode,
             end_time=end_time,
             voice_channel_select_enabled=interaction.guild is not None,
-            focus_duration=focus_dur,
+            focus_duration=focus_duration,
             break_duration=break_duration,
         )
         payload["content"] = voice_error or None
@@ -331,7 +334,9 @@ class PomodoroStoppedView(discord.ui.View):
         await self._start_with_options(
             interaction,
             mode="focus",
-            duration=None,
+            duration=self._focus_duration,
+            focus_duration=self._focus_duration,
+            break_duration=self._break_duration,
             target_channel=None,
             use_member_voice=True,
             skip_voice=False,
@@ -346,7 +351,9 @@ class PomodoroStoppedView(discord.ui.View):
         await self._start_with_options(
             interaction,
             mode="break",
-            duration=None,
+            duration=self._break_duration,
+            focus_duration=self._focus_duration,
+            break_duration=self._break_duration,
             target_channel=None,
             use_member_voice=True,
             skip_voice=False,

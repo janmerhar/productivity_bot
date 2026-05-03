@@ -19,6 +19,8 @@ class PomodoroStopResult:
     ok: bool
     message: str
     streak: int = 0
+    focus_duration: Optional[int] = None
+    break_duration: Optional[int] = None
 
 
 @dataclass
@@ -499,6 +501,10 @@ class PomodoroFunctions:
 
         first_job_data = user_jobs[0].data or {}
         last_streak = PomodoroFunctions._safe_int(first_job_data.get("streak"), default=0)
+        raw_focus = str(first_job_data.get("focus_duration") or "").strip()
+        raw_break = str(first_job_data.get("break_duration") or "").strip()
+        stop_focus_duration = int(raw_focus) if raw_focus.isdigit() else None
+        stop_break_duration = int(raw_break) if raw_break.isdigit() else None
 
         deleted_count = 0
         for job in user_jobs:
@@ -541,7 +547,7 @@ class PomodoroFunctions:
         elif interaction.guild is not None:
             message += " Voice stays connected while other pomodoros run."
 
-        return PomodoroStopResult(ok=True, message=message, streak=last_streak)
+        return PomodoroStopResult(ok=True, message=message, streak=last_streak, focus_duration=stop_focus_duration, break_duration=stop_break_duration)
 
     @staticmethod
     async def pause_user_pomodoro(

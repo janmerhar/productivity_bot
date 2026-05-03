@@ -432,8 +432,8 @@ class PomodoroCog(commands.Cog):
             PomodoroFunctions.fetch_best_pomodoro_streak,
             interaction.user.id,
         )
-        payload = PomodoroEmbeds.timer_stopped_embed(streak=result.streak, best_streak=best_streak)
-        payload["view"] = PomodoroStoppedView(interaction.user.id)
+        payload = PomodoroEmbeds.timer_stopped_embed(streak=result.streak, best_streak=best_streak, focus_duration=result.focus_duration, break_duration=result.break_duration)
+        payload["view"] = PomodoroStoppedView(interaction.user.id, focus_duration=result.focus_duration, break_duration=result.break_duration)
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
     @pomodoro_group.command(

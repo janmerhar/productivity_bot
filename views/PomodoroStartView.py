@@ -729,7 +729,7 @@ class PomodoroStartView(discord.ui.View):
             focus_duration=self._focus_duration,
             break_duration=self._break_duration,
         )
-        payload["view"] = PomodoroStoppedView(interaction.user.id)
+        payload["view"] = PomodoroStoppedView(interaction.user.id, focus_duration=self._focus_duration, break_duration=self._break_duration)
         payload["content"] = None
 
         try:

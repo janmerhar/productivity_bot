@@ -15,7 +15,7 @@ class PomodoroEmbeds:
     ) -> str:
         f_min = focus_duration if focus_duration is not None else 30
         b_min = break_duration if break_duration is not None else 5
-        base = f"Focus {f_min}m • Break {b_min}m"
+        base = f"Focus {f_min}min • Break {b_min}min"
         if streak > 0:
             return f"{base} • 🔥 {streak}"
         return base
