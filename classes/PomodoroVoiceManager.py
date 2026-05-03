@@ -82,7 +82,7 @@ class PomodoroVoiceManager:
         voice_client = guild.voice_client
         try:
             if voice_client is None or not voice_client.is_connected():
-                voice_client = await voice_channel.connect()
+                voice_client = await voice_channel.connect(reconnect=False)
             elif (
                 not isinstance(voice_client.channel, discord.VoiceChannel)
                 or voice_client.channel.id != voice_channel.id

@@ -48,6 +48,18 @@ class DailyTaskCog(commands.Cog):
     async def on_ready(self):
         print("DailyTaskCog cog loaded")
 
+    @commands.Cog.listener()
+    async def on_voice_state_update(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        if self.bot.user is None or member.id != self.bot.user.id:
+            return
+        if before.channel is not None and after.channel is None:
+            await PomodoroVoiceManager.stop_for_guild(member.guild.id, force=True)
+
     def cog_unload(self) -> None:
         if self._runner.is_running():
             self._runner.cancel()
