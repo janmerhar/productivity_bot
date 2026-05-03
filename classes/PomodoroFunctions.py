@@ -188,24 +188,6 @@ class PomodoroFunctions:
         return end_time, resolved_duration, created_job
 
     @staticmethod
-    def insert_timer(
-        channel_id: int,
-        mode: str,
-        duration: Optional[int],
-        user_id: Union[int, str],
-    ) -> Tuple[datetime.datetime, int, Dict[str, str], OneTimeSchedule2]:
-        end_time, duration_minutes, data, schedule = (
-            PomodoroFunctions.insert_pomodoro_timer(
-                channel_id=channel_id,
-                mode=mode,
-                duration_minutes=duration,
-                user_id=user_id,
-            )
-        )
-
-        return end_time, duration_minutes, data, schedule
-
-    @staticmethod
     def insert_pomodoro_timer(
         channel_id: int,
         mode: str,
@@ -547,7 +529,13 @@ class PomodoroFunctions:
         elif interaction.guild is not None:
             message += " Voice stays connected while other pomodoros run."
 
-        return PomodoroStopResult(ok=True, message=message, streak=last_streak, focus_duration=stop_focus_duration, break_duration=stop_break_duration)
+        return PomodoroStopResult(
+            ok=True,
+            message=message,
+            streak=last_streak,
+            focus_duration=stop_focus_duration,
+            break_duration=stop_break_duration,
+        )
 
     @staticmethod
     async def pause_user_pomodoro(
@@ -812,14 +800,7 @@ class PomodoroFunctions:
                 message="Resume the pomodoro before extending it.",
             )
 
-        def _normalized(dt: Optional[datetime.datetime]) -> Optional[datetime.datetime]:
-            if dt is None:
-                return None
-            if dt.tzinfo is not None and dt.utcoffset() is not None:
-                dt = dt.astimezone().replace(tzinfo=None)
-            return dt.replace(microsecond=0)
-
-        normalized_expected = _normalized(expected_end_time)
+        normalized_expected = PomodoroFunctions._normalize_datetime(expected_end_time)
         selected_job = None
         selected_job_end_time = None
         best_distance_seconds: Optional[float] = None
@@ -828,7 +809,7 @@ class PomodoroFunctions:
             scheduled = PomodoroFunctions.parse_schedule_datetime(job.schedule)
             if scheduled is None:
                 continue
-            normalized_scheduled = _normalized(scheduled)
+            normalized_scheduled = PomodoroFunctions._normalize_datetime(scheduled)
             if normalized_scheduled is None:
                 continue
             if normalized_expected is None:

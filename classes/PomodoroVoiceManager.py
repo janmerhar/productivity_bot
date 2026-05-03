@@ -25,7 +25,7 @@ class PomodoroVoiceManager:
     sessions: Dict[int, PomodoroVoiceSession] = {}
 
     @staticmethod
-    def _resolve_audio_path(mode: str) -> Optional[Path]:
+    def _resolve_audio_path(mode: str) -> Path:
         normalized_mode = mode.lower().strip()
         key = "POMODORO_AUDIO_PATH"
         default_path = Path("assets/focus.mp3")
@@ -74,8 +74,6 @@ class PomodoroVoiceManager:
     ) -> Optional[str]:
         normalized_mode = mode.lower().strip()
         audio_path = cls._resolve_audio_path(normalized_mode)
-        if audio_path is None:
-            return "Pomodoro audio path could not be resolved."
         if not audio_path.exists() or not audio_path.is_file():
             return f"Audio file not found at `{audio_path}`."
 

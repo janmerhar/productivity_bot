@@ -123,7 +123,6 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
 
         target_channel = None
         use_member_voice = True
-        skip_voice = False
         if self.voice_select.values:
             selected = self.voice_select.values[0]
             if interaction.guild is None:
@@ -156,7 +155,6 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
             break_duration=break_duration_value,
             target_channel=target_channel,
             use_member_voice=use_member_voice,
-            skip_voice=skip_voice,
         )
 
 
@@ -220,7 +218,6 @@ class PomodoroStoppedView(discord.ui.View):
         break_duration: Optional[int] = None,
         target_channel: Optional[discord.VoiceChannel],
         use_member_voice: bool,
-        skip_voice: bool,
     ) -> None:
         if not await self._ensure_user(interaction):
             return
@@ -262,9 +259,7 @@ class PomodoroStoppedView(discord.ui.View):
         voice_error: Optional[str] = None
         resolved_target_channel = target_channel
 
-        if skip_voice:
-            voice_error = None
-        elif interaction.guild is None:
+        if interaction.guild is None:
             voice_error = None
         else:
             member = interaction.user
@@ -339,7 +334,6 @@ class PomodoroStoppedView(discord.ui.View):
             break_duration=self._break_duration,
             target_channel=None,
             use_member_voice=True,
-            skip_voice=False,
         )
 
     @discord.ui.button(label="Start Break", style=discord.ButtonStyle.primary, row=0)
@@ -356,7 +350,6 @@ class PomodoroStoppedView(discord.ui.View):
             break_duration=self._break_duration,
             target_channel=None,
             use_member_voice=True,
-            skip_voice=False,
         )
 
     @discord.ui.button(label="Custom Timer", style=discord.ButtonStyle.secondary, row=0)
