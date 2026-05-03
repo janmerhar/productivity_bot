@@ -128,6 +128,11 @@ POMODORO_AUDIO_VOLUME=
 ALIAS_DISABLED=
 ```
 
+Pomodoro voice playback expects local audio files at `assets/focus.mp3` and
+`assets/break.mp3` by default. The audio files are intentionally ignored by git.
+For Docker deployment, place those same files in the deployment checkout's
+`assets/` directory before starting `docker compose`.
+
 2. Install dependencies:
 
 ```bash
