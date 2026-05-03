@@ -295,6 +295,14 @@ class DailyTaskCog(commands.Cog):
                     )
                     next_payload["content"] = voice_error or None
 
+                    if owner_id:
+                        notify_text = (
+                            f"<@{owner_id}> Focus session finished."
+                            if mode == "focus"
+                            else f"<@{owner_id}> Break finished."
+                        )
+                        await channel.send(content=notify_text)
+
                     posted_message: Optional[discord.Message] = None
                     if message_id_raw.isdigit():
                         try:
@@ -354,9 +362,14 @@ class DailyTaskCog(commands.Cog):
                     chain_expires_at=chain_expires_at,
                 )
 
+                notify_text = pomodoro_payload.pop("content", None)
+
                 end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
                 if guild is not None:
                     await PomodoroVoiceManager.stop_for_guild(guild.id, end_time)
+
+                if notify_text:
+                    await channel.send(content=notify_text)
 
                 if not message_id_raw.isdigit():
                     await channel.send(**pomodoro_payload)

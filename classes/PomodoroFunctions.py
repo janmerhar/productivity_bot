@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 from embeds.PomodoroEmbeds import PomodoroEmbeds
-from classes.DailyJob import DailyJob, OneTimeSchedule2
+from classes.DailyJob import DailyJob, OneTimeSchedule2, ScheduleConfig
 from classes.DailyJobManager import DailyJobManager
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from config.db import mongo_db
@@ -246,11 +246,14 @@ class PomodoroFunctions:
 
     @staticmethod
     def parse_schedule_datetime(
-        schedule: Optional[Mapping[str, Any]],
+        schedule: Optional[Union[ScheduleConfig, Mapping[str, Any]]],
     ) -> Optional[datetime.datetime]:
         if not schedule:
             return None
-        raw_value = schedule.get("datetime")
+        if isinstance(schedule, Mapping):
+            raw_value = schedule.get("datetime")
+        else:
+            raw_value = getattr(schedule, "datetime", None)
         if not raw_value:
             return None
         try:
