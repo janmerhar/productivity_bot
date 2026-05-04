@@ -122,6 +122,35 @@ export async function runSlashCommandWithOptions(
   await commandComposer.press('Enter');
 }
 
+export async function runSlashCommandWithAutocompleteSelection(
+  page: Page,
+  commandLine: string,
+  query: string,
+  selectionText: string | RegExp = query
+): Promise<void> {
+  const messageBox = await getMessageBox(page);
+  await messageBox.click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type(commandLine, { delay: 20 });
+  await waitForSlashCommandComposer(page);
+  await page.waitForTimeout(500);
+
+  await page.keyboard.type(query, { delay: 20 });
+
+  const selectionPattern =
+    typeof selectionText === 'string'
+      ? new RegExp(escapeRegExp(selectionText), 'i')
+      : selectionText;
+  const selection = page.getByRole('option').filter({ hasText: selectionPattern }).first();
+  await expect(selection).toBeVisible({ timeout: 10_000 });
+  await selection.click();
+
+  const commandComposer = await getMessageBox(page);
+  await commandComposer.click();
+  await commandComposer.press('Enter');
+}
+
 export async function expectNoDiscordInteractionFailure(page: Page): Promise<void> {
   await page.waitForTimeout(3_500);
   await expect(page.getByText(failureText)).toHaveCount(0);
