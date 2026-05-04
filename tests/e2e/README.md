@@ -49,29 +49,26 @@ Set the target guild and channel in `tests/e2e/.env`, then run:
 npm.cmd --prefix tests/e2e run e2e
 ```
 
-You can still override any value from PowerShell for one run:
+`DISCORD_E2E_ASSERT_LOG=true` makes tests check this repo's bot log for the received command. Some tests create todo, habit, reminder, jobs, and pomodoro data in the configured test server/database.
 
-```powershell
-$env:DISCORD_E2E_MUTATING="true"
-npm.cmd --prefix tests/e2e run e2e
-```
+Optional feature flags:
 
-`DISCORD_E2E_ASSERT_LOG=true` makes tests check this repo's bot log for the received command. `DISCORD_E2E_MUTATING=true` enables tests that create todo, habit, and pomodoro data in the configured test server/database.
+- `DISCORD_E2E_JOBS_ENABLED=true` when `JOBS_COMMANDS_DISABLED=false`
+- `DISCORD_E2E_TOGGL_MUTATING=true` only with a dedicated Toggl test account
+- `DISCORD_E2E_TOGGL_SAVED_ENABLED=true` when `TOGGL_SAVED_DISABLED=false`
+- `DISCORD_E2E_ALIAS_ENABLED=true` when `ALIAS_DISABLED=false`
 
 ## Current coverage
 
-Default read-only smoke commands:
+Command smoke specs are grouped under `specs/commands` by bot feature:
 
-- `/info`
-- `/todo overview`
-- `/list directory`
-- `/reminder list`
-- `/habit list`
-- `/pomodoro active`
-
-Opt-in mutating smoke commands:
-
-- `/todo add`
-- `/habit add`
-- `/pomodoro start`
-- `/pomodoro stop`
+- `settings.spec.ts`
+- `todo.spec.ts`
+- `reminder.spec.ts`
+- `habit.spec.ts`
+- `pomodoro.spec.ts`
+- `toggl.spec.ts`
+- `jobs.spec.ts`
+- `assistant.spec.ts`
+- `bug-report.spec.ts`
+- `feature-request.spec.ts`
