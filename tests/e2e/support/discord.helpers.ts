@@ -89,6 +89,11 @@ export type SlashCommandOptionInput = {
   value: string;
 };
 
+export type SlashCommandAutocompleteSelection = {
+  query: string;
+  selectionText?: string | RegExp;
+};
+
 export async function runSlashCommandWithOptions(
   page: Page,
   commandLine: string,
@@ -128,6 +133,16 @@ export async function runSlashCommandWithAutocompleteSelection(
   query: string,
   selectionText: string | RegExp = query
 ): Promise<void> {
+  await runSlashCommandWithAutocompleteSelections(page, commandLine, [
+    { query, selectionText }
+  ]);
+}
+
+export async function runSlashCommandWithAutocompleteSelections(
+  page: Page,
+  commandLine: string,
+  selections: SlashCommandAutocompleteSelection[]
+): Promise<void> {
   const messageBox = await getMessageBox(page);
   await messageBox.click();
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
@@ -136,15 +151,20 @@ export async function runSlashCommandWithAutocompleteSelection(
   await waitForSlashCommandComposer(page);
   await page.waitForTimeout(500);
 
-  await page.keyboard.type(query, { delay: 20 });
+  for (const selectionInput of selections) {
+    const query = selectionInput.query;
+    const selectionText = selectionInput.selectionText ?? query;
+    await page.keyboard.type(query, { delay: 20 });
 
-  const selectionPattern =
-    typeof selectionText === 'string'
-      ? new RegExp(escapeRegExp(selectionText), 'i')
-      : selectionText;
-  const selection = page.getByRole('option').filter({ hasText: selectionPattern }).first();
-  await expect(selection).toBeVisible({ timeout: 10_000 });
-  await selection.click();
+    const selectionPattern =
+      typeof selectionText === 'string'
+        ? new RegExp(escapeRegExp(selectionText), 'i')
+        : selectionText;
+    const selection = page.getByRole('option').filter({ hasText: selectionPattern }).first();
+    await expect(selection).toBeVisible({ timeout: 10_000 });
+    await selection.click();
+    await page.waitForTimeout(300);
+  }
 
   const commandComposer = await getMessageBox(page);
   await commandComposer.click();
