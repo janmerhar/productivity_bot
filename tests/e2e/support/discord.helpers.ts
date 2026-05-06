@@ -113,6 +113,12 @@ export type SlashCommandAutocompleteSelection = {
   selectionText?: string | RegExp;
 };
 
+export type SlashCommandAutocompleteOptionInput = {
+  name: string;
+  query: string;
+  selectionText?: string | RegExp;
+};
+
 export async function runSlashCommandWithOptions(
   page: Page,
   commandLine: string,
@@ -138,6 +144,50 @@ export async function runSlashCommandWithOptions(
         .last()
     ).toBeVisible({ timeout: 5_000 });
     await page.keyboard.type(option.value, { delay: 20 });
+    await page.waitForTimeout(300);
+  }
+
+  const commandComposer = await getMessageBox(page);
+  await commandComposer.click();
+  await commandComposer.press('Enter');
+}
+
+export async function runSlashCommandWithAutocompleteOptions(
+  page: Page,
+  commandLine: string,
+  options: SlashCommandAutocompleteOptionInput[]
+): Promise<void> {
+  const messageBox = await getMessageBox(page);
+  await messageBox.click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type(commandLine, { delay: 20 });
+  await waitForSlashCommandComposer(page);
+  await page.waitForTimeout(500);
+
+  for (const option of options) {
+    await openSlashCommandOptionsMenu(page);
+    await page.keyboard.type(option.name, { delay: 20 });
+    await page.waitForTimeout(300);
+    await page.keyboard.press('Enter');
+    await expect(
+      page
+        .locator('[class*="optionPillKey"]')
+        .filter({ hasText: new RegExp(escapeRegExp(option.name), 'i') })
+        .last()
+    ).toBeVisible({ timeout: 5_000 });
+
+    await page.keyboard.type(option.query, { delay: 20 });
+    await page.waitForTimeout(300);
+
+    const selectionText = option.selectionText ?? option.query;
+    const selectionPattern =
+      typeof selectionText === 'string'
+        ? new RegExp(escapeRegExp(selectionText), 'i')
+        : selectionText;
+    const selection = page.getByRole('option').filter({ hasText: selectionPattern }).first();
+    await expect(selection).toBeVisible({ timeout: 10_000 });
+    await selection.click();
     await page.waitForTimeout(300);
   }
 
