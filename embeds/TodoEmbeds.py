@@ -1279,6 +1279,7 @@ class TodoListItemsView(discord.ui.View):
             if refreshed_list is not None:
                 todo_list = refreshed_list
 
+        session_page = max(1, int(session.get("page") or 1))
         view = cls(
             todo_list=todo_list,
             items=[],
@@ -1291,13 +1292,14 @@ class TodoListItemsView(discord.ui.View):
             user_id=session.get("user_id"),
             view_scope=str(session.get("view_scope") or "list").strip(),
             guild_id=session.get("guild_id"),
-            page=max(1, int(session.get("page") or 1)),
+            page=session_page,
             page_size=max(1, int(session.get("page_size") or 5)),
             search_query=str(session.get("search_query") or ""),
             response_ephemeral=bool(session.get("response_ephemeral", True)),
             session_id=str(session.get("session_id") or session_id).strip(),
         )
         await view._reload_items()
+        view.page = max(1, min(session_page, view.total_pages))
         await view.ensure_session()
         return view
 
@@ -2039,12 +2041,14 @@ class TodoListItemsView(discord.ui.View):
         self.add_item(
             TodoListItemsPrevButton(
                 self.session_id,
+                page=self.page,
                 disabled=self.page <= 1,
             )
         )
         self.add_item(
             TodoListItemsNextButton(
                 self.session_id,
+                page=self.page,
                 disabled=self.page >= self.total_pages,
             )
         )

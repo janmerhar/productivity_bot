@@ -86,15 +86,22 @@ class TodoListItemInfoButton(
 
 class TodoListItemsPrevButton(
     discord.ui.DynamicItem[discord.ui.Button],
-    template=r"todoitems:prev:(?P<session_id>[a-f0-9]+)",
+    template=r"todoitems:prev:(?P<session_id>[a-f0-9]+)(?::(?P<page>\d+))?",
 ):
-    def __init__(self, session_id: str, *, disabled: bool = False) -> None:
+    def __init__(
+        self,
+        session_id: str,
+        *,
+        page: int = 1,
+        disabled: bool = False,
+    ) -> None:
+        self.page = max(1, int(page or 1))
         super().__init__(
             discord.ui.Button(
                 style=discord.ButtonStyle.secondary,
                 emoji="\u25c0\ufe0f",
                 row=1,
-                custom_id=f"todoitems:prev:{session_id}",
+                custom_id=f"todoitems:prev:{session_id}:{self.page}",
                 disabled=disabled,
             )
         )
@@ -109,8 +116,10 @@ class TodoListItemsPrevButton(
         /,
     ) -> "TodoListItemsPrevButton":
         del interaction
+        page = match.groupdict().get("page") or 1
         return cls(
             match.group("session_id"),
+            page=int(page),
             disabled=getattr(item, "disabled", False),
         )
 
@@ -127,15 +136,22 @@ class TodoListItemsPrevButton(
 
 class TodoListItemsNextButton(
     discord.ui.DynamicItem[discord.ui.Button],
-    template=r"todoitems:next:(?P<session_id>[a-f0-9]+)",
+    template=r"todoitems:next:(?P<session_id>[a-f0-9]+)(?::(?P<page>\d+))?",
 ):
-    def __init__(self, session_id: str, *, disabled: bool = False) -> None:
+    def __init__(
+        self,
+        session_id: str,
+        *,
+        page: int = 1,
+        disabled: bool = False,
+    ) -> None:
+        self.page = max(1, int(page or 1))
         super().__init__(
             discord.ui.Button(
                 style=discord.ButtonStyle.secondary,
                 emoji="\u25b6\ufe0f",
                 row=1,
-                custom_id=f"todoitems:next:{session_id}",
+                custom_id=f"todoitems:next:{session_id}:{self.page}",
                 disabled=disabled,
             )
         )
@@ -150,8 +166,10 @@ class TodoListItemsNextButton(
         /,
     ) -> "TodoListItemsNextButton":
         del interaction
+        page = match.groupdict().get("page") or 1
         return cls(
             match.group("session_id"),
+            page=int(page),
             disabled=getattr(item, "disabled", False),
         )
 
