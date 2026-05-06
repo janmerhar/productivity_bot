@@ -84,6 +84,25 @@ export async function runSlashCommand(page: Page, commandLine: string): Promise<
   }
 }
 
+export async function runSlashCommandExpectingModal(
+  page: Page,
+  commandLine: string
+): Promise<void> {
+  const messageBox = await getMessageBox(page);
+  await messageBox.click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type(commandLine, { delay: 20 });
+  await page.waitForTimeout(500);
+
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(750);
+
+  const commandComposer = await getMessageBox(page);
+  await commandComposer.click();
+  await commandComposer.press('Enter');
+}
+
 export type SlashCommandOptionInput = {
   name: string;
   value: string;
