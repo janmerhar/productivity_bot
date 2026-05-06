@@ -162,6 +162,15 @@ export async function runSlashCommandWithAutocompleteSelections(
   commandLine: string,
   selections: SlashCommandAutocompleteSelection[]
 ): Promise<void> {
+  await runSlashCommandWithAutocompleteSelectionsAndText(page, commandLine, selections, '');
+}
+
+export async function runSlashCommandWithAutocompleteSelectionsAndText(
+  page: Page,
+  commandLine: string,
+  selections: SlashCommandAutocompleteSelection[],
+  textAfterSelections: string
+): Promise<void> {
   const messageBox = await getMessageBox(page);
   await messageBox.click();
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
@@ -182,6 +191,11 @@ export async function runSlashCommandWithAutocompleteSelections(
     const selection = page.getByRole('option').filter({ hasText: selectionPattern }).first();
     await expect(selection).toBeVisible({ timeout: 10_000 });
     await selection.click();
+    await page.waitForTimeout(300);
+  }
+
+  if (textAfterSelections) {
+    await page.keyboard.type(textAfterSelections, { delay: 20 });
     await page.waitForTimeout(300);
   }
 
