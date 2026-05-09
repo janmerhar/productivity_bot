@@ -24,6 +24,7 @@ const emoji = {
   edit: '\u270f\ufe0f',
   options: '\ud83d\udd0e',
   pause: '\u23f8\ufe0f',
+  ping: '\ud83d\udd14',
   resume: '\u25b6\ufe0f'
 };
 
@@ -152,6 +153,56 @@ test.describe('reminder card flows', () => {
     await itemActionButton(reminderCard, emoji.delete).click();
     await confirmModal(page, /Delete Reminder/i);
     await expect(reminderCard).toContainText(/Deleted reminder/i, { timeout: 20_000 });
+  });
+
+  test('detail card can create another reminder and update ping settings', async ({ page }) => {
+    const env = readE2EEnv();
+    const sourceTitle = runMarker('e2e card source reminder');
+    const followupTitle = runMarker('e2e card followup reminder');
+    const followupDescription = runMarker('e2e card followup description');
+
+    await createReminderWithCommand(page, sourceTitle);
+    const sourceCard = await pinMessageById(
+      page,
+      await expectLatestChannelMessageContaining(page, env.channelId, sourceTitle)
+    );
+    await expectReminderCard(sourceCard, {
+      title: sourceTitle,
+      status: /active/i,
+      result: /Scheduled recurring reminder/i
+    });
+
+    await itemActionButton(sourceCard, emoji.add).click();
+    await fillReminderCreateModal(page, {
+      title: followupTitle,
+      schedule: defaultSchedule,
+      description: followupDescription
+    });
+
+    const followupCard = await pinMessageById(
+      page,
+      await expectLatestChannelMessageContaining(page, env.channelId, followupTitle)
+    );
+    await expectReminderCard(followupCard, {
+      title: followupTitle,
+      description: followupDescription,
+      status: /active/i,
+      result: /Scheduled recurring reminder/i
+    });
+
+    await itemActionButton(followupCard, emoji.ping).click();
+    await submitReminderPingModal(page);
+    await expect(followupCard).toContainText(/Reminder ping settings updated/i, {
+      timeout: 20_000
+    });
+
+    await itemActionButton(followupCard, emoji.delete).click();
+    await confirmModal(page, /Delete Reminder/i);
+    await expect(followupCard).toContainText(/Deleted reminder/i, { timeout: 20_000 });
+
+    await itemActionButton(sourceCard, emoji.delete).click();
+    await confirmModal(page, /Delete Reminder/i);
+    await expect(sourceCard).toContainText(/Deleted reminder/i, { timeout: 20_000 });
   });
 });
 
@@ -315,6 +366,14 @@ async function clickModalRadio(dialog: Locator, label: string): Promise<void> {
 async function confirmModal(page: Page, modalTitle: string | RegExp): Promise<void> {
   await expectDiscordModal(page, modalTitle);
   const dialog = page.getByRole('dialog').filter({ hasText: modalTitle }).last();
+  await dialog.getByRole('button', { name: /submit/i }).click();
+  await expect(dialog).toBeHidden({ timeout: 10_000 });
+  await expectNoDiscordInteractionFailure(page);
+}
+
+async function submitReminderPingModal(page: Page): Promise<void> {
+  await expectDiscordModal(page, /Add Ping Users/i);
+  const dialog = page.getByRole('dialog').filter({ hasText: /Add Ping Users/i }).last();
   await dialog.getByRole('button', { name: /submit/i }).click();
   await expect(dialog).toBeHidden({ timeout: 10_000 });
   await expectNoDiscordInteractionFailure(page);
