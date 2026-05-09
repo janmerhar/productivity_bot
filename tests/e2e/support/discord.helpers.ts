@@ -18,6 +18,21 @@ export type LogCursor = {
 const failureText = /application did not respond|interaction failed|something went wrong/i;
 const e2eRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(e2eRoot, '..', '..');
+const slashCommandPaths = [
+  '/todo list directory',
+  '/todo list create',
+  '/todo list delete',
+  '/todo list clear',
+  '/todo list show',
+  '/todo list edit',
+  '/todo overview',
+  '/todo complete',
+  '/todo assign',
+  '/todo delete',
+  '/todo status',
+  '/todo show',
+  '/todo add'
+];
 
 export function readE2EEnv(): E2EEnv {
   const guildId = process.env.DISCORD_E2E_GUILD_ID;
@@ -61,27 +76,14 @@ export async function openDiscordTestChannel(page: Page, env: E2EEnv): Promise<v
     timeout: 30_000
   });
   await getMessageBox(page);
+  await dismissVisibleDiscordFailures(page);
 }
 
 export async function runSlashCommand(page: Page, commandLine: string): Promise<void> {
-  const messageBox = await getMessageBox(page);
-  await messageBox.click();
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
-  await page.keyboard.press('Backspace');
-  await page.keyboard.type(commandLine, { delay: 20 });
-  await page.waitForTimeout(500);
-
-  // First Enter selects the slash command from Discord's command picker.
-  await page.keyboard.press('Enter');
-
-  // Discord Web can take a moment to move from the picker into the command composer.
-  // Refocus the composer before pressing Enter so the command is submitted, not just selected.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.waitForTimeout(750);
-    const commandComposer = await getMessageBox(page);
-    await commandComposer.click();
-    await commandComposer.press('Enter');
-  }
+  const { invocation, argumentText } = splitSlashCommandLine(commandLine);
+  await startSlashCommand(page, invocation);
+  await typeSlashCommandArgument(page, argumentText);
+  await submitSlashCommand(page);
 }
 
 export async function sendDiscordMessage(page: Page, text: string): Promise<void> {
@@ -97,19 +99,10 @@ export async function runSlashCommandExpectingModal(
   page: Page,
   commandLine: string
 ): Promise<void> {
-  const messageBox = await getMessageBox(page);
-  await messageBox.click();
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
-  await page.keyboard.press('Backspace');
-  await page.keyboard.type(commandLine, { delay: 20 });
-  await page.waitForTimeout(500);
-
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(750);
-
-  const commandComposer = await getMessageBox(page);
-  await commandComposer.click();
-  await commandComposer.press('Enter');
+  const { invocation, argumentText } = splitSlashCommandLine(commandLine);
+  await startSlashCommand(page, invocation);
+  await typeSlashCommandArgument(page, argumentText);
+  await submitSlashCommand(page);
 }
 
 export type SlashCommandOptionInput = {
@@ -133,13 +126,9 @@ export async function runSlashCommandWithOptions(
   commandLine: string,
   options: SlashCommandOptionInput[]
 ): Promise<void> {
-  const messageBox = await getMessageBox(page);
-  await messageBox.click();
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
-  await page.keyboard.press('Backspace');
-  await page.keyboard.type(commandLine, { delay: 20 });
-  await waitForSlashCommandComposer(page);
-  await page.waitForTimeout(500);
+  const { invocation, argumentText } = splitSlashCommandLine(commandLine);
+  await startSlashCommand(page, invocation);
+  await typeSlashCommandArgument(page, argumentText);
 
   for (const option of options) {
     await openSlashCommandOptionsMenu(page);
@@ -156,9 +145,7 @@ export async function runSlashCommandWithOptions(
     await page.waitForTimeout(300);
   }
 
-  const commandComposer = await getMessageBox(page);
-  await commandComposer.click();
-  await commandComposer.press('Enter');
+  await submitSlashCommand(page);
 }
 
 export async function runSlashCommandWithAutocompleteOptions(
@@ -166,13 +153,9 @@ export async function runSlashCommandWithAutocompleteOptions(
   commandLine: string,
   options: SlashCommandAutocompleteOptionInput[]
 ): Promise<void> {
-  const messageBox = await getMessageBox(page);
-  await messageBox.click();
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
-  await page.keyboard.press('Backspace');
-  await page.keyboard.type(commandLine, { delay: 20 });
-  await waitForSlashCommandComposer(page);
-  await page.waitForTimeout(500);
+  const { invocation, argumentText } = splitSlashCommandLine(commandLine);
+  await startSlashCommand(page, invocation);
+  await typeSlashCommandArgument(page, argumentText);
 
   for (const option of options) {
     await openSlashCommandOptionsMenu(page);
@@ -200,9 +183,7 @@ export async function runSlashCommandWithAutocompleteOptions(
     await page.waitForTimeout(300);
   }
 
-  const commandComposer = await getMessageBox(page);
-  await commandComposer.click();
-  await commandComposer.press('Enter');
+  await submitSlashCommand(page);
 }
 
 export async function runSlashCommandWithAutocompleteSelection(
@@ -230,13 +211,9 @@ export async function runSlashCommandWithAutocompleteSelectionsAndText(
   selections: SlashCommandAutocompleteSelection[],
   textAfterSelections: string
 ): Promise<void> {
-  const messageBox = await getMessageBox(page);
-  await messageBox.click();
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
-  await page.keyboard.press('Backspace');
-  await page.keyboard.type(commandLine, { delay: 20 });
-  await waitForSlashCommandComposer(page);
-  await page.waitForTimeout(500);
+  const { invocation, argumentText } = splitSlashCommandLine(commandLine);
+  await startSlashCommand(page, invocation);
+  await typeSlashCommandArgument(page, argumentText);
 
   for (const selectionInput of selections) {
     const query = selectionInput.query;
@@ -258,9 +235,7 @@ export async function runSlashCommandWithAutocompleteSelectionsAndText(
     await page.waitForTimeout(300);
   }
 
-  const commandComposer = await getMessageBox(page);
-  await commandComposer.click();
-  await commandComposer.press('Enter');
+  await submitSlashCommand(page);
 }
 
 export async function expectNoDiscordInteractionFailure(page: Page): Promise<void> {
@@ -345,6 +320,23 @@ export async function dismissDiscordModal(page: Page): Promise<void> {
   await expect(dialog).toBeHidden({ timeout: 5_000 });
 }
 
+async function dismissVisibleDiscordFailures(page: Page): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const failure = page.getByText(failureText).last();
+    if (!(await isVisible(failure))) {
+      return;
+    }
+
+    const dismissLink = page.getByRole('link', { name: /dismiss message/i }).last();
+    if (!(await isVisible(dismissLink))) {
+      return;
+    }
+
+    await dismissLink.click();
+    await page.waitForTimeout(500);
+  }
+}
+
 export async function submitDiscordModal(
   page: Page,
   title: string | RegExp,
@@ -403,7 +395,7 @@ export function runMarker(prefix: string): string {
   return `${prefix} ${new Date().toISOString()}`;
 }
 
-async function getMessageBox(page: Page): Promise<Locator> {
+export async function getMessageBox(page: Page): Promise<Locator> {
   const candidates = [
     page.locator('[role="textbox"][data-slate-editor="true"]').last(),
     page.getByRole('textbox', { name: /message/i }).last(),
@@ -429,7 +421,7 @@ async function isVisible(locator: Locator): Promise<boolean> {
   }
 }
 
-async function openSlashCommandOptionsMenu(page: Page): Promise<void> {
+export async function openSlashCommandOptionsMenu(page: Page): Promise<void> {
   const clickPoint = await page.evaluate(() => {
     const editor = document.querySelector('[data-slate-editor="true"]');
     const pills = Array.from(document.querySelectorAll('[class*="optionPill"]'));
@@ -459,16 +451,65 @@ async function openSlashCommandOptionsMenu(page: Page): Promise<void> {
   });
 }
 
-async function waitForSlashCommandComposer(page: Page): Promise<void> {
-  const commandComposer = page.locator('[class*="applicationCommand"]').last();
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    if (await isVisible(commandComposer)) {
+async function clearMessageBox(page: Page): Promise<void> {
+  const messageBox = await getMessageBox(page);
+  await messageBox.click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  await page.keyboard.press('Backspace');
+}
+
+export async function startSlashCommand(page: Page, invocation: string): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await clearMessageBox(page);
+    await page.keyboard.type(invocation, { delay: 20 });
+    await page.waitForTimeout(750);
+
+    if (await isVisible(page.locator('[class*="applicationCommand"]').last())) {
       return;
     }
 
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(750);
+    const suggestion = page
+      .getByRole('option')
+      .filter({ hasText: slashCommandPattern(invocation) })
+      .first();
 
+    if (await isVisible(suggestion)) {
+      await suggestion.click();
+      await waitForSlashCommandComposer(page);
+      return;
+    }
+
+    const firstOption = page.getByRole('option').first();
+    if (await isVisible(firstOption)) {
+      await firstOption.click();
+      await waitForSlashCommandComposer(page);
+      return;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  await waitForSlashCommandComposer(page);
+}
+
+async function typeSlashCommandArgument(page: Page, argumentText: string): Promise<void> {
+  if (!argumentText) {
+    return;
+  }
+
+  await page.keyboard.type(argumentText, { delay: 20 });
+  await page.waitForTimeout(300);
+}
+
+export async function submitSlashCommand(page: Page): Promise<void> {
+  const commandComposer = await getMessageBox(page);
+  await commandComposer.click();
+  await commandComposer.press('Enter');
+}
+
+async function waitForSlashCommandComposer(page: Page): Promise<void> {
+  const commandComposer = page.locator('[class*="applicationCommand"]').last();
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     if (await isVisible(commandComposer)) {
       return;
     }
@@ -481,9 +522,39 @@ async function waitForSlashCommandComposer(page: Page): Promise<void> {
         return;
       }
     }
+
+    await page.waitForTimeout(750);
   }
 
   await expect(commandComposer).toBeVisible({ timeout: 10_000 });
+}
+
+function splitSlashCommandLine(commandLine: string): {
+  invocation: string;
+  argumentText: string;
+} {
+  const normalized = commandLine.trim().replace(/\s+/g, ' ');
+  const commandPath = slashCommandPaths.find(
+    (pathName) => normalized === pathName || normalized.startsWith(`${pathName} `)
+  );
+
+  if (!commandPath) {
+    const parts = normalized.split(' ');
+    return {
+      invocation: parts.slice(0, 2).join(' '),
+      argumentText: parts.slice(2).join(' ')
+    };
+  }
+
+  return {
+    invocation: commandPath,
+    argumentText: normalized.slice(commandPath.length).trim()
+  };
+}
+
+function slashCommandPattern(invocation: string): RegExp {
+  const commandText = escapeRegExp(invocation.replace(/^\//, '')).replace(/\s+/g, '\\s+');
+  return new RegExp(`/?${commandText}\\b`, 'i');
 }
 
 function escapeRegExp(value: string): string {
