@@ -78,16 +78,18 @@ def create_session(state: Dict[str, Any]) -> str:
 
 
 def save_session(session_id: str, state: Dict[str, Any]) -> None:
+    cleaned_session_id = str(session_id)
     _COLLECTION.update_one(
-        {"session_id": str(session_id)},
+        {"session_id": cleaned_session_id},
         {
             "$set": {
+                "session_id": cleaned_session_id,
                 **_state_document(state),
                 "updated_at": _now(),
                 "expires_at": _expiry(),
             }
         },
-        upsert=False,
+        upsert=True,
     )
 
 

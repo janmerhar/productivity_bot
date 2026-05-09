@@ -1,0 +1,17 @@
+{
+  "name": "productivity-bot-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser E2E smoke tests for the Discord productivity bot.",
+  "scripts": {
+    "e2e:auth": "playwright test --config=playwright.config.ts --project=auth --headed",
+    "e2e": "playwright test --config=playwright.config.ts --project=discord-chromium",
+    "e2e:headed": "playwright test --config=playwright.config.ts --project=discord-chromium --headed",
+    "e2e:ui": "playwright test --config=playwright.config.ts --ui",
+    "e2e:install": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "dotenv": "^17.4.2"
+  }
+}
