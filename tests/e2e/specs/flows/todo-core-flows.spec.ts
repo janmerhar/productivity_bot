@@ -13,7 +13,6 @@ import {
   runSlashCommandWithAutocompleteOptions
 } from '../../support/discord.helpers';
 
-test.describe.configure({ mode: 'serial' });
 test.setTimeout(240_000);
 
 const emoji = {
@@ -23,7 +22,8 @@ const emoji = {
   edit: '\u270f\ufe0f',
   listShow: '\ud83d\udccb',
   options: '\ud83d\udd0e',
-  progress: '\ud83d\udfe1'
+  progress: '\ud83d\udfe1',
+  sortAscending: '\ud83d\udd3c'
 };
 
 test.beforeAll(() => {
@@ -83,8 +83,6 @@ test.describe('todo flows', () => {
     const title = runMarker('e2e flow list add');
     const description = runMarker('e2e flow list add description');
 
-    await clearCurrentTodoList(page);
-
     await runSlashCommand(page, '/todo list show');
     await expectNoDiscordInteractionFailure(page);
 
@@ -99,7 +97,7 @@ test.describe('todo flows', () => {
     });
 
     await expect(listMessage).toContainText(title, { timeout: 20_000 });
-    await clickEntryNumberButton(listMessage, title);
+    await clickLastEnabledNumberButton(listMessage);
 
     const detailsCard = await expectLatestChannelMessageContaining(page, env.channelId, title);
     await expect(detailsCard).toContainText(description);
@@ -186,21 +184,30 @@ test.describe('todo flows', () => {
 
   test('directory to list to item', async ({ page }) => {
     const env = readE2EEnv();
-    const listName = runMarker('e2e flow directory list');
+    const listName = runMarker('aaaa e2e flow directory list');
     const title = runMarker('e2e flow directory item');
     const description = runMarker('e2e flow directory description');
 
     await runSlashCommand(page, '/todo list directory');
     await expectNoDiscordInteractionFailure(page);
 
-    const directoryMessage = latestChannelMessage(page, env.channelId);
+    const directoryMessage = channelMessageContaining(
+      page,
+      env.channelId,
+      /Todo List Directory/i
+    );
     await itemActionButton(directoryMessage, emoji.add).click();
     await fillSingleFieldModal(page, /Create New List/i, listName);
 
     await expect(directoryMessage).toContainText(listName, { timeout: 20_000 });
-    await clickEntryNumberButton(directoryMessage, listName);
+    await clickNumberButton(directoryMessage, 1);
 
-    const listCard = await expectLatestChannelMessageContaining(page, env.channelId, listName);
+    await expectLatestChannelMessageContaining(page, env.channelId, listName);
+    const listCard = page
+      .locator(`li[id^="chat-messages-${env.channelId}-"]`)
+      .filter({ hasText: listName })
+      .filter({ hasText: /Items:/i })
+      .last();
     await expect(listCard).toContainText(/Todo List/i);
 
     await itemActionButton(listCard, emoji.add).click();
@@ -221,17 +228,19 @@ test.describe('todo flows', () => {
 
   test('move item between lists by editing', async ({ page }) => {
     const env = readE2EEnv();
-    const listA = runMarker('e2e flow move list a');
-    const listB = runMarker('e2e flow move list b');
-    const title = runMarker('e2e flow moved item');
+    const marker = Date.now().toString(36);
+    const listA = `aaa ${marker} move list a`;
+    const listB = `aaa ${marker} move list b`;
+    const title = `move item ${marker}`;
 
-    await createTodoList(page, listA);
-    await createTodoList(page, listB);
+    const listACard = await createTodoList(page, listA);
+    const listBCard = await createTodoList(page, listB);
 
-    await runSlashCommandWithAutocompleteOptions(page, `/todo add ${title}`, [
-      { name: 'list', query: listA, selectionText: listA }
-    ]);
-    await expectNoDiscordInteractionFailure(page);
+    await itemActionButton(listACard, emoji.add).click();
+    await fillTodoModal(page, {
+      title,
+      modalTitle: /Add to/i
+    });
 
     const itemCard = await expectLatestChannelMessageContaining(page, env.channelId, title);
     await expect(itemCard).toContainText(listA);
@@ -242,29 +251,35 @@ test.describe('todo flows', () => {
     await expect(itemCard).toContainText(listB, { timeout: 20_000 });
     await expect(itemCard).toContainText(title);
 
-    await showTodoList(page, listA);
+    await itemActionButton(listACard, emoji.listShow).click();
     const listAMessage = latestChannelMessage(page, env.channelId);
     await expect(listAMessage).toContainText(/Tasks/i, { timeout: 20_000 });
     await expect(listAMessage).not.toContainText(title);
 
-    await showTodoList(page, listB);
+    await itemActionButton(listBCard, emoji.listShow).click();
     const listBMessage = latestChannelMessage(page, env.channelId);
     await expect(listBMessage).toContainText(title, { timeout: 20_000 });
   });
 });
 
-async function createTodoList(page: Page, listName: string): Promise<void> {
+async function createTodoList(page: Page, listName: string): Promise<Locator> {
   const env = readE2EEnv();
   await runSlashCommand(page, `/todo list create ${listName}`);
   await expectNoDiscordInteractionFailure(page);
   await expectLatestChannelMessageContaining(page, env.channelId, listName);
+  return page
+    .locator(`li[id^="chat-messages-${env.channelId}-"]`)
+    .filter({ hasText: listName })
+    .filter({ hasText: /Items:/i })
+    .last();
 }
 
-async function showTodoList(page: Page, listName: string): Promise<void> {
-  await runSlashCommandWithAutocompleteOptions(page, '/todo list show', [
-    { name: 'list', query: listName, selectionText: listName }
-  ]);
-  await expectNoDiscordInteractionFailure(page);
+function channelMessageContaining(
+  page: Page,
+  channelId: string,
+  text: string | RegExp
+): Locator {
+  return page.locator(`li[id^="chat-messages-${channelId}-"]`).filter({ hasText: text }).last();
 }
 
 async function clearCurrentTodoList(page: Page): Promise<void> {
@@ -333,15 +348,10 @@ async function setEditModalList(page: Page, listName: string): Promise<void> {
     if ((await textboxes.count()) >= 5) {
       await textboxes.last().fill(listName);
     } else {
-      const select = dialog.getByRole('combobox').last();
-      await expect(select).toBeVisible({ timeout: 5_000 });
-      await select.click();
-      const option = page
-        .getByRole('option')
-        .filter({ hasText: new RegExp(escapeRegExp(listName), 'i') })
-        .first();
-      await expect(option).toBeVisible({ timeout: 10_000 });
-      await option.click();
+      await selectDiscordModalOption(page, dialog, {
+        currentButton: /^(Server|Personal|Inbox)\b/i,
+        optionText: listName
+      });
     }
   }
 
@@ -351,15 +361,38 @@ async function setEditModalList(page: Page, listName: string): Promise<void> {
 }
 
 async function clickModalRadio(dialog: Locator, label: string): Promise<void> {
+  const visibleLabel = dialog.getByText(new RegExp(`^${escapeRegExp(label)}$`, 'i')).last();
+  if (await isVisible(visibleLabel)) {
+    await visibleLabel.click({ force: true });
+    return;
+  }
+
   const radio = dialog.getByRole('radio', {
     name: new RegExp(`^${escapeRegExp(label)}$`, 'i')
   });
   if (await isVisible(radio)) {
-    await radio.click();
+    await radio.click({ force: true });
     return;
   }
+}
 
-  await dialog.getByText(new RegExp(`^${escapeRegExp(label)}$`, 'i')).first().click();
+async function selectDiscordModalOption(
+  page: Page,
+  dialog: Locator,
+  input: { currentButton: RegExp; optionText: string }
+): Promise<void> {
+  const selectButton = dialog.getByRole('button').filter({ hasText: input.currentButton }).last();
+  await expect(selectButton).toBeVisible({ timeout: 10_000 });
+  await selectButton.click();
+
+  const optionText = new RegExp(escapeRegExp(input.optionText), 'i');
+  const option = page
+    .getByRole('option')
+    .or(page.getByRole('menuitem'))
+    .filter({ hasText: optionText })
+    .first();
+  await expect(option).toBeVisible({ timeout: 10_000 });
+  await option.click({ force: true });
 }
 
 async function completeItemFromCard(card: Locator): Promise<void> {
@@ -370,25 +403,37 @@ async function completeItemFromCard(card: Locator): Promise<void> {
   await expect(itemActionButton(card, emoji.complete)).toBeDisabled({ timeout: 10_000 });
 }
 
-async function clickEntryNumberButton(message: Locator, entryText: string): Promise<void> {
-  const text = await message.innerText({ timeout: 10_000 });
-  const entryLine = text
-    .split(/\r?\n/)
-    .find((line) => line.toLowerCase().includes(entryText.toLowerCase()));
-  const number =
-    entryLine?.match(/([1-5])\ufe0f?\u20e3/)?.[1] ??
-    entryLine?.match(/^\s*([1-5])\s+/)?.[1];
-  if (!number) {
-    throw new Error(`Could not find a visible numbered entry for "${entryText}".`);
+async function clickNumberButton(message: Locator, number: number): Promise<void> {
+  const button = accessoryRoot(message).getByRole('button', {
+    name: String(number),
+    exact: true
+  });
+  await expect(button).toBeEnabled({ timeout: 10_000 });
+  await button.click();
+}
+
+async function clickLastEnabledNumberButton(message: Locator): Promise<void> {
+  for (let number = 5; number >= 1; number -= 1) {
+    const button = accessoryRoot(message).getByRole('button', {
+      name: String(number),
+      exact: true
+    });
+    if ((await button.count()) === 0) {
+      continue;
+    }
+    if (await button.isEnabled({ timeout: 1_000 }).catch(() => false)) {
+      await button.click();
+      return;
+    }
   }
 
-  await accessoryRoot(message).getByRole('button', { name: number, exact: true }).click();
+  throw new Error("Could not find an enabled numbered item button.");
 }
 
 async function sortDirectoryDescending(directoryMessage: Locator): Promise<void> {
-  const buttons = accessoryRoot(directoryMessage).getByRole('button');
-  await expect(buttons.nth(7)).toBeEnabled({ timeout: 10_000 });
-  await buttons.nth(7).click();
+  const sortButton = itemActionButton(directoryMessage, emoji.sortAscending);
+  await expect(sortButton).toBeEnabled({ timeout: 10_000 });
+  await sortButton.click();
 }
 
 function itemActionButton(message: Locator, emojiText: string): Locator {

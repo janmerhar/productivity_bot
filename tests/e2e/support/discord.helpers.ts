@@ -84,6 +84,15 @@ export async function runSlashCommand(page: Page, commandLine: string): Promise<
   }
 }
 
+export async function sendDiscordMessage(page: Page, text: string): Promise<void> {
+  const messageBox = await getMessageBox(page);
+  await messageBox.click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type(text, { delay: 20 });
+  await messageBox.press('Enter');
+}
+
 export async function runSlashCommandExpectingModal(
   page: Page,
   commandLine: string
@@ -425,11 +434,18 @@ async function openSlashCommandOptionsMenu(page: Page): Promise<void> {
     const editor = document.querySelector('[data-slate-editor="true"]');
     const pills = Array.from(document.querySelectorAll('[class*="optionPill"]'));
     const lastPill = pills[pills.length - 1];
-    if (!(editor instanceof HTMLElement) || !(lastPill instanceof HTMLElement)) {
+    if (!(editor instanceof HTMLElement)) {
       throw new Error('Could not find the Discord slash command option area.');
     }
 
     const editorRect = editor.getBoundingClientRect();
+    if (!(lastPill instanceof HTMLElement)) {
+      return {
+        x: Math.min(editorRect.left + 220, editorRect.right - 10),
+        y: editorRect.y + editorRect.height / 2
+      };
+    }
+
     const pillRect = lastPill.getBoundingClientRect();
     return {
       x: Math.min(pillRect.right + 25, editorRect.right - 10),
@@ -445,13 +461,26 @@ async function openSlashCommandOptionsMenu(page: Page): Promise<void> {
 
 async function waitForSlashCommandComposer(page: Page): Promise<void> {
   const commandComposer = page.locator('[class*="applicationCommand"]').last();
-  try {
-    await commandComposer.waitFor({ state: 'visible', timeout: 2_000 });
-    return;
-  } catch {
-    // Discord sometimes leaves the typed slash command as plain text until Enter
-    // selects it from the command picker.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (await isVisible(commandComposer)) {
+      return;
+    }
+
     await page.keyboard.press('Enter');
+    await page.waitForTimeout(750);
+
+    if (await isVisible(commandComposer)) {
+      return;
+    }
+
+    const firstOption = page.getByRole('option').first();
+    if (await isVisible(firstOption)) {
+      await firstOption.click();
+      await page.waitForTimeout(750);
+      if (await isVisible(commandComposer)) {
+        return;
+      }
+    }
   }
 
   await expect(commandComposer).toBeVisible({ timeout: 10_000 });
