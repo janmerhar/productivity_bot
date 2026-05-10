@@ -14,7 +14,7 @@ from views.FeatureRequestModal import FeatureRequestModal
 
 class FeatureRequestCog(commands.Cog):
     feature_group = app_commands.Group(
-        name="feature", description="Feature requests"
+        name="feature", description="Suggest features"
     )
 
     def __init__(self, client: commands.Bot) -> None:
@@ -26,7 +26,7 @@ class FeatureRequestCog(commands.Cog):
 
     @feature_group.command(
         name="request",
-        description="Send a feature request to the bot author",
+        description="Suggest a new feature",
     )
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)

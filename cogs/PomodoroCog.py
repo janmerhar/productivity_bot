@@ -85,7 +85,9 @@ async def start_pomodoro_context_menu(
 
 
 class PomodoroCog(commands.Cog):
-    pomodoro_group = app_commands.Group(name="pomodoro", description="Pomodoro timers")
+    pomodoro_group = app_commands.Group(
+        name="pomodoro", description="Run focus and break timers"
+    )
 
     def __init__(self, client: commands.Bot) -> None:
         self.client = client
@@ -181,9 +183,7 @@ class PomodoroCog(commands.Cog):
 
         resolved_description: Optional[str] = None
         if description_override is not None:
-            resolved_description = description_override.format(
-                mode=mode.capitalize()
-            )
+            resolved_description = description_override.format(mode=mode.capitalize())
 
         payload = PomodoroEmbeds.insert_timer_embed(
             mode,
@@ -216,11 +216,11 @@ class PomodoroCog(commands.Cog):
         )
         return payload
 
-    @pomodoro_group.command(name="start", description="Start a pomodoro timer")
+    @pomodoro_group.command(name="start", description="Start a pomodoro session")
     @app_commands.describe(
-        mode="Pick focus or break",
-        duration="Duration in minutes (optional)",
-        voice_channel="Voice channel to join (optional)",
+        mode="Focus or break",
+        duration="Length in minutes",
+        voice_channel="Voice channel to join during the session",
         autojoin="Automatically join your current voice channel",
         visibility=VISIBILITY_DESC,
     )
@@ -272,7 +272,10 @@ class PomodoroCog(commands.Cog):
             )
         except ValueError as exc:
             error_message = str(exc).strip()
-            if "only one pomodoro timer can be active per server" in error_message.lower():
+            if (
+                "only one pomodoro timer can be active per server"
+                in error_message.lower()
+            ):
                 active_payload = await self._build_active_timer_payload(
                     interaction,
                     ephemeral=ephemeral,
@@ -471,7 +474,9 @@ class PomodoroCog(commands.Cog):
                     description_override="{mode} timer is already running.",
                 )
                 if active_payload is not None:
-                    await interaction.followup.send(ephemeral=ephemeral, **active_payload)
+                    await interaction.followup.send(
+                        ephemeral=ephemeral, **active_payload
+                    )
                     return
             await interaction.followup.send(ephemeral=ephemeral, content=result.message)
             return
@@ -608,4 +613,3 @@ class PomodoroCog(commands.Cog):
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(PomodoroCog(client))
     client.tree.add_command(start_pomodoro_context_menu)
-

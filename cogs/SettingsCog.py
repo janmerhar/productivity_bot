@@ -30,7 +30,7 @@ class SettingsCog(commands.Cog):
     async def on_ready(self) -> None:
         print("SettingsCog cog loaded")
 
-    @app_commands.command(name="info", description="Introduction and overview of the bot")
+    @app_commands.command(name="info", description="Show what this bot does and how to start")
     async def info(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_message(
             embed=SettingsEmbeds.info_embed(), ephemeral=True

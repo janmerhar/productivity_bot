@@ -13,7 +13,7 @@ from views.BugReportModal import BugReportModal
 
 
 class BugReportCog(commands.Cog):
-    bug_group = app_commands.Group(name="bug", description="Bug reports")
+    bug_group = app_commands.Group(name="bug", description="Report bugs")
 
     def __init__(self, client: commands.Bot) -> None:
         self.client = client
@@ -24,7 +24,7 @@ class BugReportCog(commands.Cog):
 
     @bug_group.command(
         name="report",
-        description="Report a bug or something that isn't working right",
+        description="Report a bug",
     )
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
