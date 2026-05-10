@@ -591,6 +591,24 @@ class ReminderListView(discord.ui.View):
         return f"<t:{timestamp}:f> (<t:{timestamp}:R>)"
 
     @staticmethod
+    def _cron_human_label(expression: str) -> str:
+        try:
+            from cron_descriptor import get_description
+            return get_description(expression.strip())
+        except Exception:
+            return expression
+
+    @staticmethod
+    def _cron_next_run(expression: str) -> Optional[str]:
+        try:
+            from croniter import croniter
+            it = croniter(expression, datetime.datetime.now())
+            next_dt = it.get_next(datetime.datetime)
+            return f"<t:{int(next_dt.timestamp())}:R>"
+        except Exception:
+            return None
+
+    @staticmethod
     def _schedule_label(job: DailyJob) -> str:
         schedule = job.schedule
         if isinstance(schedule, dict):
@@ -604,13 +622,15 @@ class ReminderListView(discord.ui.View):
 
         if mode == "one-time":
             formatted = ReminderListView._datetime_label(raw_datetime)
-            return formatted or "`unscheduled`"
+            return f"📅 {formatted}" if formatted else "📅 unscheduled"
 
-        if mode == "cron":
-            return f"`{ReminderListView._truncate(expression or 'cron', 48)}`"
+        if mode == "cron" and expression:
+            human = ReminderListView._cron_human_label(expression)
+            next_run = ReminderListView._cron_next_run(expression)
+            return f"🔁 {human}\nNext: {next_run}" if next_run else f"🔁 {human}"
 
         raw_value = ReminderFunctions.schedule_input_for_job(job)
-        return f"`{ReminderListView._truncate(raw_value or 'unscheduled', 48)}`"
+        return f"🔁 {raw_value}" if raw_value else "unscheduled"
 
     @staticmethod
     def _expires_label(job: DailyJob) -> Optional[str]:
@@ -636,34 +656,55 @@ class ReminderListView(discord.ui.View):
             return None
         return ReminderListView._truncate(detail, 140)
 
+    def _active_filters_footer(self) -> str:
+        sort_arrow = "↑" if self.sort == "ascending" else "↓"
+        parts = [f"{sort_arrow} {self.sort.title()}"]
+        status_label = self._status_filter_label(self.status_filter)
+        if self.status_filter and self.status_filter.lower() != "all":
+            parts.append(f"Status: {status_label}")
+        search_label = self.format_search_filter_label(self.search_query)
+        if self.search_query:
+            parts.append(f'Search: "{search_label}"')
+        ping_label = str(self.ping_filter_label or "").strip()
+        if self.ping_filter_user_ids and ping_label:
+            parts.append(f"Ping: {ping_label}")
+        return "  ·  ".join(parts)
+
     def _embed(self) -> discord.Embed:
         embed = discord.Embed(
-            title=f"Reminders - {self.scope_label}",
+            title=f"Reminders — {self.scope_label}",
             color=discord.Colour.blurple(),
         )
-        status_label = self._status_filter_label(self.status_filter)
-        search_label = self.format_search_filter_label(self.search_query)
-        ping_label = str(self.ping_filter_label or "All").strip() or "All"
+
+        filters_text = self._active_filters_footer()
+        footer_text = (
+            f"Page {self.page} of {self.total_pages}  ·  "
+            f"{len(self.reminders)} reminders  ·  {filters_text}"
+        )
 
         page_items = self._page_slice()
         if not page_items:
-            embed.description = "No reminders found."
-            embed.set_footer(
-                text=(
-                    f"Page {self.page}/{self.total_pages} | Items: {len(self.reminders)} | "
-                    f"Sort: {self.sort.title()} | Destination: {self.scope_label} | "
-                    f"Status: {status_label} | Search: {search_label} | Ping: {ping_label}"
-                )
+            has_active_filter = (
+                (self.status_filter and self.status_filter.lower() != "all")
+                or bool(self.search_query)
+                or bool(self.ping_filter_user_ids)
             )
+            embed.description = (
+                "No reminders match the current filters."
+                if has_active_filter
+                else "No reminders found."
+            )
+            embed.set_footer(text=footer_text)
             return embed
 
         for display_index, job in enumerate(page_items, start=1):
             label = self._truncate(ReminderFunctions.reminder_label(job), 90)
-            status = "Paused" if ReminderFunctions.is_paused(job) else "Active"
-            value_lines = [
-                f"Schedule: {self._schedule_label(job)}",
-                f"Destination: {self._destination_label(job)} | ID: `{str(job.id)[:8]}`",
-            ]
+            is_paused = ReminderFunctions.is_paused(job)
+            status_emoji = "⏸️" if is_paused else "🟢"
+            value_lines = [self._schedule_label(job)]
+            destination = self._destination_label(job)
+            if destination:
+                value_lines.append(f"📍 {destination}")
             expires_label = self._expires_label(job)
             if expires_label:
                 value_lines.append(f"Expires: {expires_label}")
@@ -674,18 +715,12 @@ class ReminderListView(discord.ui.View):
             if detail_text and detail_text.lower() != label.lower():
                 value_lines.insert(0, detail_text)
             embed.add_field(
-                name=f"{self._number_emoji(display_index)} {label} [{status}]",
+                name=f"{self._number_emoji(display_index)} {status_emoji} {label}",
                 value="\n".join(value_lines),
                 inline=False,
             )
 
-        embed.set_footer(
-            text=(
-                f"Page {self.page}/{self.total_pages} | Items: {len(self.reminders)} | "
-                f"Sort: {self.sort.title()} | Destination: {self.scope_label} | "
-                f"Status: {status_label} | Search: {search_label} | Ping: {ping_label}"
-            )
-        )
+        embed.set_footer(text=footer_text)
         return embed
 
     def payload(self) -> dict:
