@@ -59,7 +59,7 @@ async def create_reminder_from_message(
             default_channel_id=default_channel_id,
             guild=interaction.guild,
             source_message=message,
-            response_ephemeral=None,
+            response_ephemeral=False,
             initial_reminder=reminder_text,
             guild_id=interaction.guild_id,
         )
@@ -96,11 +96,10 @@ class ReminderCog(commands.Cog):
         destination_type: str,
         visibility: Optional[app_commands.Choice[str]],
     ) -> bool:
-        guild_default = "private" if destination_type == "private" else "public"
         return resolve_visibility_for_context(
             interaction.guild_id,
             visibility,
-            guild_default=guild_default,
+            guild_default="public",
         )
 
     def _resolve_reminder_ephemeral(
@@ -564,7 +563,7 @@ class ReminderCog(commands.Cog):
             interaction.guild_id,
             target_value,
             visibility,
-            private_scope_values=("private",),
+            private_scope_values=(),
             guild_default_visibility="public",
             dm_default_visibility="public",
         )
@@ -730,7 +729,7 @@ class ReminderCog(commands.Cog):
         await self._send_reminder_output(
             interaction,
             job=job,
-            result_message=f"Showing reminder `{str(job.id)}`.",
+            result_message="",
             ephemeral=ephemeral,
         )
 
