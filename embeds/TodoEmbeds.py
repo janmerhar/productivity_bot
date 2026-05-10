@@ -3065,6 +3065,33 @@ class TodoEmbeds:
         return chips.get(normalized, TodoFunctions.status_label(normalized))
 
     @staticmethod
+    def _status_emoji(status: str) -> str:
+        normalized = (status or "").strip().lower()
+        emojis = {
+            "todo": "🟢",
+            "in_progress": "🟡",
+            "done": "✅",
+        }
+        return emojis.get(normalized, "•")
+
+    @staticmethod
+    def _active_filters_footer(
+        sort: str,
+        status_filter: str,
+        assignee_filter_label: str,
+        search_filter_label: str,
+    ) -> str:
+        sort_arrow = "↑" if sort == "ascending" else "↓"
+        parts = [f"{sort_arrow} {sort.capitalize()}"]
+        if status_filter and status_filter.lower() != "all":
+            parts.append(f"Status: {TodoEmbeds._status_filter_label(status_filter)}")
+        if assignee_filter_label and assignee_filter_label.lower() != "all":
+            parts.append(f"Assignee: {assignee_filter_label}")
+        if search_filter_label and search_filter_label.lower() != "all":
+            parts.append(f'Search: "{search_filter_label}"')
+        return "  ·  ".join(parts)
+
+    @staticmethod
     def _status_counts(items: List[Dict[str, Any]]) -> Dict[str, int]:
         counts = {"todo": 0, "in_progress": 0, "done": 0}
         for item in items:
@@ -3416,31 +3443,36 @@ class TodoEmbeds:
             color=discord.Colour.blurple(),
         )
 
+        filters_text = TodoEmbeds._active_filters_footer(
+            sort, status_filter, assignee_filter_label, search_filter_label
+        )
+        footer_text = f"Page {page} of {total_pages}  ·  {total_items} items  ·  {filters_text}"
+
         if not items:
-            embed.description = "No items in this list."
-            status_label = TodoEmbeds._status_filter_label(status_filter)
-            embed.set_footer(
-                text=(
-                    f"Page {page}/{total_pages} | Items: {total_items} | "
-                    f"Sort: {sort} | Status: {status_label} | "
-                    f"Search: {search_filter_label} | Assignee: {assignee_filter_label}"
-                )
+            has_active_filter = (
+                (status_filter and status_filter.lower() != "all")
+                or (assignee_filter_label and assignee_filter_label.lower() != "all")
+                or (search_filter_label and search_filter_label.lower() != "all")
             )
+            embed.description = (
+                "No items match the current filters."
+                if has_active_filter
+                else "No items in this list."
+            )
+            embed.set_footer(text=footer_text)
             return {"embed": embed}
 
         for display_index, item in enumerate(items, start=1):
             number_emoji = TodoEmbeds._number_emoji(display_index)
             item_name = TodoFunctions.task_name_from_item(item) or "Untitled"
-            status = TodoFunctions.status_label(TodoFunctions.item_status(item))
-            list_name = str(item.get("list_name") or "").strip()
+            raw_status = TodoFunctions.item_status(item)
+            status_emoji = TodoEmbeds._status_emoji(raw_status)
             text = TodoFunctions.item_text(item) or ""
             due_line = TodoEmbeds._due_line(TodoFunctions.item_due(item))
             assignee_id = TodoFunctions.item_assignee_id(item)
-            item_title = (
-                f"{number_emoji} {item_name} [{status}] | {list_name}"
-                if list_name
-                else f"{number_emoji} {item_name} [{status}]"
-            )
+
+            item_title = f"{number_emoji} {status_emoji} {item_name}"
+
             value_lines = []
             description_line = TodoFunctions.truncate_multiline(text)
             if description_line and description_line.lower() != item_name.lower():
@@ -3448,7 +3480,7 @@ class TodoEmbeds:
             if due_line:
                 value_lines.append(due_line)
             if assignee_id is not None:
-                value_lines.append(f"👤 Assignee: <@{assignee_id}>")
+                value_lines.append(f"👤 <@{assignee_id}>")
             if not value_lines:
                 value_lines.append("No details")
             embed.add_field(
@@ -3457,14 +3489,7 @@ class TodoEmbeds:
                 inline=False,
             )
 
-        status_label = TodoEmbeds._status_filter_label(status_filter)
-        embed.set_footer(
-            text=(
-                f"Page {page}/{total_pages} | Items: {total_items} | "
-                f"Sort: {sort} | Status: {status_label} | "
-                f"Search: {search_filter_label} | Assignee: {assignee_filter_label}"
-            )
-        )
+        embed.set_footer(text=footer_text)
         return {"embed": embed}
 
     @staticmethod
