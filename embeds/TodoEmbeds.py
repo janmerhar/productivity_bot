@@ -3161,6 +3161,57 @@ class TodoEmbeds:
         return f"🗓️ Due: {rel}"
 
     @staticmethod
+    def _item_color(
+        status: str,
+        due: Optional[Union[datetime.datetime, str]],
+    ) -> discord.Colour:
+        normalized = (status or "").strip().lower()
+        if normalized == "done":
+            return discord.Colour.green()
+        due_dt = TodoEmbeds._parse_due_dt(due)
+        if due_dt is not None:
+            if due_dt.tzinfo is not None and due_dt.utcoffset() is not None:
+                now = datetime.datetime.now(datetime.timezone.utc).astimezone(due_dt.tzinfo)
+            else:
+                now = datetime.datetime.now()
+            if due_dt < now:
+                return discord.Colour.red()
+            if due_dt.date() == now.date():
+                return discord.Colour.orange()
+        if normalized == "in_progress":
+            return discord.Colour.gold()
+        return discord.Colour.blurple()
+
+    @staticmethod
+    def _due_detail(due: Optional[Union[datetime.datetime, str]]) -> Optional[str]:
+        if not due:
+            return None
+        due_dt = TodoEmbeds._parse_due_dt(due)
+        if due_dt is None:
+            return f"🗓️ {DueDateService.format_due(due)}"
+
+        due_for_epoch = due_dt
+        if due_for_epoch.tzinfo is None or due_for_epoch.utcoffset() is None:
+            local_tz = datetime.datetime.now().astimezone().tzinfo
+            if local_tz is not None:
+                due_for_epoch = due_for_epoch.replace(tzinfo=local_tz)
+        unix_ts = int(due_for_epoch.timestamp())
+
+        if due_dt.tzinfo is not None and due_dt.utcoffset() is not None:
+            now = datetime.datetime.now(datetime.timezone.utc).astimezone(due_dt.tzinfo)
+        else:
+            now = datetime.datetime.now()
+
+        abs_ts = f"<t:{unix_ts}:D>"
+        rel_ts = f"<t:{unix_ts}:R>"
+
+        if due_dt < now:
+            return f"🔴 {abs_ts}\n{rel_ts}"
+        if due_dt.date() == now.date():
+            return f"🟠 {abs_ts}\n{rel_ts}"
+        return f"🗓️ {abs_ts}\n{rel_ts}"
+
+    @staticmethod
     def _list_title(todo_list: Dict[str, Any]) -> str:
         list_name = TodoFunctions.display_list_name(todo_list, "Unnamed")
         return f"Tasks • {list_name}"
@@ -3525,21 +3576,30 @@ class TodoEmbeds:
         include_actions: bool = True,
         response_ephemeral: bool = True,
     ) -> dict:
-        text = TodoFunctions.item_text(item) or "No text"
-        task_name = TodoFunctions.task_name_from_item(item)
-        status = TodoFunctions.status_label(TodoFunctions.item_status(item))
-        due_text = TodoEmbeds._due_relative(TodoFunctions.item_due(item)) or "Not set"
+        text = TodoFunctions.item_text(item) or ""
+        task_name = TodoFunctions.task_name_from_item(item) or "Untitled"
+        raw_status = TodoFunctions.item_status(item)
+        status_chip = TodoEmbeds._status_chip(raw_status)
+        due = TodoFunctions.item_due(item)
+        due_value = TodoEmbeds._due_detail(due) or "Not set"
         assignee_id = TodoFunctions.item_assignee_id(item)
-        mention = f"<@{assignee_id}>" if assignee_id is not None else "None"
+        mention = f"<@{assignee_id}>" if assignee_id is not None else "Unassigned"
+        list_name = TodoFunctions.display_list_name(todo_list, "List")
+
+        color = TodoEmbeds._item_color(raw_status, due)
 
         embed = discord.Embed(
-            title=f"{TodoFunctions.display_list_name(todo_list, 'List')} | {task_name}",
-            color=discord.Colour.blurple(),
-            description=text if len(text) <= 3500 else text[:3497] + "...",
+            title=task_name,
+            color=color,
         )
-        embed.add_field(name="Status", value=status, inline=True)
-        embed.add_field(name="Due", value=due_text, inline=True)
-        embed.add_field(name="Assignee", value=mention, inline=False)
+        embed.set_author(name=f"📋 {list_name}")
+
+        if text and text.strip().lower() != task_name.strip().lower():
+            embed.description = text if len(text) <= 3500 else text[:3497] + "..."
+
+        embed.add_field(name="Status", value=status_chip, inline=True)
+        embed.add_field(name="Due", value=due_value, inline=True)
+        embed.add_field(name="Assignee", value=mention, inline=True)
 
         payload: Dict[str, Any] = {"embed": embed}
         if include_actions:
