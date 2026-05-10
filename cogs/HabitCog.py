@@ -387,6 +387,7 @@ class HabitCog(commands.Cog):
             document,
             status,
             progress,
+            reminder_time=reminder_time if not reminder_failed else None,
         )
         if content:
             payload["content"] = content
