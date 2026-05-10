@@ -15,5 +15,6 @@ openai
 dateparser
 yfinance==0.2.66
 croniter
+cron-descriptor
 cachetools
 watchfiles>=1.1.1
