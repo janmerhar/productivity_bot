@@ -591,7 +591,7 @@ class TogglCog(commands.Cog):
             ),
         )
 
-    @project.command(name="get", description="Get a Toggl project")
+    @project.command(name="show", description="Show a Toggl project")
     @app_commands.describe(
         project="Project from autocomplete",
         visibility=VISIBILITY_DESC,
@@ -607,7 +607,7 @@ class TogglCog(commands.Cog):
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
-            command_label="/toggl project get",
+            command_label="/toggl project show",
             payload_builder=lambda: TogglEmbeds.project_embed(
                 project=project,
                 guild_id=interaction.guild_id,

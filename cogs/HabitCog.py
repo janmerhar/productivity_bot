@@ -805,6 +805,7 @@ class HabitCog(commands.Cog):
             )
 
     @habit_group.command(name="delete", description="Delete a habit")
+    @app_commands.rename(habit_name="habit")
     @app_commands.describe(
         habit_name="Habit to delete",
         visibility=VISIBILITY_DESC,

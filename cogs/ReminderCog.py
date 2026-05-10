@@ -613,8 +613,8 @@ class ReminderCog(commands.Cog):
         view.message = message
 
     @reminder_group.command(
-        name="remove",
-        description="Remove a scheduled reminder by ID.",
+        name="delete",
+        description="Delete a scheduled reminder.",
     )
     @app_commands.describe(
         reminder="Reminder ID",
