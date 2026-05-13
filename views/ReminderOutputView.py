@@ -184,6 +184,24 @@ class ReminderOutputView(discord.ui.View):
         )
 
     @staticmethod
+    def _cron_human_label(expression: str) -> str:
+        try:
+            from cron_descriptor import get_description
+            return get_description(expression.strip())
+        except Exception:
+            return expression
+
+    @staticmethod
+    def _cron_next_run(expression: str) -> Optional[str]:
+        try:
+            from croniter import croniter
+            it = croniter(expression, datetime.datetime.now())
+            next_dt = it.get_next(datetime.datetime)
+            return f"<t:{int(next_dt.timestamp())}:R>"
+        except Exception:
+            return None
+
+    @staticmethod
     def _format_channel(job: Optional[DailyJob], channel_id: Optional[int]) -> str:
         if job is not None:
             return ReminderFunctions.destination_label(job)
@@ -222,11 +240,17 @@ class ReminderOutputView(discord.ui.View):
         schedule_text = str(
             ReminderFunctions.reminder_edit_values(self.job).get("schedule") or ""
         ).strip()
+
         if mode == "one-time":
             formatted = self._format_timestamp(raw_datetime)
-            if formatted:
-                return formatted
-        return f"`{schedule_text}`" if schedule_text else "unknown"
+            return f"📅 {formatted}" if formatted else (f"📅 {schedule_text}" if schedule_text else "unknown")
+
+        if schedule_text:
+            human = self._cron_human_label(schedule_text)
+            next_run = self._cron_next_run(schedule_text)
+            return f"🔁 {human}\nNext: {next_run}" if next_run else f"🔁 {human}"
+
+        return "unknown"
 
     def _pause_until_value(self) -> Optional[str]:
         if self.job is None or not ReminderFunctions.is_paused(self.job):
@@ -239,13 +263,13 @@ class ReminderOutputView(discord.ui.View):
         return self._format_timestamp(pause_until.isoformat())
 
     def _embed(self) -> discord.Embed:
-        embed = discord.Embed(
-            title="Reminder",
-            description=self.result_message,
-            color=discord.Colour.green() if self.ok else discord.Colour.red(),
-        )
-
         if self.job is None:
+            embed = discord.Embed(
+                title="Reminder",
+                description=self.result_message,
+                color=discord.Colour.red() if not self.ok else discord.Colour.blurple(),
+            )
+            embed.set_author(name="🔔 Reminder")
             embed.add_field(name="ID", value=f"`{self.job_id}`", inline=True)
             embed.add_field(name="Status", value="missing", inline=True)
             embed.add_field(
@@ -261,73 +285,58 @@ class ReminderOutputView(discord.ui.View):
             return embed
 
         values = ReminderFunctions.reminder_edit_values(self.job)
-        embed.add_field(name="ID", value=f"`{self.job_id}`", inline=True)
+        reminder_name = str(values.get("reminder") or "Untitled reminder").strip()
+        is_paused = ReminderFunctions.is_paused(self.job)
+
+        if not self.ok:
+            color = discord.Colour.red()
+        elif is_paused:
+            color = discord.Colour.gold()
+        else:
+            color = discord.Colour.green()
+
+        embed = discord.Embed(
+            title=reminder_name[:256],
+            description=self.result_message or None,
+            color=color,
+        )
+        embed.set_author(name="🔔 Reminder")
+
+        status_value = "⏸️ Paused" if is_paused else "🟢 Active"
         embed.add_field(
             name="Destination",
             value=self._format_channel(self.job, self.channel_id),
             inline=True,
         )
-        embed.add_field(
-            name="Status",
-            value="paused" if ReminderFunctions.is_paused(self.job) else "active",
-            inline=True,
-        )
+        embed.add_field(name="Status", value=status_value, inline=True)
+
         pause_until_value = self._pause_until_value()
         if pause_until_value:
-            embed.add_field(
-                name="Paused Until",
-                value=pause_until_value,
-                inline=False,
-            )
-        embed.add_field(
-            name="Schedule",
-            value=self._schedule_value(),
-            inline=False,
-        )
-        embed.add_field(
-            name="Name",
-            value=(values.get("reminder") or "Untitled reminder")[:1024],
-            inline=False,
-        )
+            embed.add_field(name="Paused Until", value=pause_until_value, inline=False)
 
-        ping_value = format_reminder_mentions(
-            self.guild,
-            values.get("ping_text"),
-        )
+        embed.add_field(name="Schedule", value=self._schedule_value(), inline=False)
+
+        ping_value = format_reminder_mentions(self.guild, values.get("ping_text"))
         if ping_value:
             embed.add_field(name="Ping", value=ping_value[:1024], inline=False)
             if ReminderFunctions.notify_ping_users_in_dm(self.job):
-                embed.add_field(
-                    name="Ping DMs",
-                    value="Enabled",
-                    inline=True,
-                )
+                embed.add_field(name="Ping DMs", value="Enabled", inline=True)
 
         description_value = str(values.get("description") or "").strip()
         if description_value:
             embed.add_field(
-                name="Description",
-                value=description_value[:1024],
-                inline=False,
+                name="Description", value=description_value[:1024], inline=False
             )
 
         thumbnail_value = str(values.get("thumbnail_url") or "").strip()
         if thumbnail_value:
-            embed.add_field(
-                name="Thumbnail URL",
-                value=thumbnail_value[:1024],
-                inline=False,
-            )
+            embed.set_thumbnail(url=thumbnail_value)
 
         expires_value = self._format_timestamp(
             values.get("expires") or values.get("until") or ""
         )
         if expires_value:
-            embed.add_field(
-                name="Expires",
-                value=expires_value,
-                inline=False,
-            )
+            embed.add_field(name="Expires", value=expires_value, inline=False)
 
         return embed
 

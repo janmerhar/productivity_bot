@@ -62,7 +62,7 @@ async def start_timer_from_message(
 
 
 class TogglCog(commands.Cog):
-    toggl = app_commands.Group(name="toggl", description="Toggl commands")
+    toggl = app_commands.Group(name="toggl", description="Track time with Toggl")
     project = app_commands.Group(name="project", description="Manage Toggl projects")
     tag_group = app_commands.Group(name="tag", description="Manage Toggl timer tags")
     timer_group = app_commands.Group(name="timer", description="Manage Toggl timers")
@@ -190,7 +190,7 @@ class TogglCog(commands.Cog):
     @timer_group.command(name="start", description="Start a Toggl timer")
     @app_commands.describe(
         project="Project that timer will start in",
-        description="Description of this timer",
+        description="Description for this timer",
         billable="Whether this timer is billable",
         visibility=VISIBILITY_DESC,
     )
@@ -230,7 +230,7 @@ class TogglCog(commands.Cog):
             interaction.user.id,
         )
 
-    @timer_group.command(name="active", description="Get active Toggl timer")
+    @timer_group.command(name="active", description="Show your currently running timer")
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def timer(
@@ -249,7 +249,7 @@ class TogglCog(commands.Cog):
             ),
         )
 
-    @timer_group.command(name="stop", description="Stop active Toggl time")
+    @timer_group.command(name="stop", description="Stop the running timer")
     @app_commands.describe(visibility=VISIBILITY_DESC)
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def stop(
@@ -268,7 +268,7 @@ class TogglCog(commands.Cog):
             ),
         )
 
-    @tag_group.command(name="add", description="Create a new Toggl tag")
+    @tag_group.command(name="add", description="Add a new Toggl tag")
     @app_commands.describe(
         name="Tag name",
         visibility=VISIBILITY_DESC,
@@ -292,7 +292,7 @@ class TogglCog(commands.Cog):
             ),
         )
 
-    @tag_group.command(name="show", description="Show a Toggl tag")
+    @tag_group.command(name="show", description="Show a tag and its details")
     @app_commands.describe(
         tag="Tag to show",
         visibility=VISIBILITY_DESC,
@@ -329,7 +329,7 @@ class TogglCog(commands.Cog):
             interaction.user.id,
         )
 
-    @timer_group.command(name="insert", description="Insert past Toggl time")
+    @timer_group.command(name="insert", description="Log a past time entry")
     @app_commands.describe(
         project="Project for the inserted timer",
         description="Description of this timer",
@@ -389,15 +389,15 @@ class TogglCog(commands.Cog):
 
     if not saved_disabled:
 
-        @saved.command(name="add", description="Save a timer preset")
+        @saved.command(name="add", description="Add a saved timer preset")
         @app_commands.describe(
             command="Name of the saved timer",
             workspace_id="Workspace id",
-            billable="Billable",
+            billable="Whether this timer is billable",
             description="Description of the saved timer",
-            project="Project",
+            project="Project for this saved timer",
             tags="Tags, separated by whitespaces",
-            tid="Tid",
+            tid="Toggl time-entry id (advanced)",
             visibility=VISIBILITY_DESC,
         )
         @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -440,7 +440,7 @@ class TogglCog(commands.Cog):
 
         @saved.command(name="delete", description="Delete a saved timer")
         @app_commands.describe(
-            identifier="Timer to be removed",
+            identifier="Saved timer to delete",
             visibility=VISIBILITY_DESC,
         )
         @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -522,7 +522,7 @@ class TogglCog(commands.Cog):
                 ),
             )
 
-    @timer_group.command(name="list", description="Get the last 5 Toggl timers")
+    @timer_group.command(name="list", description="Show your most recent time entries")
     @app_commands.describe(
         visibility=VISIBILITY_DESC,
     )
@@ -591,9 +591,9 @@ class TogglCog(commands.Cog):
             ),
         )
 
-    @project.command(name="get", description="Get a Toggl project")
+    @project.command(name="show", description="Show a Toggl project")
     @app_commands.describe(
-        project="Project from autocomplete",
+        project="Project to show",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -607,7 +607,7 @@ class TogglCog(commands.Cog):
         await self._execute_with_toggl_key(
             interaction,
             ephemeral=ephemeral,
-            command_label="/toggl project get",
+            command_label="/toggl project show",
             payload_builder=lambda: TogglEmbeds.project_embed(
                 project=project,
                 guild_id=interaction.guild_id,

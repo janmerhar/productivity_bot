@@ -39,6 +39,8 @@ _REMINDER_LIST_SORT_CHOICES = [
     app_commands.Choice(name="Ascending", value="ascending"),
     app_commands.Choice(name="Descending", value="descending"),
 ]
+
+
 @app_commands.context_menu(name="Create Reminder")
 async def create_reminder_from_message(
     interaction: discord.Interaction,
@@ -57,7 +59,7 @@ async def create_reminder_from_message(
             default_channel_id=default_channel_id,
             guild=interaction.guild,
             source_message=message,
-            response_ephemeral=None,
+            response_ephemeral=False,
             initial_reminder=reminder_text,
             guild_id=interaction.guild_id,
         )
@@ -94,11 +96,10 @@ class ReminderCog(commands.Cog):
         destination_type: str,
         visibility: Optional[app_commands.Choice[str]],
     ) -> bool:
-        guild_default = "private" if destination_type == "private" else "public"
         return resolve_visibility_for_context(
             interaction.guild_id,
             visibility,
-            guild_default=guild_default,
+            guild_default="public",
         )
 
     def _resolve_reminder_ephemeral(
@@ -108,9 +109,7 @@ class ReminderCog(commands.Cog):
         visibility: Optional[app_commands.Choice[str]],
     ) -> bool:
         destination_type = (
-            "private"
-            if ReminderFunctions.is_private_destination(job)
-            else "channel"
+            "private" if ReminderFunctions.is_private_destination(job) else "channel"
         )
         return self._resolve_destination_ephemeral(
             interaction,
@@ -405,15 +404,15 @@ class ReminderCog(commands.Cog):
 
     @reminder_group.command(
         name="add",
-        description="Create a one-time or recurring reminder.",
+        description="Create a one-time or recurring reminder",
     )
     @app_commands.describe(
-        reminder="Reminder title or primary content",
-        schedule="Cron expression or natural language schedule",
-        add_pings="Open a modal to select multiple user pings",
-        description="Reminder description",
+        reminder="Reminder text",
+        schedule="Natural language schedule or cron expression",
+        add_pings="Choose users to mention in this reminder",
+        description="Longer description",
         expires="Stop sending after this time",
-        destination="Destination channel or private delivery",
+        destination="Where to send it (channel or DM)",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
@@ -432,9 +431,11 @@ class ReminderCog(commands.Cog):
     ) -> None:
         ephemeral = self._resolve_default_ephemeral(interaction, visibility)
         try:
-            destination_type, destination_channel_id, _ = normalize_reminder_destination(
-                interaction,
-                destination,
+            destination_type, destination_channel_id, _ = (
+                normalize_reminder_destination(
+                    interaction,
+                    destination,
+                )
             )
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
@@ -528,7 +529,7 @@ class ReminderCog(commands.Cog):
 
     @reminder_group.command(
         name="list",
-        description="View reminders.",
+        description="View reminders",
     )
     @app_commands.describe(
         destination="Which destination to show",
@@ -562,7 +563,7 @@ class ReminderCog(commands.Cog):
             interaction.guild_id,
             target_value,
             visibility,
-            private_scope_values=("private",),
+            private_scope_values=(),
             guild_default_visibility="public",
             dm_default_visibility="public",
         )
@@ -613,11 +614,11 @@ class ReminderCog(commands.Cog):
         view.message = message
 
     @reminder_group.command(
-        name="remove",
-        description="Remove a scheduled reminder by ID.",
+        name="delete",
+        description="Delete a scheduled reminder",
     )
     @app_commands.describe(
-        reminder="Reminder ID",
+        reminder="Reminder to delete",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -660,10 +661,10 @@ class ReminderCog(commands.Cog):
 
     @reminder_group.command(
         name="edit",
-        description="Edit an existing reminder.",
+        description="Edit an existing reminder",
     )
     @app_commands.describe(
-        reminder="Reminder from autocomplete",
+        reminder="Reminder to edit",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -703,10 +704,10 @@ class ReminderCog(commands.Cog):
 
     @reminder_group.command(
         name="show",
-        description="Show a specific reminder.",
+        description="Show a specific reminder",
     )
     @app_commands.describe(
-        reminder="Reminder from autocomplete",
+        reminder="Reminder to show",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -728,17 +729,17 @@ class ReminderCog(commands.Cog):
         await self._send_reminder_output(
             interaction,
             job=job,
-            result_message=f"Showing reminder `{str(job.id)}`.",
+            result_message="",
             ephemeral=ephemeral,
         )
 
     @reminder_group.command(
         name="pause",
-        description="Pause a reminder by ID, or all active reminders.",
+        description="Pause a reminder, or all active reminders",
     )
     @app_commands.describe(
-        reminder="Reminder ID",
-        until="Optional: resume automatically at this time",
+        reminder="Reminder to pause",
+        until="Auto-resume at this time",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -799,10 +800,10 @@ class ReminderCog(commands.Cog):
 
     @reminder_group.command(
         name="resume",
-        description="Resume a paused reminder by ID, or all paused reminders.",
+        description="Resume a reminder, or all paused reminders",
     )
     @app_commands.describe(
-        reminder="Reminder ID",
+        reminder="Reminder to resume",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -899,16 +900,14 @@ class ReminderCog(commands.Cog):
             )
 
         options.extend(
-            option for option in base_options if not query or query in option.name.lower()
+            option
+            for option in base_options
+            if not query or query in option.name.lower()
         )
 
         guild = interaction.guild
         if guild is None:
-            return [
-                option
-                for option in options
-                if option.value == "private"
-            ][:25]
+            return [option for option in options if option.value == "private"][:25]
 
         for channel in guild.text_channels:
             if len(options) >= 25:
@@ -917,7 +916,11 @@ class ReminderCog(commands.Cog):
             channel_id = getattr(channel, "id", None)
             if channel_name is None or channel_id is None:
                 continue
-            if query and query not in channel_name.lower() and query not in str(channel_id):
+            if (
+                query
+                and query not in channel_name.lower()
+                and query not in str(channel_id)
+            ):
                 continue
             permissions = channel.permissions_for(interaction.user)
             if not permissions.view_channel:

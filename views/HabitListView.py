@@ -285,6 +285,21 @@ class HabitListView(discord.ui.View):
         return None
 
     @staticmethod
+    def _number_emoji(value: int) -> str:
+        digits = {
+            "0": "0️⃣", "1": "1️⃣", "2": "2️⃣", "3": "3️⃣", "4": "4️⃣",
+            "5": "5️⃣", "6": "6️⃣", "7": "7️⃣", "8": "8️⃣", "9": "9️⃣",
+        }
+        return "".join(digits.get(ch, ch) for ch in str(value))
+
+    def _active_filters_footer(self) -> str:
+        sort_arrow = "↑" if self.sort == "ascending" else "↓"
+        parts = [f"{sort_arrow} {self.sort.title()}"]
+        if self.mode and self.mode.lower() != "all":
+            parts.append(f"Status: {self._mode_label()}")
+        return "  ·  ".join(parts)
+
+    @staticmethod
     def _truncate(text: str, limit: int = 120) -> str:
         cleaned = str(text or "").strip()
         if len(cleaned) <= limit:
@@ -335,17 +350,23 @@ class HabitListView(discord.ui.View):
             color=discord.Colour.blurple(),
         )
 
+        filters_text = self._active_filters_footer()
+        footer_text = (
+            f"Page {self.page} of {self.total_pages}  ·  "
+            f"{len(self.habits)} habits  ·  {filters_text}"
+        )
+
         page_habits = self._page_slice()
         if not page_habits:
             embed.description = self._empty_description()
-            embed.set_footer(
-                text=(
-                    f"Page {self.page}/{self.total_pages} | "
-                    f"Habits: {len(self.habits)} | Status: {self._mode_label()} | "
-                    f"Sort: {self.sort.title()}"
-                )
-            )
+            embed.set_footer(text=footer_text)
             return embed
+
+        status_emojis = {
+            "complete": "✅",
+            "skip": "⏭️",
+            "incomplete": "❌",
+        }
 
         for display_index, habit in enumerate(page_habits, start=1):
             name = self._truncate(str(habit.get("name") or "Habit"), 100) or "Habit"
@@ -353,29 +374,25 @@ class HabitListView(discord.ui.View):
             status = HabitFunctions.today_status(habit)
             progress = HabitFunctions.recent_progress(habit, days=5)
 
+            status_emoji = status_emojis.get(str(status or "").lower(), "⬜")
+            number_emoji = self._number_emoji(display_index)
+
             value_lines = []
-            if description:
+            if description and description.lower() != name.lower():
                 value_lines.append(description)
-            value_lines.append(
-                f"Created: {HabitEmbeds._format_created(habit.get('created'))}"
-            )
-            value_lines.append(f"Today: {HabitEmbeds._format_status(status)}")
             if progress:
-                value_lines.append(HabitEmbeds.progress_line(progress))
+                emojis = [HabitEmbeds._PROGRESS_EMOJI.get(mode, "❌") for mode in progress]
+                value_lines.append(" ".join(emojis))
+            if not value_lines:
+                value_lines.append("No details")
 
             embed.add_field(
-                name=f"{display_index}. {name}",
+                name=f"{number_emoji} {status_emoji} {name}",
                 value="\n".join(value_lines),
                 inline=False,
             )
 
-        embed.set_footer(
-            text=(
-                f"Page {self.page}/{self.total_pages} | "
-                f"Habits: {len(self.habits)} | Status: {self._mode_label()} | "
-                f"Sort: {self.sort.title()}"
-            )
-        )
+        embed.set_footer(text=footer_text)
         return embed
 
     def payload(self) -> dict:

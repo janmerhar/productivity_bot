@@ -158,7 +158,7 @@ async def add_message_to_personal_todo(
 
 
 class TodoCog(commands.Cog):
-    todo_group = app_commands.Group(name="todo", description="Manage to-dos")
+    todo_group = app_commands.Group(name="todo", description="Manage your todos")
     list_group = app_commands.Group(name="list", description="Manage todo lists")
     todo_group.add_command(list_group)
 
@@ -560,7 +560,7 @@ class TodoCog(commands.Cog):
             **result_view.response_payload(),
         )
 
-    @list_group.command(name="show", description="Show all items on a list")
+    @list_group.command(name="show", description="Show items on a todo list")
     @app_commands.rename(list_target="list")
     @app_commands.describe(
         sort="Sort order for items",
@@ -659,7 +659,7 @@ class TodoCog(commands.Cog):
     ) -> List[app_commands.Choice[str]]:
         return await self.todo_assign_autocomplete(interaction, current)
 
-    @list_group.command(name="clear", description="Remove all the items from a list")
+    @list_group.command(name="clear", description="Remove all items from a list")
     @app_commands.rename(list_target="list")
     @app_commands.describe(
         list_target="Which list to clear",
@@ -874,7 +874,7 @@ class TodoCog(commands.Cog):
                 cause=exc,
             ) from exc
 
-    @todo_group.command(name="overview", description="Show the server todo overview")
+    @todo_group.command(name="overview", description="Show all todos across the server")
     @app_commands.describe(
         sort="Sort order for items",
         status="Filter by item status",
@@ -1032,7 +1032,7 @@ class TodoCog(commands.Cog):
             **result_view.response_payload(),
         )
 
-    @list_group.command(name="edit", description="Edit a custom todo list name")
+    @list_group.command(name="edit", description="Edit a custom todo list")
     @app_commands.rename(list_target="list")
     @app_commands.describe(
         list_target="Which custom list to rename",
@@ -1182,13 +1182,13 @@ class TodoCog(commands.Cog):
 
     @todo_group.command(name="add", description="Add an item to a list")
     @app_commands.describe(
-        todo="Todo",
-        description="Additional details (optional)",
+        todo="Title of the todo",
+        description="Additional details",
         due="Due date/time (natural language, same as /reminder)",
         list="Where to add this item",
         status="Initial progress status",
-        assignee="Who should be assigned (optional)",
-        notify_assignee="Mention the assignee with the todo embed",
+        assignee="Who should be assigned",
+        notify_assignee="Ping the assignee",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
@@ -1447,9 +1447,9 @@ class TodoCog(commands.Cog):
         options = [create_option, *options]
         return options[:25]
 
-    @todo_group.command(name="show", description="Show the text of an item")
+    @todo_group.command(name="show", description="Show a todo's details")
     @app_commands.describe(
-        todo="Todo from autocomplete",
+        todo="Todo to show",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -1474,9 +1474,9 @@ class TodoCog(commands.Cog):
         )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
-    @todo_group.command(name="edit", description="Edit the text of an existing item")
+    @todo_group.command(name="edit", description="Edit a todo")
     @app_commands.describe(
-        todo="Todo from autocomplete",
+        todo="Todo to edit",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -1574,9 +1574,9 @@ class TodoCog(commands.Cog):
                 cause=exc,
             )
 
-    @todo_group.command(name="status", description="Set the progress of an item")
+    @todo_group.command(name="status", description="Update a todo's status")
     @app_commands.describe(
-        todo="Todo from autocomplete",
+        todo="Todo to update",
         status="New progress status",
         visibility=VISIBILITY_DESC,
     )
@@ -1625,9 +1625,9 @@ class TodoCog(commands.Cog):
         )
         await interaction.followup.send(ephemeral=ephemeral, **payload)
 
-    @todo_group.command(name="delete", description="Delete an item from a list")
+    @todo_group.command(name="delete", description="Delete a todo")
     @app_commands.describe(
-        todo="Todo from autocomplete",
+        todo="Todo to delete",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -1671,7 +1671,7 @@ class TodoCog(commands.Cog):
 
     @todo_group.command(name="assign", description="Assign or unassign an item")
     @app_commands.describe(
-        todo="Todo from autocomplete",
+        todo="Todo to assign",
         assignee="Who should be assigned (None = unassign, Me = yourself)",
         visibility=VISIBILITY_DESC,
     )
@@ -1826,7 +1826,7 @@ class TodoCog(commands.Cog):
 
     @todo_group.command(name="complete", description="Mark an item as done")
     @app_commands.describe(
-        todo="Todo from autocomplete",
+        todo="Todo to complete",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)

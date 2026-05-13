@@ -3065,6 +3065,33 @@ class TodoEmbeds:
         return chips.get(normalized, TodoFunctions.status_label(normalized))
 
     @staticmethod
+    def _status_emoji(status: str) -> str:
+        normalized = (status or "").strip().lower()
+        emojis = {
+            "todo": "🟢",
+            "in_progress": "🟡",
+            "done": "✅",
+        }
+        return emojis.get(normalized, "•")
+
+    @staticmethod
+    def _active_filters_footer(
+        sort: str,
+        status_filter: str,
+        assignee_filter_label: str,
+        search_filter_label: str,
+    ) -> str:
+        sort_arrow = "↑" if sort == "ascending" else "↓"
+        parts = [f"{sort_arrow} {sort.capitalize()}"]
+        if status_filter and status_filter.lower() != "all":
+            parts.append(f"Status: {TodoEmbeds._status_filter_label(status_filter)}")
+        if assignee_filter_label and assignee_filter_label.lower() != "all":
+            parts.append(f"Assignee: {assignee_filter_label}")
+        if search_filter_label and search_filter_label.lower() != "all":
+            parts.append(f'Search: "{search_filter_label}"')
+        return "  ·  ".join(parts)
+
+    @staticmethod
     def _status_counts(items: List[Dict[str, Any]]) -> Dict[str, int]:
         counts = {"todo": 0, "in_progress": 0, "done": 0}
         for item in items:
@@ -3159,6 +3186,57 @@ class TodoEmbeds:
         if due_dt.date() == now.date():
             return f"🟠 Due: {rel}"
         return f"🗓️ Due: {rel}"
+
+    @staticmethod
+    def _item_color(
+        status: str,
+        due: Optional[Union[datetime.datetime, str]],
+    ) -> discord.Colour:
+        normalized = (status or "").strip().lower()
+        if normalized == "done":
+            return discord.Colour.green()
+        due_dt = TodoEmbeds._parse_due_dt(due)
+        if due_dt is not None:
+            if due_dt.tzinfo is not None and due_dt.utcoffset() is not None:
+                now = datetime.datetime.now(datetime.timezone.utc).astimezone(due_dt.tzinfo)
+            else:
+                now = datetime.datetime.now()
+            if due_dt < now:
+                return discord.Colour.red()
+            if due_dt.date() == now.date():
+                return discord.Colour.orange()
+        if normalized == "in_progress":
+            return discord.Colour.gold()
+        return discord.Colour.blurple()
+
+    @staticmethod
+    def _due_detail(due: Optional[Union[datetime.datetime, str]]) -> Optional[str]:
+        if not due:
+            return None
+        due_dt = TodoEmbeds._parse_due_dt(due)
+        if due_dt is None:
+            return f"🗓️ {DueDateService.format_due(due)}"
+
+        due_for_epoch = due_dt
+        if due_for_epoch.tzinfo is None or due_for_epoch.utcoffset() is None:
+            local_tz = datetime.datetime.now().astimezone().tzinfo
+            if local_tz is not None:
+                due_for_epoch = due_for_epoch.replace(tzinfo=local_tz)
+        unix_ts = int(due_for_epoch.timestamp())
+
+        if due_dt.tzinfo is not None and due_dt.utcoffset() is not None:
+            now = datetime.datetime.now(datetime.timezone.utc).astimezone(due_dt.tzinfo)
+        else:
+            now = datetime.datetime.now()
+
+        abs_ts = f"<t:{unix_ts}:D>"
+        rel_ts = f"<t:{unix_ts}:R>"
+
+        if due_dt < now:
+            return f"🔴 {abs_ts}\n{rel_ts}"
+        if due_dt.date() == now.date():
+            return f"🟠 {abs_ts}\n{rel_ts}"
+        return f"🗓️ {abs_ts}\n{rel_ts}"
 
     @staticmethod
     def _list_title(todo_list: Dict[str, Any]) -> str:
@@ -3365,31 +3443,36 @@ class TodoEmbeds:
             color=discord.Colour.blurple(),
         )
 
+        filters_text = TodoEmbeds._active_filters_footer(
+            sort, status_filter, assignee_filter_label, search_filter_label
+        )
+        footer_text = f"Page {page} of {total_pages}  ·  {total_items} items  ·  {filters_text}"
+
         if not items:
-            embed.description = "No items in this list."
-            status_label = TodoEmbeds._status_filter_label(status_filter)
-            embed.set_footer(
-                text=(
-                    f"Page {page}/{total_pages} | Items: {total_items} | "
-                    f"Sort: {sort} | Status: {status_label} | "
-                    f"Search: {search_filter_label} | Assignee: {assignee_filter_label}"
-                )
+            has_active_filter = (
+                (status_filter and status_filter.lower() != "all")
+                or (assignee_filter_label and assignee_filter_label.lower() != "all")
+                or (search_filter_label and search_filter_label.lower() != "all")
             )
+            embed.description = (
+                "No items match the current filters."
+                if has_active_filter
+                else "No items in this list."
+            )
+            embed.set_footer(text=footer_text)
             return {"embed": embed}
 
         for display_index, item in enumerate(items, start=1):
             number_emoji = TodoEmbeds._number_emoji(display_index)
             item_name = TodoFunctions.task_name_from_item(item) or "Untitled"
-            status = TodoFunctions.status_label(TodoFunctions.item_status(item))
-            list_name = str(item.get("list_name") or "").strip()
+            raw_status = TodoFunctions.item_status(item)
+            status_emoji = TodoEmbeds._status_emoji(raw_status)
             text = TodoFunctions.item_text(item) or ""
             due_line = TodoEmbeds._due_line(TodoFunctions.item_due(item))
             assignee_id = TodoFunctions.item_assignee_id(item)
-            item_title = (
-                f"{number_emoji} {item_name} [{status}] | {list_name}"
-                if list_name
-                else f"{number_emoji} {item_name} [{status}]"
-            )
+
+            item_title = f"{number_emoji} {status_emoji} {item_name}"
+
             value_lines = []
             description_line = TodoFunctions.truncate_multiline(text)
             if description_line and description_line.lower() != item_name.lower():
@@ -3397,7 +3480,7 @@ class TodoEmbeds:
             if due_line:
                 value_lines.append(due_line)
             if assignee_id is not None:
-                value_lines.append(f"👤 Assignee: <@{assignee_id}>")
+                value_lines.append(f"👤 <@{assignee_id}>")
             if not value_lines:
                 value_lines.append("No details")
             embed.add_field(
@@ -3406,14 +3489,7 @@ class TodoEmbeds:
                 inline=False,
             )
 
-        status_label = TodoEmbeds._status_filter_label(status_filter)
-        embed.set_footer(
-            text=(
-                f"Page {page}/{total_pages} | Items: {total_items} | "
-                f"Sort: {sort} | Status: {status_label} | "
-                f"Search: {search_filter_label} | Assignee: {assignee_filter_label}"
-            )
-        )
+        embed.set_footer(text=footer_text)
         return {"embed": embed}
 
     @staticmethod
@@ -3525,21 +3601,30 @@ class TodoEmbeds:
         include_actions: bool = True,
         response_ephemeral: bool = True,
     ) -> dict:
-        text = TodoFunctions.item_text(item) or "No text"
-        task_name = TodoFunctions.task_name_from_item(item)
-        status = TodoFunctions.status_label(TodoFunctions.item_status(item))
-        due_text = TodoEmbeds._due_relative(TodoFunctions.item_due(item)) or "Not set"
+        text = TodoFunctions.item_text(item) or ""
+        task_name = TodoFunctions.task_name_from_item(item) or "Untitled"
+        raw_status = TodoFunctions.item_status(item)
+        status_chip = TodoEmbeds._status_chip(raw_status)
+        due = TodoFunctions.item_due(item)
+        due_value = TodoEmbeds._due_detail(due) or "Not set"
         assignee_id = TodoFunctions.item_assignee_id(item)
-        mention = f"<@{assignee_id}>" if assignee_id is not None else "None"
+        mention = f"<@{assignee_id}>" if assignee_id is not None else "Unassigned"
+        list_name = TodoFunctions.display_list_name(todo_list, "List")
+
+        color = TodoEmbeds._item_color(raw_status, due)
 
         embed = discord.Embed(
-            title=f"{TodoFunctions.display_list_name(todo_list, 'List')} | {task_name}",
-            color=discord.Colour.blurple(),
-            description=text if len(text) <= 3500 else text[:3497] + "...",
+            title=task_name,
+            color=color,
         )
-        embed.add_field(name="Status", value=status, inline=True)
-        embed.add_field(name="Due", value=due_text, inline=True)
-        embed.add_field(name="Assignee", value=mention, inline=False)
+        embed.set_author(name=f"📋 {list_name}")
+
+        if text and text.strip().lower() != task_name.strip().lower():
+            embed.description = text if len(text) <= 3500 else text[:3497] + "..."
+
+        embed.add_field(name="Status", value=status_chip, inline=True)
+        embed.add_field(name="Due", value=due_value, inline=True)
+        embed.add_field(name="Assignee", value=mention, inline=True)
 
         payload: Dict[str, Any] = {"embed": embed}
         if include_actions:

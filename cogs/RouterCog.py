@@ -15,7 +15,7 @@ from services.visibility import (
 
 class RouterCog(commands.Cog):
     assistant_group = app_commands.Group(
-        name="assistant", description="Assistant utilities"
+        name="assistant", description="Run commands using natural language"
     )
 
     def __init__(self, client: commands.Bot) -> None:
@@ -27,10 +27,10 @@ class RouterCog(commands.Cog):
 
     @assistant_group.command(
         name="run",
-        description="Run an existing slash command from natural language",
+        description="Run a command from a natural-language request",
     )
     @app_commands.describe(
-        query="Instruction for the bot",
+        query="What you want the bot to do",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)

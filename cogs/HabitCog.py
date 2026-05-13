@@ -153,12 +153,12 @@ class HabitCog(commands.Cog):
     async def on_ready(self) -> None:
         print("HabitCog cog loaded")
 
-    @habit_group.command(name="add", description="Create a new habit")
+    @habit_group.command(name="add", description="Add a new habit")
     @app_commands.describe(
         habit="Habit name",
-        description="Longer description for this habit",
+        description="Longer description",
         reminder="Daily reminder time",
-        destination="This channel, another text channel, or personal",
+        destination="Where to track this habit",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -387,6 +387,7 @@ class HabitCog(commands.Cog):
             document,
             status,
             progress,
+            reminder_time=reminder_time if not reminder_failed else None,
         )
         if content:
             payload["content"] = content
@@ -412,9 +413,9 @@ class HabitCog(commands.Cog):
 
     @habit_group.command(name="list", description="List habits")
     @app_commands.describe(
-        status="Show all habits, only incomplete habits, or skipped habits",
+        status="Filter habits by status",
         sort="Sort order for habits",
-        scope="This server, this channel, another text channel, or personal",
+        scope="Which habits to include",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
@@ -511,7 +512,7 @@ class HabitCog(commands.Cog):
     ) -> list[app_commands.Choice[str]]:
         return habit_list_scope_autocomplete(interaction, current)
 
-    @habit_group.command(name="show", description="Show one habit")
+    @habit_group.command(name="show", description="Show a habit's details")
     @app_commands.describe(
         habit="Habit to show",
         visibility=VISIBILITY_DESC,
@@ -691,7 +692,7 @@ class HabitCog(commands.Cog):
         description="Record a daily result for a habit",
     )
     @app_commands.describe(
-        habit="Habit from autocomplete",
+        habit="Habit to mark",
         status="Result to record for the habit",
         date="Optional day to record, for example `yesterday` or `2026-04-18`",
         visibility=VISIBILITY_DESC,
@@ -736,7 +737,7 @@ class HabitCog(commands.Cog):
 
     @habit_group.command(name="edit", description="Edit an existing habit")
     @app_commands.describe(
-        habit="Habit from autocomplete",
+        habit="Habit to edit",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -805,6 +806,7 @@ class HabitCog(commands.Cog):
             )
 
     @habit_group.command(name="delete", description="Delete a habit")
+    @app_commands.rename(habit_name="habit")
     @app_commands.describe(
         habit_name="Habit to delete",
         visibility=VISIBILITY_DESC,
