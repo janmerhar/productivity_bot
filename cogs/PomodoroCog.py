@@ -96,7 +96,9 @@ async def start_pomodoro_context_menu(
 
 
 class PomodoroCog(commands.Cog):
-    pomodoro_group = app_commands.Group(name="pomodoro", description="Pomodoro timers")
+    pomodoro_group = app_commands.Group(
+        name="pomodoro", description="Run focus and break timers"
+    )
 
     def __init__(self, client: commands.Bot) -> None:
         self.client = client
@@ -256,11 +258,11 @@ class PomodoroCog(commands.Cog):
         )
         return payload
 
-    @pomodoro_group.command(name="start", description="Start a pomodoro timer")
+    @pomodoro_group.command(name="start", description="Start a pomodoro session")
     @app_commands.describe(
-        mode="Pick focus or break",
-        duration="Duration in minutes (optional)",
-        voice_channel="Voice channel to join (optional)",
+        mode="Focus or break",
+        duration="Length in minutes",
+        voice_channel="Voice channel to join during the session",
         autojoin="Automatically join your current voice channel",
         visibility=VISIBILITY_DESC,
     )

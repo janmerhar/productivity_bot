@@ -8,11 +8,13 @@ import discord
 from classes.TodoFunctions import TodoFunctions
 from classes.UserSettingsFunctions import UserSettingsFunctions
 from services.due_datetime import DueDateService
+from services import todo_list_item_sessions
 from services.error_reporting import (
     UserVisibleError,
     ValidationError,
     handle_interaction_error,
 )
+from services.visibility import inherit_ephemeral_from_interaction
 
 _MODAL_SELECTS_SUPPORTED = True
 
@@ -60,7 +62,7 @@ class TodoListView(discord.ui.View):
 
             async def _callback(
                 interaction: discord.Interaction,
-                todo_name: str = str(todo.get("name") or "todo"),
+                todo_name: str = TodoFunctions.task_name_from_item(todo),
                 todo_object_id: str = todo_id,
             ) -> None:
                 await interaction.response.defer(ephemeral=True)
@@ -139,7 +141,6 @@ class TodoItemEditModal(discord.ui.Modal):
         self,
         parent_view: "TodoListItemsView",
         item: Dict[str, Any],
-        item_number: Any,
         source_message: Optional[discord.Message],
         source_interaction: Optional[discord.Interaction] = None,
         assignee_options: Optional[List[discord.SelectOption]] = None,
@@ -155,7 +156,6 @@ class TodoItemEditModal(discord.ui.Modal):
         super().__init__(title=modal_title)
         self.parent_view = parent_view
         self.item_id = str(item.get("_id") or "")
-        self.item_number = item_number
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.source_message = source_message
         self.source_interaction = source_interaction
@@ -163,23 +163,13 @@ class TodoItemEditModal(discord.ui.Modal):
         self.refresh_source_as_item_embed = refresh_source_as_item_embed
         self.locale_code = DueDateService.normalize_locale_code(locale_code)
         self.timezone = timezone
+        self.response_ephemeral = bool(parent_view.response_ephemeral)
 
-        current_task = str(item.get("name") or "").strip() or "Untitled"
-        current_text = TodoFunctions.item_text(item)
-        current_description = ""
-        if current_text:
-            prefix = f"{current_task}\n"
-            if current_text.startswith(prefix):
-                current_description = current_text[len(prefix) :].strip()
-            elif current_text.strip().lower() != current_task.lower():
-                current_description = current_text.strip()
-        if not current_description:
-            raw_description = str(item.get("description") or "").strip()
-            if raw_description and raw_description.lower() != current_task.lower():
-                current_description = raw_description
+        current_task = TodoFunctions.task_name_from_item(item) or "Untitled"
+        current_description = TodoFunctions.item_body(item)
 
         current_status = TodoFunctions.item_status(item)
-        due_value = item.get("due")
+        due_value = TodoFunctions.item_due(item)
         current_due = (
             ""
             if not due_value
@@ -198,8 +188,10 @@ class TodoItemEditModal(discord.ui.Modal):
             or TodoFunctions.display_list_name(parent_view.todo_list, "")
             or ""
         ).strip()
-        assignees = item.get("assignees") or []
-        current_assignee = f"<@{assignees[0]}>" if assignees else "none"
+        current_assignee_id = TodoFunctions.item_assignee_id(item)
+        current_assignee = (
+            f"<@{current_assignee_id}>" if current_assignee_id is not None else "none"
+        )
         self.assignee_select: Optional[discord.ui.Select] = None
         self.list_select: Optional[discord.ui.Select] = None
         self.assignee_select_label: Optional[discord.ui.Label] = None
@@ -306,12 +298,15 @@ class TodoItemEditModal(discord.ui.Modal):
         return True
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
 
         if not self.item_id:
             await handle_interaction_error(
                 interaction,
-                ValidationError("That item could not be edited.", ephemeral=True),
+                ValidationError(
+                    "That item could not be edited.",
+                    ephemeral=self.response_ephemeral,
+                ),
             )
             return
 
@@ -337,7 +332,11 @@ class TodoItemEditModal(discord.ui.Modal):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
         except Exception as exc:
@@ -345,7 +344,7 @@ class TodoItemEditModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while editing that item.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -356,7 +355,7 @@ class TodoItemEditModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "That item could not be updated.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                 ),
             )
             return
@@ -390,7 +389,11 @@ class TodoItemEditModal(discord.ui.Modal):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
         except Exception as exc:
@@ -398,7 +401,7 @@ class TodoItemEditModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while updating the assignee.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -409,7 +412,7 @@ class TodoItemEditModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "That assignee could not be updated.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                 ),
             )
             return
@@ -445,7 +448,11 @@ class TodoItemEditModal(discord.ui.Modal):
             except ValueError as exc:
                 await handle_interaction_error(
                     interaction,
-                    ValidationError(str(exc), ephemeral=True, cause=exc),
+                    ValidationError(
+                        str(exc),
+                        ephemeral=self.response_ephemeral,
+                        cause=exc,
+                    ),
                 )
                 return
             except Exception as exc:
@@ -453,7 +460,7 @@ class TodoItemEditModal(discord.ui.Modal):
                     interaction,
                     UserVisibleError(
                         "Something went wrong while moving that item.",
-                        ephemeral=True,
+                        ephemeral=self.response_ephemeral,
                         cause=exc,
                     ),
                 )
@@ -464,7 +471,7 @@ class TodoItemEditModal(discord.ui.Modal):
                     interaction,
                     UserVisibleError(
                         "That item could not be moved to the selected list.",
-                        ephemeral=True,
+                        ephemeral=self.response_ephemeral,
                     ),
                 )
                 return
@@ -477,7 +484,7 @@ class TodoItemEditModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "That item could not be loaded after update.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                 ),
             )
             return
@@ -497,7 +504,11 @@ class TodoItemEditModal(discord.ui.Modal):
 
         if self.source_message is not None and self.refresh_source_as_item_embed:
             try:
-                payload = TodoEmbeds.item_details_embed(final_list, final_item)
+                payload = TodoEmbeds.item_details_embed(
+                    final_list,
+                    final_item,
+                    response_ephemeral=self.response_ephemeral,
+                )
                 await self._edit_source_payload(**payload)
             except discord.NotFound:
                 pass
@@ -506,7 +517,7 @@ class TodoItemEditModal(discord.ui.Modal):
                     interaction,
                     UserVisibleError(
                         "Item updated, but refreshing the item card failed.",
-                        ephemeral=True,
+                        ephemeral=self.response_ephemeral,
                         cause=exc,
                     ),
                 )
@@ -514,7 +525,7 @@ class TodoItemEditModal(discord.ui.Modal):
         else:
             try:
                 await self.parent_view._reload_items()
-                self.parent_view._build()
+                await self.parent_view.ensure_session()
                 if self.source_message is not None:
                     await self._edit_source_payload(
                         view=self.parent_view,
@@ -527,23 +538,27 @@ class TodoItemEditModal(discord.ui.Modal):
                     interaction,
                     UserVisibleError(
                         "Item updated, but refreshing the list failed.",
-                        ephemeral=True,
+                        ephemeral=self.response_ephemeral,
                         cause=exc,
                     ),
                 )
                 return
 
         if self.return_item_embed:
-            payload = TodoEmbeds.item_details_embed(final_list, final_item)
+            payload = TodoEmbeds.item_details_embed(
+                final_list,
+                final_item,
+                response_ephemeral=self.response_ephemeral,
+            )
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 **payload,
             )
             return
 
         if self.source_message is None:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content=f"Updated task {TodoFunctions.task_ref_from_item(final_item)}.",
             )
 
@@ -568,6 +583,7 @@ class TodoItemCreateModal(discord.ui.Modal):
         self.source_message = source_message
         self.locale_code = DueDateService.normalize_locale_code(locale_code)
         self.timezone = timezone
+        self.response_ephemeral = bool(parent_view.response_ephemeral)
         self.current_list_id = str(todo_list.get("_id") or "")
         self.current_list_name = (
             TodoFunctions.display_list_name(todo_list, "List").strip() or "List"
@@ -668,7 +684,7 @@ class TodoItemCreateModal(discord.ui.Modal):
             self.add_item(self.list_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
 
         list_id = self.todo_list.get("_id")
         if not list_id:
@@ -676,7 +692,7 @@ class TodoItemCreateModal(discord.ui.Modal):
                 interaction,
                 ValidationError(
                     "Creating from this view is only supported on a single list.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                 ),
             )
             return
@@ -727,7 +743,11 @@ class TodoItemCreateModal(discord.ui.Modal):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
 
@@ -752,7 +772,11 @@ class TodoItemCreateModal(discord.ui.Modal):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
         except Exception as exc:
@@ -760,7 +784,7 @@ class TodoItemCreateModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while creating that item.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -774,7 +798,7 @@ class TodoItemCreateModal(discord.ui.Modal):
                     self.parent_view.page = self.parent_view.total_pages
                 else:
                     self.parent_view.page = 1
-            self.parent_view._build()
+            await self.parent_view.ensure_session()
             if self.source_message is not None:
                 await self.source_message.edit(
                     view=self.parent_view,
@@ -787,16 +811,20 @@ class TodoItemCreateModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Item created, but refreshing the list failed.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
             return
 
         if self.source_message is None or target_list_id != self.current_list_id:
-            payload = TodoEmbeds.item_details_embed(target_list, created_item)
+            payload = TodoEmbeds.item_details_embed(
+                target_list,
+                created_item,
+                response_ephemeral=self.response_ephemeral,
+            )
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 **payload,
             )
 
@@ -806,6 +834,8 @@ class TodoListOptionsModal(discord.ui.Modal):
         self,
         parent_view: "TodoListItemsView",
         source_message: Optional[discord.Message],
+        assignee_options: Optional[List[discord.SelectOption]] = None,
+        list_options: Optional[List[discord.SelectOption]] = None,
     ) -> None:
         list_name = (
             TodoFunctions.display_list_name(parent_view.todo_list, "List").strip()
@@ -817,17 +847,19 @@ class TodoListOptionsModal(discord.ui.Modal):
         super().__init__(title=modal_title)
         self.parent_view = parent_view
         self.source_message = source_message
-
-        current_assignee_mode = parent_view._assignee_filter_mode()
-        current_user_filter_id = (
-            parent_view.assignee_filter_id
-            if current_assignee_mode == "user"
-            else None
-        )
-        default_users = (
-            [discord.Object(id=current_user_filter_id)]
-            if current_user_filter_id is not None
-            else []
+        self.response_ephemeral = bool(parent_view.response_ephemeral)
+        self.assignee_select: Optional[discord.ui.Select] = None
+        self.assignee_select_label: Optional[discord.ui.Label] = None
+        self.assignee_input: Optional[discord.ui.TextInput] = None
+        self.list_select: Optional[discord.ui.Select] = None
+        self.list_select_label: Optional[discord.ui.Label] = None
+        self.list_input: Optional[discord.ui.TextInput] = None
+        self.search_input = discord.ui.TextInput(
+            label="Search",
+            placeholder="Task, description, list",
+            required=False,
+            default=parent_view.search_query,
+            max_length=100,
         )
 
         self.sort_group = discord.ui.RadioGroup(
@@ -870,39 +902,6 @@ class TodoListOptionsModal(discord.ui.Modal):
                 ),
             ],
         )
-        self.assignee_group = discord.ui.RadioGroup(
-            custom_id="todo_list_options_assignee",
-            options=[
-                discord.RadioGroupOption(
-                    label="All tasks",
-                    value="all",
-                    default=current_assignee_mode == "all",
-                ),
-                discord.RadioGroupOption(
-                    label="Assigned to me",
-                    value="me",
-                    default=current_assignee_mode == "me",
-                ),
-                discord.RadioGroupOption(
-                    label="Unassigned",
-                    value="unassigned",
-                    default=current_assignee_mode == "unassigned",
-                ),
-                discord.RadioGroupOption(
-                    label="Specific user",
-                    value="user",
-                    default=current_assignee_mode == "user",
-                ),
-            ],
-        )
-        self.assignee_user_select = discord.ui.UserSelect(
-            custom_id="todo_list_options_user",
-            placeholder="Only used for 'Specific user'",
-            min_values=0,
-            max_values=1,
-            required=False,
-            default_values=default_users,
-        )
 
         self.add_item(
             discord.ui.Label(
@@ -916,90 +915,188 @@ class TodoListOptionsModal(discord.ui.Modal):
                 component=self.status_group,
             )
         )
-        self.add_item(
-            discord.ui.Label(
-                text="Assignee Filter",
-                description="Choose 'Specific user' to use the picker below.",
-                component=self.assignee_group,
+        self.add_item(self.search_input)
+        if assignee_options:
+            try:
+                self.assignee_select = discord.ui.Select(
+                    placeholder="All tasks or choose assignees",
+                    min_values=1,
+                    max_values=max(1, min(len(assignee_options), 25)),
+                    options=assignee_options[:25],
+                )
+                self.add_item(
+                    discord.ui.Label(
+                        text="Assignee",
+                        description="Multiple selections use OR.",
+                        component=self.assignee_select,
+                    )
+                )
+            except Exception:
+                self.assignee_select = None
+
+        if self.assignee_select is None:
+            self.assignee_input = discord.ui.TextInput(
+                label="Assignee",
+                placeholder="all, me, unassigned, @user, ID (comma-separated OR)",
+                required=False,
+                default=parent_view.assignee_filter_input_value()[:200],
+                max_length=200,
             )
-        )
-        self.add_item(
-            discord.ui.Label(
-                text="User",
-                description="Optional unless 'Specific user' is selected.",
-                component=self.assignee_user_select,
+            self.add_item(self.assignee_input)
+        if (
+            parent_view.view_scope == "list"
+            and parent_view.todo_list.get("_id") is not None
+        ):
+            current_list_name = (
+                TodoFunctions.display_list_name(parent_view.todo_list, "List").strip()
+                or "List"
             )
-        )
+            if list_options:
+                try:
+                    self.list_select = discord.ui.Select(
+                        placeholder="Current list",
+                        min_values=1,
+                        max_values=1,
+                        options=list_options[:25],
+                    )
+                    self.list_select_label = discord.ui.Label(
+                        text="List",
+                        description="Optional unless you want to switch lists.",
+                        component=self.list_select,
+                    )
+                    self.add_item(self.list_select_label)
+                except Exception:
+                    self.list_select = None
+                    self.list_select_label = None
+
+            if self.list_select is None:
+                self.list_input = discord.ui.TextInput(
+                    label="List",
+                    placeholder="Existing list name or list ID",
+                    required=False,
+                    default=current_list_name[:80],
+                    max_length=80,
+                )
+                self.add_item(self.list_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
 
         sort_value = str(self.sort_group.value or "ascending")
         status_value = str(self.status_group.value or "all")
-        assignee_mode = str(self.assignee_group.value or "all")
+        search_query = self.parent_view.normalize_search_query(self.search_input.value)
 
         if sort_value not in {"ascending", "descending"}:
             sort_value = "ascending"
         if status_value not in {"all", "todo", "in_progress", "done"}:
             status_value = "all"
 
-        assignee_filter_id: Optional[int] = None
+        assignee_filter_ids: List[int] = []
         assignee_filter_unassigned = False
         assignee_filter_label = "All"
+        try:
+            assignee_filter_ids, assignee_filter_unassigned = (
+                self._resolve_assignee_filters(interaction)
+            )
+        except ValueError as exc:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
+            )
+            return
+        assignee_filter_label = self.parent_view.format_assignee_filter_label(
+            interaction,
+            assignee_filter_ids,
+            assignee_filter_unassigned,
+        )
 
-        if assignee_mode == "me":
-            assignee_filter_id = self.parent_view.user_id or interaction.user.id
-            assignee_filter_label = "Me"
-        elif assignee_mode == "unassigned":
-            assignee_filter_unassigned = True
-            assignee_filter_label = "Unassigned"
-        elif assignee_mode == "user":
-            selected_users = list(self.assignee_user_select.values)
-            if not selected_users:
+        current_list_id = str(self.parent_view.todo_list.get("_id") or "")
+        current_list_name = (
+            TodoFunctions.display_list_name(self.parent_view.todo_list, "List").strip()
+            or "List"
+        )
+        list_token = ""
+        if self.list_select is not None:
+            list_token = self.list_select.values[0] if self.list_select.values else ""
+        elif self.list_input is not None:
+            list_token = str(self.list_input.value or "").strip()
+            lowered_token = list_token.lower()
+            if lowered_token == "personal":
+                list_token = "__personal__"
+            elif lowered_token in {
+                "inbox",
+                TodoFunctions._SERVER_INBOX_DISPLAY_NAME.lower(),
+            }:
+                list_token = "__server_inbox__"
+
+        list_changed = False
+        if list_token:
+            if self.list_select is not None:
+                list_changed = list_token != current_list_id
+            else:
+                normalized_current_name = current_list_name.lower()
+                normalized_token = list_token.lower()
+                list_changed = (
+                    normalized_token != normalized_current_name
+                    and normalized_token != current_list_id.lower()
+                )
+
+        if list_changed and self.parent_view.view_scope == "list":
+            try:
+                target_list = await asyncio.to_thread(
+                    TodoFunctions.find_list_for_item_scope_by_token,
+                    self.parent_view._current_scope_item(interaction.user.id),
+                    list_token,
+                    interaction.user.id,
+                )
+            except ValueError as exc:
                 await handle_interaction_error(
                     interaction,
                     ValidationError(
-                        "Pick a user or choose a different assignee filter.",
-                        ephemeral=True,
+                        str(exc),
+                        ephemeral=self.response_ephemeral,
+                        cause=exc,
                     ),
                 )
                 return
-            selected_user = selected_users[0]
-            selected_user_id = getattr(selected_user, "id", None)
-            if selected_user_id is None:
+            except Exception as exc:
                 await handle_interaction_error(
                     interaction,
-                    ValidationError(
-                        "That user selection could not be resolved.",
-                        ephemeral=True,
+                    UserVisibleError(
+                        "Something went wrong while switching lists.",
+                        ephemeral=self.response_ephemeral,
+                        cause=exc,
                     ),
                 )
                 return
-            assignee_filter_id = int(selected_user_id)
-            assignee_filter_label = str(
-                getattr(selected_user, "display_name", "")
-                or getattr(selected_user, "name", "")
-                or f"User {assignee_filter_id}"
-            ).strip()[:100]
+
+            if target_list.get("_id") is not None:
+                self.parent_view.todo_list = target_list
 
         self.parent_view.sort = sort_value
         self.parent_view.status_filter = status_value
+        self.parent_view.search_query = search_query
         self.parent_view.assignee_filter_unassigned = assignee_filter_unassigned
+        self.parent_view.assignee_filter_ids = assignee_filter_ids
         self.parent_view.assignee_filter_id = (
-            None if assignee_filter_unassigned else assignee_filter_id
+            assignee_filter_ids[0] if len(assignee_filter_ids) == 1 else None
         )
         self.parent_view.assignee_filter_label = assignee_filter_label
         self.parent_view.page = 1
 
         try:
             await self.parent_view._reload_items()
-            self.parent_view._build()
+            await self.parent_view.ensure_session()
         except Exception as exc:
             await handle_interaction_error(
                 interaction,
                 UserVisibleError(
                     "Something went wrong while updating the list options.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -1007,7 +1104,7 @@ class TodoListOptionsModal(discord.ui.Modal):
 
         if self.source_message is None:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 view=self.parent_view,
                 **self.parent_view.payload(),
             )
@@ -1023,11 +1120,71 @@ class TodoListOptionsModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Options updated, but refreshing the list failed.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
             return
+
+    def _resolve_assignee_filters(
+        self,
+        interaction: discord.Interaction,
+    ) -> tuple[List[int], bool]:
+        user_ids: List[int] = []
+        seen_ids: set[int] = set()
+        include_unassigned = False
+
+        if self.assignee_select is not None:
+            selected_values = list(self.assignee_select.values)
+            if not selected_values or "__all__" in selected_values:
+                return [], False
+
+            for raw_value in selected_values:
+                token = str(raw_value or "").strip()
+                if token == "__me__":
+                    resolved_id = interaction.user.id
+                elif token == "__unassigned__":
+                    include_unassigned = True
+                    continue
+                else:
+                    resolved_id = TodoFunctions.parse_assignee_token(
+                        token,
+                        interaction.user.id,
+                    )
+                if resolved_id is None or resolved_id in seen_ids:
+                    continue
+                seen_ids.add(resolved_id)
+                user_ids.append(int(resolved_id))
+            return user_ids, include_unassigned
+
+        raw_input = str(self.assignee_input.value or "").strip() if self.assignee_input else ""
+        if not raw_input:
+            return [], False
+
+        tokens = [token.strip() for token in raw_input.split(",") if token.strip()]
+        if not tokens:
+            return [], False
+
+        all_tokens = {"all", "any", "*", "__all__"}
+        lowered_tokens = {token.lower() for token in tokens}
+        if lowered_tokens & all_tokens:
+            return [], False
+
+        for token in tokens:
+            lowered = token.lower()
+            if lowered in {"none", "unassign", "unassigned", "clear", "__none__"}:
+                include_unassigned = True
+                continue
+            resolved_id = TodoFunctions.parse_assignee_modal_input(
+                token,
+                interaction.user.id,
+            )
+            if resolved_id is None or resolved_id in seen_ids:
+                continue
+            seen_ids.add(resolved_id)
+            user_ids.append(int(resolved_id))
+
+        return user_ids, include_unassigned
 
 
 class TodoListItemsView(discord.ui.View):
@@ -1038,14 +1195,19 @@ class TodoListItemsView(discord.ui.View):
         sort: str,
         status_filter: str = "all",
         assignee_filter_id: Optional[int] = None,
+        assignee_filter_ids: Optional[List[int]] = None,
         assignee_filter_unassigned: bool = False,
         user_id: Optional[int] = None,
         view_scope: str = "list",
         guild_id: Optional[int] = None,
         page: int = 1,
         page_size: int = 5,
+        search_query: str = "",
+        response_ephemeral: bool = True,
+        session_id: Optional[str] = None,
+        timeout: float | None = None,
     ) -> None:
-        super().__init__(timeout=300)
+        super().__init__(timeout=timeout)
         self.todo_list = todo_list
         self._all_items = items
         self.items: List[Dict[str, Any]] = []
@@ -1062,25 +1224,124 @@ class TodoListItemsView(discord.ui.View):
             else "all"
         )
         self.assignee_filter_unassigned = bool(assignee_filter_unassigned)
+        resolved_assignee_ids = [
+            int(value)
+            for value in (assignee_filter_ids or [])
+            if value is not None
+        ]
+        if not resolved_assignee_ids and assignee_filter_id is not None:
+            resolved_assignee_ids = [int(assignee_filter_id)]
+        self.assignee_filter_ids = list(dict.fromkeys(resolved_assignee_ids))
         self.assignee_filter_id = (
-            None if self.assignee_filter_unassigned else assignee_filter_id
+            self.assignee_filter_ids[0] if len(self.assignee_filter_ids) == 1 else None
         )
         self.user_id = user_id
         self.view_scope = view_scope
         self.guild_id = guild_id
-        self.assignee_filter_label = "All"
-        if self.assignee_filter_unassigned:
-            self.assignee_filter_label = "Unassigned"
-        elif self.assignee_filter_id is not None:
-            if self.user_id is not None and self.assignee_filter_id == self.user_id:
-                self.assignee_filter_label = "Me"
-            else:
-                self.assignee_filter_label = "Specific user"
+        self.search_query = self.normalize_search_query(search_query)
+        self.response_ephemeral = bool(response_ephemeral)
+        self.assignee_filter_label = self._assignee_filter_summary_label()
         self.page_size = max(1, min(page_size, 5))
         self.total_pages = 1
         self.page = max(1, page)
+        self.session_id = str(session_id or "").strip() or None
         self._apply_filters()
+        if self.session_id is not None:
+            self._build()
+
+    @classmethod
+    async def from_session(
+        cls,
+        interaction: discord.Interaction,
+        session_id: str,
+    ) -> Optional["TodoListItemsView"]:
+        session = await asyncio.to_thread(
+            todo_list_item_sessions.get_session,
+            session_id,
+        )
+        if session is None:
+            return None
+
+        todo_list_id = str(session.get("todo_list_id") or "").strip()
+        todo_list = {
+            "_id": todo_list_id or None,
+            "name": str(session.get("todo_list_name") or "").strip(),
+            "scope": str(session.get("todo_scope") or "channel").strip(),
+            "channel_id": session.get("todo_channel_id"),
+            "user_id": session.get("todo_user_id"),
+            "guild_id": session.get("guild_id"),
+        }
+        if todo_list_id:
+            refreshed_list = await asyncio.to_thread(
+                TodoFunctions.fetch_todo_list_by_id,
+                todo_list_id,
+            )
+            if refreshed_list is not None:
+                todo_list = refreshed_list
+
+        session_page = max(1, int(session.get("page") or 1))
+        view = cls(
+            todo_list=todo_list,
+            items=[],
+            sort=str(session.get("sort") or "ascending").strip(),
+            status_filter=str(session.get("status_filter") or "all").strip(),
+            assignee_filter_ids=list(session.get("assignee_filter_ids") or []),
+            assignee_filter_unassigned=bool(
+                session.get("assignee_filter_unassigned", False)
+            ),
+            user_id=session.get("user_id"),
+            view_scope=str(session.get("view_scope") or "list").strip(),
+            guild_id=session.get("guild_id"),
+            page=session_page,
+            page_size=max(1, int(session.get("page_size") or 5)),
+            search_query=str(session.get("search_query") or ""),
+            response_ephemeral=bool(session.get("response_ephemeral", True)),
+            session_id=str(session.get("session_id") or session_id).strip(),
+        )
+        await view._reload_items()
+        view.page = max(1, min(session_page, view.total_pages))
+        await view.ensure_session()
+        return view
+
+    def session_state(self) -> dict:
+        return {
+            "todo_list_id": str(self.todo_list.get("_id") or "").strip(),
+            "todo_list_name": TodoFunctions.display_list_name(self.todo_list, "List"),
+            "todo_scope": str(self.todo_list.get("scope") or "channel"),
+            "todo_channel_id": self.todo_list.get("channel_id"),
+            "todo_user_id": self.todo_list.get("user_id"),
+            "sort": self.sort,
+            "status_filter": self.status_filter,
+            "assignee_filter_ids": self.assignee_filter_ids,
+            "assignee_filter_unassigned": self.assignee_filter_unassigned,
+            "user_id": self.user_id,
+            "view_scope": self.view_scope,
+            "guild_id": self.guild_id,
+            "page": self.page,
+            "page_size": self.page_size,
+            "search_query": self.search_query,
+            "response_ephemeral": self.response_ephemeral,
+        }
+
+    async def ensure_session(self) -> str:
+        if self.session_id is None:
+            self.session_id = await asyncio.to_thread(
+                todo_list_item_sessions.create_session,
+                self.session_state(),
+            )
+        else:
+            await self.save_session()
         self._build()
+        return self.session_id
+
+    async def save_session(self) -> None:
+        if self.session_id is None:
+            return
+        await asyncio.to_thread(
+            todo_list_item_sessions.save_session,
+            self.session_id,
+            self.session_state(),
+        )
 
     def _page_slice(self) -> List[Dict[str, Any]]:
         start = (self.page - 1) * self.page_size
@@ -1104,6 +1365,7 @@ class TodoListItemsView(discord.ui.View):
             status_counts=TodoEmbeds._status_counts(self.items),
             status_filter=self.status_filter,
             assignee_filter_label=self.assignee_filter_label,
+            search_filter_label=self.search_filter_label(),
         )
 
     async def _reload_items(self) -> None:
@@ -1123,10 +1385,16 @@ class TodoListItemsView(discord.ui.View):
 
     def _assignee_filter_mode(self) -> str:
         if self.assignee_filter_unassigned:
+            if self.assignee_filter_ids:
+                return "mixed"
             return "unassigned"
-        if self.assignee_filter_id is None:
+        if not self.assignee_filter_ids:
             return "all"
-        if self.user_id is not None and self.assignee_filter_id == self.user_id:
+        if (
+            len(self.assignee_filter_ids) == 1
+            and self.user_id is not None
+            and self.assignee_filter_ids[0] == self.user_id
+        ):
             return "me"
         return "user"
 
@@ -1134,9 +1402,109 @@ class TodoListItemsView(discord.ui.View):
         return (
             self.sort != "ascending"
             or self.status_filter != "all"
+            or bool(self.search_query)
             or self.assignee_filter_unassigned
-            or self.assignee_filter_id is not None
+            or bool(self.assignee_filter_ids)
         )
+
+    @staticmethod
+    def normalize_search_query(value: Optional[str]) -> str:
+        return str(value or "").strip()
+
+    def search_filter_label(self) -> str:
+        text = str(self.search_query or "").strip()
+        if not text:
+            return "All"
+        if len(text) <= 24:
+            return text
+        return f"{text[:21].rstrip()}..."
+
+    def _assignee_filter_summary_label(self) -> str:
+        if not self.assignee_filter_ids and not self.assignee_filter_unassigned:
+            return "All"
+
+        labels: List[str] = []
+        if self.assignee_filter_ids:
+            if len(self.assignee_filter_ids) == 1 and self.user_id is not None:
+                if self.assignee_filter_ids[0] == self.user_id:
+                    labels.append("Me")
+                else:
+                    labels.append("1 user")
+            else:
+                labels.append(
+                    "Me"
+                    if self.user_id is not None
+                    and self.assignee_filter_ids == [self.user_id]
+                    else f"{len(self.assignee_filter_ids)} users"
+                )
+        if self.assignee_filter_unassigned:
+            labels.append("Unassigned")
+        return " + ".join(labels)[:100]
+
+    def assignee_filter_input_value(self) -> str:
+        if not self.assignee_filter_ids and not self.assignee_filter_unassigned:
+            return "all"
+
+        tokens: List[str] = []
+        for user_id in self.assignee_filter_ids:
+            if self.user_id is not None and user_id == self.user_id:
+                tokens.append("me")
+            else:
+                tokens.append(str(user_id))
+        if self.assignee_filter_unassigned:
+            tokens.append("unassigned")
+        return ", ".join(tokens)
+
+    def format_assignee_filter_label(
+        self,
+        interaction: discord.Interaction,
+        assignee_filter_ids: List[int],
+        assignee_filter_unassigned: bool,
+    ) -> str:
+        if not assignee_filter_ids and not assignee_filter_unassigned:
+            return "All"
+
+        labels: List[str] = []
+        guild = interaction.guild
+        for user_id in assignee_filter_ids:
+            if self.user_id is not None and user_id == self.user_id:
+                labels.append("Me")
+                continue
+            member = guild.get_member(user_id) if guild is not None else None
+            label = str(
+                getattr(member, "display_name", "")
+                or getattr(member, "name", "")
+                or f"User {user_id}"
+            ).strip()
+            labels.append(label[:30])
+        if assignee_filter_unassigned:
+            labels.append("Unassigned")
+        if len(labels) <= 2:
+            return " + ".join(labels)[:100]
+        return f"{len(assignee_filter_ids)} users" + (
+            " + Unassigned" if assignee_filter_unassigned else ""
+        )
+
+    def _current_scope_item(self, acting_user_id: Optional[int] = None) -> Dict[str, Any]:
+        return {
+            "scope": str(self.todo_list.get("scope") or "channel"),
+            "guild_id": self.todo_list.get("guild_id"),
+            "channel_id": self.todo_list.get("channel_id"),
+            "user_id": self.todo_list.get("user_id")
+            or self.user_id
+            or acting_user_id,
+            "list_id": self.todo_list.get("_id"),
+            "list_name": TodoFunctions.display_list_name(self.todo_list, "List"),
+        }
+
+    @staticmethod
+    def _search_text(item: Dict[str, Any]) -> str:
+        parts = [
+            TodoFunctions.task_name_from_item(item),
+            TodoFunctions.item_text(item) or "",
+            str(item.get("list_name") or ""),
+        ]
+        return " ".join(str(part or "") for part in parts).lower()
 
     async def open_options_modal(
         self,
@@ -1144,6 +1512,44 @@ class TodoListItemsView(discord.ui.View):
         *,
         source_message: Optional[discord.Message],
     ) -> None:
+        global _MODAL_SELECTS_SUPPORTED
+
+        list_options: List[discord.SelectOption] = []
+        assignee_options: List[discord.SelectOption] = []
+        if self.view_scope == "list" and self.todo_list.get("_id") is not None:
+            scope_item = self._current_scope_item(interaction.user.id)
+            try:
+                list_docs = await asyncio.to_thread(
+                    TodoFunctions.list_candidate_lists_for_item_scope,
+                    scope_item,
+                    interaction.user.id,
+                    25,
+                )
+                list_options = self._build_list_select_options(scope_item, list_docs)
+            except Exception:
+                list_options = []
+        try:
+            assignee_options = self._build_assignee_filter_select_options(interaction)
+        except Exception:
+            assignee_options = []
+
+        if _MODAL_SELECTS_SUPPORTED:
+            try:
+                await interaction.response.send_modal(
+                    TodoListOptionsModal(
+                        parent_view=self,
+                        source_message=source_message,
+                        assignee_options=assignee_options,
+                        list_options=list_options,
+                    )
+                )
+                return
+            except discord.HTTPException as exc:
+                if exc.code == 50035 and "must be one of (4,)" in str(exc):
+                    _MODAL_SELECTS_SUPPORTED = False
+                else:
+                    raise
+
         await interaction.response.send_modal(
             TodoListOptionsModal(
                 parent_view=self,
@@ -1161,7 +1567,7 @@ class TodoListItemsView(discord.ui.View):
 
         if self.view_scope != "list" or self.todo_list.get("_id") is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="Open a specific list to create a task from this view.",
             )
             return
@@ -1177,16 +1583,9 @@ class TodoListItemsView(discord.ui.View):
 
         assignee_options = self._build_assignee_select_options(
             interaction,
-            {"assignees": []},
+            {"assignee_id": None},
         )
-        scope_item = {
-            "scope": str(self.todo_list.get("scope") or "channel"),
-            "guild_id": self.todo_list.get("guild_id"),
-            "channel_id": self.todo_list.get("channel_id"),
-            "user_id": self.todo_list.get("user_id") or interaction.user.id,
-            "list_id": self.todo_list.get("_id"),
-            "list_name": TodoFunctions.display_list_name(self.todo_list, "List"),
-        }
+        scope_item = self._current_scope_item(interaction.user.id)
         list_options: List[discord.SelectOption] = []
         try:
             list_docs = await asyncio.to_thread(
@@ -1231,15 +1630,29 @@ class TodoListItemsView(discord.ui.View):
 
     def _apply_filters(self) -> None:
         filtered_items = list(self._all_items)
-        if self.assignee_filter_unassigned:
-            filtered_items = [
-                item for item in filtered_items if not (item.get("assignees") or [])
-            ]
-        elif self.assignee_filter_id is not None:
+        if self.search_query:
+            normalized_query = self.search_query.lower()
             filtered_items = [
                 item
                 for item in filtered_items
-                if self.assignee_filter_id in (item.get("assignees") or [])
+                if normalized_query in self._search_text(item)
+            ]
+        if self.assignee_filter_ids or self.assignee_filter_unassigned:
+            allowed_ids = set(self.assignee_filter_ids)
+            filtered_items = [
+                item
+                for item in filtered_items
+                if (
+                    bool(
+                        allowed_ids.intersection(
+                            TodoFunctions.item_assignee_ids(item)
+                        )
+                    )
+                    or (
+                        self.assignee_filter_unassigned
+                        and TodoFunctions.item_assignee_id(item) is None
+                    )
+                )
             ]
         if self.status_filter != "all":
             filtered_items = [
@@ -1258,13 +1671,21 @@ class TodoListItemsView(discord.ui.View):
         )
         try:
             if interaction.response.is_done():
-                await interaction.followup.send(ephemeral=True, content=message)
+                await interaction.followup.send(
+                    ephemeral=self.response_ephemeral,
+                    content=message,
+                )
             else:
-                await interaction.response.send_message(ephemeral=True, content=message)
+                await interaction.response.send_message(
+                    ephemeral=self.response_ephemeral,
+                    content=message,
+                )
         except Exception:
             return
 
     async def _safe_refresh_message(self, interaction: discord.Interaction) -> bool:
+        self._build()
+        await self.save_session()
         try:
             if interaction.response.is_done():
                 await interaction.edit_original_response(view=self, **self.payload())
@@ -1297,7 +1718,7 @@ class TodoListItemsView(discord.ui.View):
     ) -> None:
         item_id = str((item or {}).get("_id") or "").strip()
         if not item_id:
-            await interaction.response.defer(ephemeral=True)
+            await interaction.response.defer(ephemeral=self.response_ephemeral)
             return
 
         try:
@@ -1311,7 +1732,7 @@ class TodoListItemsView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while loading that item.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -1324,9 +1745,13 @@ class TodoListItemsView(discord.ui.View):
             return
 
         todo_list = await self._resolve_list_for_item(current_item)
-        payload = TodoEmbeds.item_details_embed(todo_list, current_item)
+        payload = TodoEmbeds.item_details_embed(
+            todo_list,
+            current_item,
+            response_ephemeral=self.response_ephemeral,
+        )
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             **payload,
         )
 
@@ -1345,8 +1770,7 @@ class TodoListItemsView(discord.ui.View):
         interaction: discord.Interaction,
         item: Dict[str, Any],
     ) -> List[discord.SelectOption]:
-        assignees = item.get("assignees") or []
-        current_assignee_id = assignees[0] if assignees else None
+        current_assignee_id = TodoFunctions.item_assignee_id(item)
 
         options: List[discord.SelectOption] = []
         seen_values: set[str] = set()
@@ -1408,6 +1832,80 @@ class TodoListItemsView(discord.ui.View):
                     label=self._member_option_label(member),
                     value=value,
                     default=(current_assignee_id == member_id),
+                )
+            )
+            seen_values.add(value)
+            if len(options) >= 25:
+                break
+
+        return options[:25]
+
+    def _build_assignee_filter_select_options(
+        self,
+        interaction: discord.Interaction,
+    ) -> List[discord.SelectOption]:
+        selected_ids = list(self.assignee_filter_ids)
+        seen_values: set[str] = set()
+        options: List[discord.SelectOption] = [
+            discord.SelectOption(
+                label="All tasks",
+                value="__all__",
+                default=(
+                    not selected_ids and not self.assignee_filter_unassigned
+                ),
+            ),
+            discord.SelectOption(
+                label="Me",
+                value="__me__",
+                default=(
+                    self.user_id is not None and self.user_id in selected_ids
+                ),
+            ),
+            discord.SelectOption(
+                label="Unassigned",
+                value="__unassigned__",
+                default=self.assignee_filter_unassigned,
+            ),
+        ]
+        seen_values.update({"__all__", "__me__", "__unassigned__"})
+
+        current_user_id = self.user_id or interaction.user.id
+        for selected_id in selected_ids:
+            if selected_id == current_user_id:
+                continue
+            value = f"user:{selected_id}"
+            if value in seen_values:
+                continue
+            options.append(
+                discord.SelectOption(
+                    label=f"Current <@{selected_id}>"[:100],
+                    value=value,
+                    default=True,
+                )
+            )
+            seen_values.add(value)
+
+        guild = interaction.guild
+        members = []
+        if guild is not None:
+            members = list(
+                getattr(interaction.channel, "members", None) or guild.members
+            )
+
+        for member in members:
+            if getattr(member, "bot", False):
+                continue
+            member_id = getattr(member, "id", None)
+            if member_id is None:
+                continue
+            value = f"user:{member_id}"
+            if value in seen_values:
+                continue
+            options.append(
+                discord.SelectOption(
+                    label=self._member_option_label(member),
+                    value=value,
+                    default=(member_id in selected_ids),
                 )
             )
             seen_values.add(value)
@@ -1518,95 +2016,54 @@ class TodoListItemsView(discord.ui.View):
 
     def _build(self) -> None:
         self.clear_items()
+        if self.session_id is None:
+            return
+
+        from views.todo_list_items_dynamic_items import (
+            TodoListItemInfoButton,
+            TodoListItemsAddButton,
+            TodoListItemsNextButton,
+            TodoListItemsOptionsButton,
+            TodoListItemsPrevButton,
+        )
 
         for slot_index in range(self.page_size):
-            display_index = slot_index + 1
             item = self._page_item(slot_index)
-            item_id = str((item or {}).get("_id") or "")
             has_item = item is not None
-
-            info_button = discord.ui.Button(
-                label=str(display_index),
-                style=discord.ButtonStyle.secondary,
-                custom_id=f"todo_item_info:{item_id or display_index}",
-                row=0,
-                disabled=not has_item,
+            self.add_item(
+                TodoListItemInfoButton(
+                    self.session_id,
+                    slot_index,
+                    disabled=not has_item,
+                )
             )
 
-            async def _info_callback(
-                interaction: discord.Interaction,
-                item_data: Optional[Dict[str, Any]] = item,
-            ) -> None:
-                await self._open_item_details(interaction, item_data)
-
-            info_button.callback = _info_callback
-            self.add_item(info_button)
-
-        prev_button = discord.ui.Button(
-            style=discord.ButtonStyle.secondary,
-            emoji="◀️",
-            disabled=self.page <= 1,
-            row=1,
-        )
-        add_button = discord.ui.Button(
-            style=discord.ButtonStyle.success,
-            emoji="➕",
-            row=1,
-            disabled=(self.view_scope != "list") or (self.todo_list.get("_id") is None),
-        )
-        next_button = discord.ui.Button(
-            style=discord.ButtonStyle.secondary,
-            emoji="▶️",
-            disabled=self.page >= self.total_pages,
-            row=1,
-        )
-        options_button = discord.ui.Button(
-            style=(
-                discord.ButtonStyle.success
-                if self._has_active_list_options()
-                else discord.ButtonStyle.secondary
-            ),
-            emoji="🔎",
-            row=1,
-        )
-
-        async def _prev_callback(interaction: discord.Interaction) -> None:
-            if self.page <= 1:
-                await interaction.response.defer(ephemeral=True)
-                return
-            self.page -= 1
-            self._build()
-            await self._safe_refresh_message(interaction)
-
-        async def _next_callback(interaction: discord.Interaction) -> None:
-            if self.page >= self.total_pages:
-                await interaction.response.defer(ephemeral=True)
-                return
-            self.page += 1
-            self._build()
-            await self._safe_refresh_message(interaction)
-
-        async def _add_callback(interaction: discord.Interaction) -> None:
-            await self.open_create_modal(
-                interaction,
-                source_message=interaction.message,
+        self.add_item(
+            TodoListItemsPrevButton(
+                self.session_id,
+                page=self.page,
+                disabled=self.page <= 1,
             )
-
-        async def _options_callback(interaction: discord.Interaction) -> None:
-            await self.open_options_modal(
-                interaction,
-                source_message=interaction.message,
+        )
+        self.add_item(
+            TodoListItemsNextButton(
+                self.session_id,
+                page=self.page,
+                disabled=self.page >= self.total_pages,
             )
-
-        prev_button.callback = _prev_callback
-        next_button.callback = _next_callback
-        add_button.callback = _add_callback
-        options_button.callback = _options_callback
-
-        self.add_item(prev_button)
-        self.add_item(next_button)
-        self.add_item(add_button)
-        self.add_item(options_button)
+        )
+        self.add_item(
+            TodoListItemsAddButton(
+                self.session_id,
+                disabled=(self.view_scope != "list") or (self.todo_list.get("_id") is None),
+            )
+        )
+        self.add_item(
+            TodoListItemsOptionsButton(
+                self.session_id,
+                active=self._has_active_list_options(),
+            )
+        )
 
 
 class TodoDeleteConfirmModal(discord.ui.Modal):
@@ -1616,6 +2073,7 @@ class TodoDeleteConfirmModal(discord.ui.Modal):
         item_name: str,
         list_name: str,
         source_message: Optional[discord.Message],
+        response_ephemeral: bool = True,
     ) -> None:
         modal_title = f"Delete {TodoFunctions.task_ref(item_name)}"
         if len(modal_title) > 45:
@@ -1625,6 +2083,7 @@ class TodoDeleteConfirmModal(discord.ui.Modal):
         self.item_name = str(item_name).strip()
         self.list_name = list_name
         self.source_message = source_message
+        self.response_ephemeral = bool(response_ephemeral)
         self.add_item(
             discord.ui.TextDisplay(
                 f"This will permanently delete {TodoFunctions.task_ref(self.item_name)} "
@@ -1633,13 +2092,13 @@ class TodoDeleteConfirmModal(discord.ui.Modal):
         )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
 
         deleted = await asyncio.to_thread(TodoFunctions.delete_item, self.item_id)
 
         if not deleted:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content=f"Couldn't delete task {TodoFunctions.task_ref(self.item_name)}.",
             )
             return
@@ -1655,7 +2114,7 @@ class TodoDeleteConfirmModal(discord.ui.Modal):
                 pass
             except Exception:
                 await interaction.followup.send(
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     content="Item deleted, but updating the card failed.",
                 )
                 return
@@ -1666,7 +2125,7 @@ class TodoDeleteConfirmModal(discord.ui.Modal):
             self.item_name,
         )
         await interaction.followup.send(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             **deleted_payload,
         )
 
@@ -1678,6 +2137,7 @@ class TodoAssignSelectModal(discord.ui.Modal):
         item: Dict[str, Any],
         source_message: Optional[discord.Message],
         assignee_options: List[discord.SelectOption],
+        response_ephemeral: bool = True,
     ) -> None:
         modal_title = (
             f"Assign {TodoFunctions.task_ref(TodoFunctions.task_name_from_item(item))}"
@@ -1689,6 +2149,7 @@ class TodoAssignSelectModal(discord.ui.Modal):
         self.item_id = str(item.get("_id") or "")
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.source_message = source_message
+        self.response_ephemeral = bool(response_ephemeral)
 
         self.assignee_select = discord.ui.Select(
             placeholder="Assignee",
@@ -1725,7 +2186,11 @@ class TodoAssignSelectModal(discord.ui.Modal):
     ) -> bool:
         if self.source_message is None:
             return False
-        payload = TodoEmbeds.item_details_embed(todo_list, item)
+        payload = TodoEmbeds.item_details_embed(
+            todo_list,
+            item,
+            response_ephemeral=self.response_ephemeral,
+        )
         try:
             await self.source_message.edit(**payload)
             return True
@@ -1736,19 +2201,22 @@ class TodoAssignSelectModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Todo updated, but refreshing the card failed.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
             return False
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
 
         if not self.item_id:
             await handle_interaction_error(
                 interaction,
-                ValidationError("That item could not be assigned.", ephemeral=True),
+                ValidationError(
+                    "That item could not be assigned.",
+                    ephemeral=self.response_ephemeral,
+                ),
             )
             return
 
@@ -1771,7 +2239,11 @@ class TodoAssignSelectModal(discord.ui.Modal):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
         except Exception as exc:
@@ -1779,7 +2251,7 @@ class TodoAssignSelectModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while updating assignment.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -1788,7 +2260,10 @@ class TodoAssignSelectModal(discord.ui.Modal):
         if not updated_item:
             await handle_interaction_error(
                 interaction,
-                UserVisibleError("That item could not be assigned.", ephemeral=True),
+                UserVisibleError(
+                    "That item could not be assigned.",
+                    ephemeral=self.response_ephemeral,
+                ),
             )
             return
 
@@ -1803,14 +2278,15 @@ class TodoAssignPickerView(discord.ui.View):
         item: Dict[str, Any],
         source_message: Optional[discord.Message],
         assignee_options: Optional[List[discord.SelectOption]] = None,
+        response_ephemeral: bool = True,
     ) -> None:
         super().__init__(timeout=180)
         self.todo_list = todo_list
         self.item_id = str(item.get("_id") or "")
-        self.item_number = item.get("item_no")
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.guild_id = item.get("guild_id")
         self.source_message = source_message
+        self.response_ephemeral = bool(response_ephemeral)
 
         self.selected_assignee_token: Optional[str] = None
         self.assignee_select: Optional[discord.ui.Select] = None
@@ -1842,8 +2318,7 @@ class TodoAssignPickerView(discord.ui.View):
         interaction: discord.Interaction,
         item: Dict[str, Any],
     ) -> List[discord.SelectOption]:
-        assignees = item.get("assignees") or []
-        current_assignee_id = assignees[0] if assignees else None
+        current_assignee_id = TodoFunctions.item_assignee_id(item)
 
         options: List[discord.SelectOption] = []
         seen_values: set[str] = set()
@@ -1955,7 +2430,11 @@ class TodoAssignPickerView(discord.ui.View):
     ) -> bool:
         if self.source_message is None:
             return False
-        payload = TodoEmbeds.item_details_embed(todo_list, item)
+        payload = TodoEmbeds.item_details_embed(
+            todo_list,
+            item,
+            response_ephemeral=self.response_ephemeral,
+        )
         try:
             await self.source_message.edit(**payload)
             return True
@@ -1966,7 +2445,7 @@ class TodoAssignPickerView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Todo updated, but refreshing the card failed.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -1996,7 +2475,7 @@ class TodoAssignPickerView(discord.ui.View):
     ) -> None:
         if not self.item_id:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item could not be assigned.",
             )
             return
@@ -2004,7 +2483,7 @@ class TodoAssignPickerView(discord.ui.View):
         target_token = self.selected_assignee_token
         if not target_token:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="Select an assignee first.",
             )
             return
@@ -2016,12 +2495,12 @@ class TodoAssignPickerView(discord.ui.View):
             )
         except ValueError:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="Please select a valid assignee option.",
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         assigned = await self._apply_assignment(interaction, target_user_id)
         self._disable_components()
 
@@ -2031,7 +2510,7 @@ class TodoAssignPickerView(discord.ui.View):
             except Exception:
                 pass
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content=f"Couldn't assign task {TodoFunctions.task_ref(self.item_name)}.",
             )
             return
@@ -2059,12 +2538,12 @@ class TodoAssignPickerView(discord.ui.View):
     ) -> None:
         if not self.item_id:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item could not be updated.",
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         unassigned = await self._apply_assignment(interaction, None)
         self._disable_components()
 
@@ -2074,7 +2553,7 @@ class TodoAssignPickerView(discord.ui.View):
             except Exception:
                 pass
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content=f"Couldn't unassign task {TodoFunctions.task_ref(self.item_name)}.",
             )
             return
@@ -2105,13 +2584,14 @@ class TodoItemActionsView(discord.ui.View):
         self,
         todo_list: Dict[str, Any],
         item: Dict[str, Any],
+        response_ephemeral: bool = True,
     ) -> None:
         super().__init__(timeout=900)
         self.todo_list = todo_list
         self.item_id = str(item.get("_id") or "")
-        self.item_number = item.get("item_no")
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.guild_id = item.get("guild_id")
+        self.response_ephemeral = bool(response_ephemeral)
 
         item_status = TodoFunctions.item_status(item)
         self._apply_progress_button_state(item_status)
@@ -2184,7 +2664,11 @@ class TodoItemActionsView(discord.ui.View):
         todo_list: Dict[str, Any],
         item: Dict[str, Any],
     ) -> bool:
-        payload = TodoEmbeds.item_details_embed(todo_list, item)
+        payload = TodoEmbeds.item_details_embed(
+            todo_list,
+            item,
+            response_ephemeral=self.response_ephemeral,
+        )
         try:
             if interaction.response.is_done():
                 await interaction.edit_original_response(**payload)
@@ -2205,7 +2689,7 @@ class TodoItemActionsView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Todo updated, but refreshing the card failed.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -2218,10 +2702,14 @@ class TodoItemActionsView(discord.ui.View):
         _: discord.ui.Button,
     ) -> None:
         global _MODAL_SELECTS_SUPPORTED
+        self.response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=self.response_ephemeral,
+        )
         current_list, current_item = await self._load_current_item_and_list()
         if current_list is None or current_item is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item no longer exists.",
             )
             return
@@ -2237,7 +2725,7 @@ class TodoItemActionsView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while loading that item.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -2251,6 +2739,7 @@ class TodoItemActionsView(discord.ui.View):
             user_id=interaction.user.id,
             view_scope="list",
             guild_id=interaction.guild_id,
+            response_ephemeral=self.response_ephemeral,
         )
         assignee_options = parent_view._build_assignee_select_options(
             interaction,
@@ -2270,7 +2759,6 @@ class TodoItemActionsView(discord.ui.View):
         except Exception:
             list_options = []
 
-        modal_item_number = current_item.get("item_no") or self.item_number
         modal_locale = str(getattr(interaction, "locale", "") or "").strip()
         if not modal_locale:
             modal_locale = None
@@ -2287,7 +2775,6 @@ class TodoItemActionsView(discord.ui.View):
                     TodoItemEditModal(
                         parent_view=parent_view,
                         item=current_item,
-                        item_number=modal_item_number,
                         source_message=interaction.message,
                         source_interaction=interaction,
                         assignee_options=assignee_options,
@@ -2308,7 +2795,6 @@ class TodoItemActionsView(discord.ui.View):
             TodoItemEditModal(
                 parent_view=parent_view,
                 item=current_item,
-                item_number=modal_item_number,
                 source_message=interaction.message,
                 source_interaction=interaction,
                 refresh_source_as_item_embed=True,
@@ -2323,10 +2809,14 @@ class TodoItemActionsView(discord.ui.View):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        await interaction.response.defer(ephemeral=True)
+        self.response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=self.response_ephemeral,
+        )
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         if not self.item_id:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="Couldn't complete that item.",
             )
             return
@@ -2334,7 +2824,7 @@ class TodoItemActionsView(discord.ui.View):
         current_list, current_item = await self._load_current_item_and_list()
         if current_list is None or current_item is None:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item no longer exists.",
             )
             return
@@ -2352,7 +2842,7 @@ class TodoItemActionsView(discord.ui.View):
         )
         if not updated_item:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content=f"Couldn't update task {TodoFunctions.task_ref(self.item_name)}.",
             )
             return
@@ -2366,9 +2856,13 @@ class TodoItemActionsView(discord.ui.View):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
+        self.response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=self.response_ephemeral,
+        )
         if not self.item_id:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item could not be deleted.",
             )
             return
@@ -2379,6 +2873,7 @@ class TodoItemActionsView(discord.ui.View):
                 item_name=self.item_name,
                 list_name=TodoFunctions.display_list_name(self.todo_list, "List"),
                 source_message=interaction.message,
+                response_ephemeral=self.response_ephemeral,
             )
         )
 
@@ -2388,10 +2883,14 @@ class TodoItemActionsView(discord.ui.View):
         interaction: discord.Interaction,
         _: discord.ui.Button,
     ) -> None:
-        await interaction.response.defer(ephemeral=True)
+        self.response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=self.response_ephemeral,
+        )
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
         if not self.item_id:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item could not be duplicated.",
             )
             return
@@ -2399,7 +2898,7 @@ class TodoItemActionsView(discord.ui.View):
         current_list, current_item = await self._load_current_item_and_list()
         if current_list is None or current_item is None:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item no longer exists.",
             )
             return
@@ -2417,7 +2916,11 @@ class TodoItemActionsView(discord.ui.View):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
         except Exception as exc:
@@ -2425,7 +2928,7 @@ class TodoItemActionsView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while duplicating that item.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -2433,14 +2936,18 @@ class TodoItemActionsView(discord.ui.View):
 
         if not duplicated_item:
             await interaction.followup.send(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item could not be duplicated.",
             )
             return
 
-        payload = TodoEmbeds.item_details_embed(current_list, duplicated_item)
+        payload = TodoEmbeds.item_details_embed(
+            current_list,
+            duplicated_item,
+            response_ephemeral=self.response_ephemeral,
+        )
         await interaction.followup.send(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             content="Duplicated todo.",
             **payload,
         )
@@ -2452,10 +2959,14 @@ class TodoItemActionsView(discord.ui.View):
         _: discord.ui.Button,
     ) -> None:
         global _MODAL_SELECTS_SUPPORTED
+        self.response_ephemeral = inherit_ephemeral_from_interaction(
+            interaction,
+            default=self.response_ephemeral,
+        )
         current_list, current_item = await self._load_current_item_and_list()
         if current_list is None or current_item is None:
             await interaction.response.send_message(
-                ephemeral=True,
+                ephemeral=self.response_ephemeral,
                 content="That item no longer exists.",
             )
             return
@@ -2473,6 +2984,7 @@ class TodoItemActionsView(discord.ui.View):
                         item=current_item,
                         source_message=interaction.message,
                         assignee_options=assignee_options,
+                        response_ephemeral=self.response_ephemeral,
                     )
                 )
                 return
@@ -2487,9 +2999,10 @@ class TodoItemActionsView(discord.ui.View):
             item=current_item,
             source_message=interaction.message,
             assignee_options=assignee_options,
+            response_ephemeral=self.response_ephemeral,
         )
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             content="Pick who should own this task.",
             view=assign_view,
         )
@@ -2550,6 +3063,33 @@ class TodoEmbeds:
             "done": "✅ Done",
         }
         return chips.get(normalized, TodoFunctions.status_label(normalized))
+
+    @staticmethod
+    def _status_emoji(status: str) -> str:
+        normalized = (status or "").strip().lower()
+        emojis = {
+            "todo": "🟢",
+            "in_progress": "🟡",
+            "done": "✅",
+        }
+        return emojis.get(normalized, "•")
+
+    @staticmethod
+    def _active_filters_footer(
+        sort: str,
+        status_filter: str,
+        assignee_filter_label: str,
+        search_filter_label: str,
+    ) -> str:
+        sort_arrow = "↑" if sort == "ascending" else "↓"
+        parts = [f"{sort_arrow} {sort.capitalize()}"]
+        if status_filter and status_filter.lower() != "all":
+            parts.append(f"Status: {TodoEmbeds._status_filter_label(status_filter)}")
+        if assignee_filter_label and assignee_filter_label.lower() != "all":
+            parts.append(f"Assignee: {assignee_filter_label}")
+        if search_filter_label and search_filter_label.lower() != "all":
+            parts.append(f'Search: "{search_filter_label}"')
+        return "  ·  ".join(parts)
 
     @staticmethod
     def _status_counts(items: List[Dict[str, Any]]) -> Dict[str, int]:
@@ -2648,6 +3188,57 @@ class TodoEmbeds:
         return f"🗓️ Due: {rel}"
 
     @staticmethod
+    def _item_color(
+        status: str,
+        due: Optional[Union[datetime.datetime, str]],
+    ) -> discord.Colour:
+        normalized = (status or "").strip().lower()
+        if normalized == "done":
+            return discord.Colour.green()
+        due_dt = TodoEmbeds._parse_due_dt(due)
+        if due_dt is not None:
+            if due_dt.tzinfo is not None and due_dt.utcoffset() is not None:
+                now = datetime.datetime.now(datetime.timezone.utc).astimezone(due_dt.tzinfo)
+            else:
+                now = datetime.datetime.now()
+            if due_dt < now:
+                return discord.Colour.red()
+            if due_dt.date() == now.date():
+                return discord.Colour.orange()
+        if normalized == "in_progress":
+            return discord.Colour.gold()
+        return discord.Colour.blurple()
+
+    @staticmethod
+    def _due_detail(due: Optional[Union[datetime.datetime, str]]) -> Optional[str]:
+        if not due:
+            return None
+        due_dt = TodoEmbeds._parse_due_dt(due)
+        if due_dt is None:
+            return f"🗓️ {DueDateService.format_due(due)}"
+
+        due_for_epoch = due_dt
+        if due_for_epoch.tzinfo is None or due_for_epoch.utcoffset() is None:
+            local_tz = datetime.datetime.now().astimezone().tzinfo
+            if local_tz is not None:
+                due_for_epoch = due_for_epoch.replace(tzinfo=local_tz)
+        unix_ts = int(due_for_epoch.timestamp())
+
+        if due_dt.tzinfo is not None and due_dt.utcoffset() is not None:
+            now = datetime.datetime.now(datetime.timezone.utc).astimezone(due_dt.tzinfo)
+        else:
+            now = datetime.datetime.now()
+
+        abs_ts = f"<t:{unix_ts}:D>"
+        rel_ts = f"<t:{unix_ts}:R>"
+
+        if due_dt < now:
+            return f"🔴 {abs_ts}\n{rel_ts}"
+        if due_dt.date() == now.date():
+            return f"🟠 {abs_ts}\n{rel_ts}"
+        return f"🗓️ {abs_ts}\n{rel_ts}"
+
+    @staticmethod
     def _list_title(todo_list: Dict[str, Any]) -> str:
         list_name = TodoFunctions.display_list_name(todo_list, "Unnamed")
         return f"Tasks • {list_name}"
@@ -2701,7 +3292,7 @@ class TodoEmbeds:
         todo: Dict[str, Any],
         todo_list: Optional[Dict[str, Any]] = None,
     ) -> dict:
-        user_id = todo.get("user_id")
+        user_id = todo.get("created_by_user_id") or todo.get("user_id")
         payload = TodoEmbeds.item_details_embed(
             todo_list or {"name": str(todo.get("list_name") or "List")},
             todo,
@@ -2737,9 +3328,9 @@ class TodoEmbeds:
         page_items = todos[start:end]
 
         for index, todo in enumerate(page_items, start=start + 1):
-            name = str(todo.get("name") or "Untitled")
-            description = todo.get("description")
-            due_raw = todo.get("due")
+            name = TodoFunctions.task_name_from_item(todo) or "Untitled"
+            description = TodoFunctions.item_body(todo)
+            due_raw = TodoFunctions.item_due(todo)
             lines = []
             if description:
                 lines.append(str(description))
@@ -2792,12 +3383,12 @@ class TodoEmbeds:
             items[: TodoEmbeds._MAX_LIST_ITEMS_PREVIEW], start=1
         ):
             number_emoji = TodoEmbeds._number_emoji(display_index)
-            item_name = str(item.get("name") or "Untitled")
+            item_name = TodoFunctions.task_name_from_item(item) or "Untitled"
             status = TodoFunctions.status_label(TodoFunctions.item_status(item))
             list_name = str(item.get("list_name") or "").strip()
             text = TodoFunctions.item_text(item) or ""
-            due_line = TodoEmbeds._due_line(item.get("due"))
-            assignees = item.get("assignees") or []
+            due_line = TodoEmbeds._due_line(TodoFunctions.item_due(item))
+            assignee_id = TodoFunctions.item_assignee_id(item)
             item_title = (
                 f"{number_emoji} {item_name} [{status}] | {list_name}"
                 if list_name
@@ -2809,9 +3400,8 @@ class TodoEmbeds:
                 value_lines.append(description_line)
             if due_line:
                 value_lines.append(due_line)
-            if assignees:
-                mentions = " ".join(f"<@{uid}>" for uid in assignees)
-                value_lines.append(f"👥 Assignees: {mentions}")
+            if assignee_id is not None:
+                value_lines.append(f"👤 Assignee: <@{assignee_id}>")
             if not value_lines:
                 value_lines.append("No details")
             embed.add_field(
@@ -2846,46 +3436,51 @@ class TodoEmbeds:
         status_counts: Optional[Dict[str, int]] = None,
         status_filter: str = "all",
         assignee_filter_label: str = "All",
+        search_filter_label: str = "All",
     ) -> dict:
         embed = discord.Embed(
             title=TodoEmbeds._list_title(todo_list),
             color=discord.Colour.blurple(),
         )
 
+        filters_text = TodoEmbeds._active_filters_footer(
+            sort, status_filter, assignee_filter_label, search_filter_label
+        )
+        footer_text = f"Page {page} of {total_pages}  ·  {total_items} items  ·  {filters_text}"
+
         if not items:
-            embed.description = "No items in this list."
-            status_label = TodoEmbeds._status_filter_label(status_filter)
-            embed.set_footer(
-                text=(
-                    f"Page {page}/{total_pages} | Items: {total_items} | "
-                    f"Sort: {sort} | Status: {status_label} | "
-                    f"Assignee: {assignee_filter_label}"
-                )
+            has_active_filter = (
+                (status_filter and status_filter.lower() != "all")
+                or (assignee_filter_label and assignee_filter_label.lower() != "all")
+                or (search_filter_label and search_filter_label.lower() != "all")
             )
+            embed.description = (
+                "No items match the current filters."
+                if has_active_filter
+                else "No items in this list."
+            )
+            embed.set_footer(text=footer_text)
             return {"embed": embed}
 
         for display_index, item in enumerate(items, start=1):
             number_emoji = TodoEmbeds._number_emoji(display_index)
-            item_name = str(item.get("name") or "Untitled")
-            status = TodoFunctions.status_label(TodoFunctions.item_status(item))
-            list_name = str(item.get("list_name") or "").strip()
+            item_name = TodoFunctions.task_name_from_item(item) or "Untitled"
+            raw_status = TodoFunctions.item_status(item)
+            status_emoji = TodoEmbeds._status_emoji(raw_status)
             text = TodoFunctions.item_text(item) or ""
-            due_line = TodoEmbeds._due_line(item.get("due"))
-            assignees = item.get("assignees") or []
-            item_title = (
-                f"{number_emoji} {item_name} [{status}] | {list_name}"
-                if list_name
-                else f"{number_emoji} {item_name} [{status}]"
-            )
+            due_line = TodoEmbeds._due_line(TodoFunctions.item_due(item))
+            assignee_id = TodoFunctions.item_assignee_id(item)
+
+            item_title = f"{number_emoji} {status_emoji} {item_name}"
+
             value_lines = []
             description_line = TodoFunctions.truncate_multiline(text)
             if description_line and description_line.lower() != item_name.lower():
                 value_lines.append(description_line)
             if due_line:
                 value_lines.append(due_line)
-            if assignees:
-                mentions = " ".join(f"<@{uid}>" for uid in assignees)
-                value_lines.append(f"👥 Assignees: {mentions}")
+            if assignee_id is not None:
+                value_lines.append(f"👤 <@{assignee_id}>")
             if not value_lines:
                 value_lines.append("No details")
             embed.add_field(
@@ -2894,14 +3489,7 @@ class TodoEmbeds:
                 inline=False,
             )
 
-        status_label = TodoEmbeds._status_filter_label(status_filter)
-        embed.set_footer(
-            text=(
-                f"Page {page}/{total_pages} | Items: {total_items} | "
-                f"Sort: {sort} | Status: {status_label} | "
-                f"Assignee: {assignee_filter_label}"
-            )
-        )
+        embed.set_footer(text=footer_text)
         return {"embed": embed}
 
     @staticmethod
@@ -3011,26 +3599,40 @@ class TodoEmbeds:
         todo_list: Dict[str, Any],
         item: Dict[str, Any],
         include_actions: bool = True,
+        response_ephemeral: bool = True,
     ) -> dict:
-        text = TodoFunctions.item_text(item) or "No text"
-        task_name = TodoFunctions.task_name_from_item(item)
-        status = TodoFunctions.status_label(TodoFunctions.item_status(item))
-        due_text = TodoEmbeds._due_relative(item.get("due")) or "Not set"
-        assignees = item.get("assignees") or []
-        mentions = " ".join(f"<@{uid}>" for uid in assignees) if assignees else "None"
+        text = TodoFunctions.item_text(item) or ""
+        task_name = TodoFunctions.task_name_from_item(item) or "Untitled"
+        raw_status = TodoFunctions.item_status(item)
+        status_chip = TodoEmbeds._status_chip(raw_status)
+        due = TodoFunctions.item_due(item)
+        due_value = TodoEmbeds._due_detail(due) or "Not set"
+        assignee_id = TodoFunctions.item_assignee_id(item)
+        mention = f"<@{assignee_id}>" if assignee_id is not None else "Unassigned"
+        list_name = TodoFunctions.display_list_name(todo_list, "List")
+
+        color = TodoEmbeds._item_color(raw_status, due)
 
         embed = discord.Embed(
-            title=f"{TodoFunctions.display_list_name(todo_list, 'List')} | {task_name}",
-            color=discord.Colour.blurple(),
-            description=text if len(text) <= 3500 else text[:3497] + "...",
+            title=task_name,
+            color=color,
         )
-        embed.add_field(name="Status", value=status, inline=True)
-        embed.add_field(name="Due", value=due_text, inline=True)
-        embed.add_field(name="Assignees", value=mentions, inline=False)
+        embed.set_author(name=f"📋 {list_name}")
+
+        if text and text.strip().lower() != task_name.strip().lower():
+            embed.description = text if len(text) <= 3500 else text[:3497] + "..."
+
+        embed.add_field(name="Status", value=status_chip, inline=True)
+        embed.add_field(name="Due", value=due_value, inline=True)
+        embed.add_field(name="Assignee", value=mention, inline=True)
 
         payload: Dict[str, Any] = {"embed": embed}
         if include_actions:
-            payload["view"] = TodoItemActionsView(todo_list, item)
+            payload["view"] = TodoItemActionsView(
+                todo_list,
+                item,
+                response_ephemeral=response_ephemeral,
+            )
         return payload
 
     @staticmethod

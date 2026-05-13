@@ -1,19 +1,56 @@
+import threading
+
 import yfinance as yf
+from cachetools import TTLCache
 
 from classes.OpenAIFunctions import OpenAIFunctions
 
 
 class StocksFunctions:
     STOCK_QUOTE_TYPES = {"EQUITY", "ETF"}
+    _quote_cache = TTLCache(maxsize=512, ttl=30.0)
+    _search_cache = TTLCache(maxsize=512, ttl=30.0)
+    _cache_lock = threading.RLock()
+
+    @staticmethod
+    def _quote_cache_key(ticker: str) -> str:
+        return str(ticker or "").strip().upper()
+
+    @staticmethod
+    def _search_cache_key(
+        query: str,
+        limit: int,
+        quote_types: set[str] | None,
+        use_openai_rerank: bool,
+    ) -> tuple[str, int, tuple[str, ...], bool]:
+        normalized_types = tuple(sorted(value.upper() for value in (quote_types or set())))
+        return ((query or "").strip().lower(), int(limit), normalized_types, bool(use_openai_rerank))
 
     @staticmethod
     def fetch_price(ticker: str):
+        cache_key = StocksFunctions._quote_cache_key(ticker)
+        if not cache_key:
+            return {
+                "symbol": "",
+                "price": None,
+                "change1D_pct": None,
+                "change1W_pct": None,
+                "change1M_pct": None,
+                "change1Y_pct": None,
+                "currency": None,
+            }
+
+        with StocksFunctions._cache_lock:
+            cached = StocksFunctions._quote_cache.get(cache_key)
+        if cached is not None:
+            return dict(cached)
+
         def pct(new, old):
             if new is None or old in (None, 0):
                 return None
             return (float(new) / float(old) - 1.0) * 100.0
 
-        ticker_obj = yf.Ticker(ticker)
+        ticker_obj = yf.Ticker(cache_key)
 
         price = None
         currency = None
@@ -34,7 +71,7 @@ class StocksFunctions:
         hist = ticker_obj.history(period="2y", interval="1d").dropna()
 
         result = {
-            "symbol": ticker,
+            "symbol": cache_key,
             "price": float(price) if price is not None else None,
             "change1D_pct": None,
             "change1W_pct": None,
@@ -63,6 +100,8 @@ class StocksFunctions:
                 past_close = closes.iloc[-(steps + 1)]
                 result[key] = pct(last_close, past_close)
 
+        with StocksFunctions._cache_lock:
+            StocksFunctions._quote_cache[cache_key] = dict(result)
         return result
 
     @staticmethod
@@ -104,6 +143,17 @@ class StocksFunctions:
         text = (query or "").strip()
         if not text or limit <= 0:
             return []
+
+        cache_key = StocksFunctions._search_cache_key(
+            text,
+            limit,
+            quote_types,
+            use_openai_rerank,
+        )
+        with StocksFunctions._cache_lock:
+            cached = StocksFunctions._search_cache.get(cache_key)
+        if cached is not None:
+            return [dict(item) for item in cached]
 
         try:
             search = yf.Search(
@@ -170,4 +220,7 @@ class StocksFunctions:
 
                 candidates = ranked_candidates
 
-        return candidates[:limit]
+        result = candidates[:limit]
+        with StocksFunctions._cache_lock:
+            StocksFunctions._search_cache[cache_key] = [dict(item) for item in result]
+        return result

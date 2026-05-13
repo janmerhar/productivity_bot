@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import dateparser
 
 from classes.OpenAIFunctions import OpenAIFunctions
-from config.env import env
+from config.env import settings
 
 
 class DueDateService:
@@ -164,7 +164,7 @@ class DueDateService:
         if local_due_dt is not None:
             return local_due_dt
 
-        api_key = env.get("OPENAI_API_KEY")
+        api_key = settings.openai_api_key
         if api_key:
             due_dt = OpenAIFunctions.parse_due_datetime(
                 due_text,

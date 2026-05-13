@@ -18,9 +18,6 @@ from services.error_reporting import ValidationError, handle_interaction_error
 from services.schedule_time import schedule_timezone_name
 from services.timezone_gate import ensure_user_timezone
 
-_MODAL_SELECTS_SUPPORTED = True
-
-
 def _schedule_expression(schedule: Optional[Mapping[str, Any]]) -> str:
     if not isinstance(schedule, Mapping):
         return ""
@@ -309,6 +306,7 @@ class ScheduledJobEditModal(discord.ui.Modal):
                 interaction,
                 _continue_with_timezone,
                 continue_message="Timezone saved as `{timezone}`. Continuing scheduled job edit.",
+                response_ephemeral=self._view.response_ephemeral,
             )
             if timezone is None:
                 return
@@ -453,6 +451,7 @@ class ScheduledJobChangeChannelModal(discord.ui.Modal, title="Change Job Channel
             return
 
         self._view.channel_id = new_channel_id
+        await self._view.refresh_message()
         await interaction.followup.send(
             f"Updated job `{self._view.job_id}` to post in <#{new_channel_id}>.",
             ephemeral=self._view.response_ephemeral,
@@ -467,7 +466,7 @@ class ScheduledJobActionView(discord.ui.View):
         channel_id: Optional[int],
         guild_id: Optional[int],
         response_ephemeral: bool = True,
-        timeout: float = 3600,
+        timeout: float | None = None,
     ) -> None:
         super().__init__(timeout=timeout)
         self.job_id = str(job_id)
@@ -475,8 +474,11 @@ class ScheduledJobActionView(discord.ui.View):
         self.guild_id = guild_id
         self.response_ephemeral = bool(response_ephemeral)
         self.job: Optional[DailyJob] = None
+        self.message: Optional[discord.Message] = None
+        self._rebuild_items()
 
-    async def _load_job(self, manager: DailyJobManager) -> Optional[DailyJob]:
+    async def load_job(self) -> Optional[DailyJob]:
+        manager = DailyJobManager()
         self.job = await asyncio.to_thread(
             manager.get_job,
             self.job_id,
@@ -485,176 +487,56 @@ class ScheduledJobActionView(discord.ui.View):
         )
         return self.job
 
-    @discord.ui.button(label="Run now", style=discord.ButtonStyle.success)
-    async def run_now(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        await interaction.response.defer(ephemeral=self.response_ephemeral)
-        manager = DailyJobManager()
-        try:
-            job = await self._load_job(manager)
-            if job is None:
-                raise ValidationError(
-                    "That job no longer exists in this channel.",
-                    ephemeral=self.response_ephemeral,
-                )
+    def _rebuild_items(self, *, disabled: bool = False) -> None:
+        from views.scheduled_job_dynamic_items import (
+            ScheduledJobChangeChannelButton,
+            ScheduledJobDeleteButton,
+            ScheduledJobEditButton,
+            ScheduledJobRunNowButton,
+        )
 
-            if job.type not in {"message", "crypto", "stock"}:
-                raise ValidationError(
-                    "Run now is currently supported for message, crypto, and stock jobs.",
-                    ephemeral=self.response_ephemeral,
-                )
-
-            payload = await asyncio.to_thread(job.run)
-            if not payload:
-                raise ValidationError(
-                    "This job did not produce any output to send.",
-                    ephemeral=self.response_ephemeral,
-                )
-
-            bot = interaction.client
-            if not isinstance(bot, commands.Bot):
-                raise ValidationError(
-                    "Bot is not ready to send this job.",
-                    ephemeral=self.response_ephemeral,
-                )
-
-            channel = await resolve_messageable_channel(bot, job.channel_id)
-            if channel is None:
-                raise ValidationError(
-                    "I can't access the destination channel for this job.",
-                    ephemeral=self.response_ephemeral,
-                )
-
-            await channel.send(**payload)
-            await interaction.followup.send(
-                f"Ran job `{self.job_id}` now in <#{job.channel_id}>.",
-                ephemeral=self.response_ephemeral,
-            )
-        except Exception as exc:
-            await handle_interaction_error(
-                interaction,
-                exc,
-                ephemeral=self.response_ephemeral,
-            )
-
-    @discord.ui.button(label="Edit", style=discord.ButtonStyle.secondary)
-    async def edit(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        manager = DailyJobManager()
-        try:
-            job = await self._load_job(manager)
-            if job is None:
-                raise ValidationError(
-                    "That job no longer exists in this channel.",
-                    ephemeral=self.response_ephemeral,
-                )
-            if job.type not in {"message", "crypto", "stock"}:
-                raise ValidationError(
-                    "Editing is currently supported for message, crypto, and stock jobs.",
-                    ephemeral=self.response_ephemeral,
-                )
-            await interaction.response.send_modal(
-                ScheduledJobEditModal(
-                    self,
-                    job,
-                    source_message=interaction.message,
-                )
-            )
-        except Exception as exc:
-            await handle_interaction_error(
-                interaction,
-                exc,
-                ephemeral=self.response_ephemeral,
-            )
-
-    @discord.ui.button(label="Change Channel", style=discord.ButtonStyle.primary)
-    async def change_channel(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        global _MODAL_SELECTS_SUPPORTED
-        try:
-            manager = DailyJobManager()
-            job = await self._load_job(manager)
-            if job is None:
-                raise ValidationError(
-                    "That job no longer exists in this channel.",
-                    ephemeral=self.response_ephemeral,
-                )
-
-            channel_options = _build_channel_select_options(
-                interaction, self.channel_id
-            )
-            if _MODAL_SELECTS_SUPPORTED:
-                try:
-                    await interaction.response.send_modal(
-                        ScheduledJobChangeChannelModal(
-                            self,
-                            channel_options=channel_options,
-                        )
-                    )
-                    return
-                except discord.HTTPException as exc:
-                    if exc.code == 50035 and "must be one of (4,)" in str(exc):
-                        _MODAL_SELECTS_SUPPORTED = False
-                    else:
-                        raise
-
-            await interaction.response.send_modal(ScheduledJobChangeChannelModal(self))
-        except Exception as exc:
-            await handle_interaction_error(
-                interaction,
-                exc,
-                ephemeral=self.response_ephemeral,
-            )
-
-    @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
-    async def delete(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        await interaction.response.defer()
-        manager = DailyJobManager()
-        try:
-            deleted = await asyncio.to_thread(
-                manager.delete_job,
+        self.clear_items()
+        self.add_item(
+            ScheduledJobRunNowButton(
                 self.job_id,
                 self.channel_id,
                 self.guild_id,
+                self.response_ephemeral,
+                disabled=disabled,
             )
-            if not deleted:
-                raise ValidationError(
-                    "That job no longer exists in this channel.",
-                    ephemeral=self.response_ephemeral,
-                )
-
-            for child in self.children:
-                child.disabled = True
-
-            if interaction.message is not None:
-                try:
-                    await interaction.message.edit(view=self)
-                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-                    pass
-
-            await interaction.followup.send(
-                ephemeral=False,
-                **DailyTaskEmbeds.jobs_cancel_embed(
-                    f"Deleted job `{self.job_id}`.",
-                    ok=True,
-                ),
+        )
+        self.add_item(
+            ScheduledJobEditButton(
+                self.job_id,
+                self.channel_id,
+                self.guild_id,
+                self.response_ephemeral,
+                disabled=disabled,
             )
-        except Exception as exc:
-            await handle_interaction_error(
-                interaction,
-                exc,
-                ephemeral=self.response_ephemeral,
+        )
+        self.add_item(
+            ScheduledJobChangeChannelButton(
+                self.job_id,
+                self.channel_id,
+                self.guild_id,
+                self.response_ephemeral,
+                disabled=disabled,
             )
+        )
+        self.add_item(
+            ScheduledJobDeleteButton(
+                self.job_id,
+                self.channel_id,
+                self.guild_id,
+                self.response_ephemeral,
+                disabled=disabled,
+            )
+        )
+
+    async def refresh_message(self, **payload: Any) -> None:
+        if self.message is None:
+            return
+        try:
+            await self.message.edit(view=self, **payload)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return

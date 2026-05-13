@@ -4,9 +4,9 @@ import discord
 
 from embeds.TogglEmbeds import TogglEmbeds
 from classes.AliasFunctions import AliasFunctions
-from config.env import env
+from config.env import settings
 
-tick_disabled = env.get("TICK_DISABLED") == "true"
+tick_disabled = settings.tick_disabled
 
 
 class AliasEmbeds:

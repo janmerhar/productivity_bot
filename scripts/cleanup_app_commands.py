@@ -25,7 +25,7 @@ def _disable_background_loops() -> None:
 _disable_background_loops()
 
 import main  # noqa: E402
-from config.env import env  # noqa: E402
+from config.env import settings  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -84,17 +84,11 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _is_dev_mode() -> bool:
-    return str(env.get("DEV_MODE", "")).strip().lower() == "true"
+    return settings.dev_mode
 
 
 def _dev_guild_id() -> int | None:
-    raw = env.get("DEV_GUILD_ID")
-    if not raw:
-        return None
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return None
+    return settings.dev_guild_id
 
 
 def _enabled_extension_modules() -> set[str]:
@@ -223,6 +217,13 @@ async def _remote_root_count(
     return len(commands)
 
 
+async def _bot_guilds() -> list[discord.Guild]:
+    return sorted(
+        [guild async for guild in main.bot.fetch_guilds(limit=None)],
+        key=lambda item: item.id,
+    )
+
+
 def _desired_root_count() -> int:
     return len(main.bot.tree.get_commands(type=None))
 
@@ -284,7 +285,7 @@ async def _build_reports() -> list[ScopeReport]:
             )
         )
 
-    for guild in sorted(main.bot.guilds, key=lambda item: item.id):
+    for guild in await _bot_guilds():
         if guild.id == dev_guild_id:
             continue
         remote_guild = await _remote_paths(guild=guild)
@@ -323,7 +324,7 @@ async def _apply_cleanup(args: argparse.Namespace) -> list[str]:
         )
 
     if not args.skip_legacy_guilds:
-        for guild in sorted(main.bot.guilds, key=lambda item: item.id):
+        for guild in await _bot_guilds():
             if guild.id == dev_guild_id:
                 continue
             current = await main.bot.tree.fetch_commands(guild=guild)
@@ -340,53 +341,46 @@ async def _apply_cleanup(args: argparse.Namespace) -> list[str]:
 
 
 async def _run(args: argparse.Namespace) -> int:
-    main.env["SYNC_COMMANDS_ON_START"] = "false"
+    main.configure_runtime(sync_commands_on_start=False)
     await main.load()
     pruned_commands = _prune_unloaded_extension_commands()
 
-    completed = asyncio.Event()
     exit_code = 0
 
-    @main.bot.listen("on_ready")
-    async def _once_ready() -> None:
-        nonlocal exit_code
-        if completed.is_set():
-            return
+    try:
+        await main.bot.login(settings.discord_token)
 
-        try:
-            if pruned_commands:
-                print("Ignored local commands from unloaded extensions")
-                print("============================================")
-                for command in pruned_commands:
-                    print(command)
-                print()
+        if pruned_commands:
+            print("Ignored local commands from unloaded extensions")
+            print("============================================")
+            for command in pruned_commands:
+                print(command)
+            print()
 
-            reports = await _build_reports()
-            print("Command scope audit")
-            print("===================")
-            for report in reports:
+        reports = await _build_reports()
+        print("Command scope audit")
+        print("===================")
+        for report in reports:
+            print(_render_report(report))
+            print()
+
+        if args.apply:
+            print("Applying cleanup")
+            print("================")
+            for line in await _apply_cleanup(args):
+                print(line)
+            print()
+            print("Post-cleanup audit")
+            print("==================")
+            for report in await _build_reports():
                 print(_render_report(report))
                 print()
+    except Exception:
+        exit_code = 1
+        raise
+    finally:
+        await main.bot.close()
 
-            if args.apply:
-                print("Applying cleanup")
-                print("================")
-                for line in await _apply_cleanup(args):
-                    print(line)
-                print()
-                print("Post-cleanup audit")
-                print("==================")
-                for report in await _build_reports():
-                    print(_render_report(report))
-                    print()
-        except Exception:
-            exit_code = 1
-            raise
-        finally:
-            completed.set()
-            await main.bot.close()
-
-    await main.bot.start(env["DISCORD_TOKEN"])
     return exit_code
 
 

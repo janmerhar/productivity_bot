@@ -7,6 +7,8 @@ import dateparser
 
 from classes.DailyJob import CronSchedule, DailyJob, OneTimeSchedule2, ScheduleConfig
 from classes.DailyJobManager import DailyJobManager
+from classes.OpenAIFunctions import OpenAIFunctions
+from config.db import mongo_db
 from services.cron_schedule import (
     CronConversionError,
     is_valid_cron_expression,
@@ -14,6 +16,47 @@ from services.cron_schedule import (
 )
 from services.error_reporting import UserVisibleError, ValidationError
 from services.schedule_time import schedule_timezone_name
+
+
+def _ensure_reminder_indexes() -> None:
+    mongo_db["tasks"].create_index(
+        [("type", 1), ("guild_id", 1), ("data.source", 1), ("_id", -1)],
+        name="tasks_reminder_guild_recent",
+    )
+    mongo_db["tasks"].create_index(
+        [
+            ("type", 1),
+            ("guild_id", 1),
+            ("data.source", 1),
+            ("data.reminder_key", 1),
+            ("_id", -1),
+        ],
+        name="tasks_reminder_guild_autocomplete",
+    )
+    mongo_db["tasks"].create_index(
+        [
+            ("type", 1),
+            ("data.source", 1),
+            ("data.destination_type", 1),
+            ("data.user_id", 1),
+            ("_id", -1),
+        ],
+        name="tasks_reminder_private_recent",
+    )
+    mongo_db["tasks"].create_index(
+        [
+            ("type", 1),
+            ("data.source", 1),
+            ("data.destination_type", 1),
+            ("data.user_id", 1),
+            ("data.reminder_key", 1),
+            ("_id", -1),
+        ],
+        name="tasks_reminder_private_autocomplete",
+    )
+
+
+_ensure_reminder_indexes()
 
 
 class ReminderFunctions:
@@ -25,6 +68,10 @@ class ReminderFunctions:
         if len(cleaned) <= limit:
             return cleaned
         return f"{cleaned[: limit - 3]}..."
+
+    @staticmethod
+    def _reminder_key(value: str) -> str:
+        return " ".join(str(value or "").strip().lower().split())
 
     @staticmethod
     def _as_bool(value: Any) -> bool:
@@ -65,17 +112,34 @@ class ReminderFunctions:
     def is_paused(job: Optional[DailyJob]) -> bool:
         if job is None:
             return False
-        return ReminderFunctions._as_bool((job.data or {}).get("paused"))
+        data = job.data or {}
+        if not ReminderFunctions._as_bool(data.get("paused")):
+            return False
+
+        pause_until = ReminderFunctions.pause_until_for_job(job)
+        if pause_until is None:
+            return True
+
+        now = datetime.datetime.now().replace(second=0, microsecond=0)
+        return pause_until.replace(second=0, microsecond=0) > now
+
+    @staticmethod
+    def pause_until_for_job(job: Optional[DailyJob]) -> Optional[datetime.datetime]:
+        if job is None:
+            return None
+
+        raw_value = str((job.data or {}).get("pause_until") or "").strip()
+        if not raw_value:
+            return None
+
+        try:
+            return datetime.datetime.fromisoformat(raw_value)
+        except ValueError:
+            return None
 
     @staticmethod
     def reminder_label(job: DailyJob) -> str:
         data = job.data or {}
-
-        if job.type == "stock":
-            ticker = str(data.get("ticker") or "").strip().upper()
-            if ticker:
-                return f"stock: {ticker}"
-            return "stock reminder"
 
         embed_data = data.get("embed")
         if isinstance(embed_data, dict):
@@ -98,6 +162,10 @@ class ReminderFunctions:
                 return "Ping reminder"
 
         return "Untitled reminder"
+
+    @staticmethod
+    def _reminder_key_from_job(job: DailyJob) -> str:
+        return ReminderFunctions._reminder_key(ReminderFunctions.reminder_label(job))
 
     @staticmethod
     def _looks_like_mention_token(token: str) -> bool:
@@ -172,24 +240,20 @@ class ReminderFunctions:
             return raw_value
 
     @staticmethod
+    def pause_until_input_for_job(job: DailyJob) -> str:
+        raw_value = str((job.data or {}).get("pause_until") or "").strip()
+        if not raw_value:
+            return ""
+        try:
+            return datetime.datetime.fromisoformat(raw_value).strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            return raw_value
+
+    @staticmethod
     def reminder_edit_values(job: DailyJob) -> Dict[str, str]:
         data = job.data or {}
         schedule = ReminderFunctions.schedule_input_for_job(job)
-        expires_after = ReminderFunctions.expiration_input_for_job(job)
-
-        if job.type == "stock":
-            header_text = str(data.get("header") or "").strip()
-            ping_text, description = ReminderFunctions._split_message_content(header_text)
-            reminder = str(data.get("ticker") or "").strip().upper()
-            return {
-                "schedule": schedule,
-                "reminder": reminder,
-                "description": description,
-                "thumbnail_url": "",
-                "expires_after": expires_after,
-                "ping_text": ping_text or "",
-                "destination_channel": ReminderFunctions.destination_label(job),
-            }
+        expires = ReminderFunctions.expiration_input_for_job(job)
 
         message_text = str(data.get("message") or "").strip()
         ping_text, body_text = ReminderFunctions._split_message_content(message_text)
@@ -205,10 +269,38 @@ class ReminderFunctions:
             "reminder": reminder,
             "description": description,
             "thumbnail_url": thumbnail_url,
-            "expires_after": expires_after,
+            "expires": expires,
+            "until": expires,
             "ping_text": ping_text or "",
+            "notify_in_dms": (
+                "yes"
+                if ReminderFunctions._as_bool(data.get("notify_ping_users_in_dm"))
+                else ""
+            ),
             "destination_channel": ReminderFunctions.destination_label(job),
         }
+
+    @staticmethod
+    def notify_ping_users_in_dm(job: DailyJob) -> bool:
+        return ReminderFunctions._as_bool(
+            (job.data or {}).get("notify_ping_users_in_dm")
+        )
+
+    @staticmethod
+    def ping_user_ids(job: DailyJob) -> List[int]:
+        ping_text = str(ReminderFunctions.reminder_edit_values(job).get("ping_text") or "")
+        user_ids: List[int] = []
+        seen: set[int] = set()
+        for raw_id in re.findall(r"<@!?(\d+)>", ping_text):
+            try:
+                user_id = int(raw_id)
+            except ValueError:
+                continue
+            if user_id in seen:
+                continue
+            seen.add(user_id)
+            user_ids.append(user_id)
+        return user_ids
 
     @staticmethod
     def _parse_datetime_string(
@@ -268,17 +360,17 @@ class ReminderFunctions:
 
     @staticmethod
     def needs_timezone(
-        time: str,
-        repeat: Optional[str] = None,
-        expires_after: Optional[str] = None,
+        schedule: str,
+        expires: Optional[str] = None,
+        until: Optional[str] = None,
     ) -> bool:
-        raw_time = time.strip()
-        raw_repeat = (repeat or "").strip()
-        raw_expires_after = (expires_after or "").strip()
+        raw_schedule = schedule.strip()
+        raw_expires = (expires or "").strip()
+        raw_until = (until or "").strip()
         return (
-            bool(raw_repeat)
-            or not is_valid_cron_expression(raw_time)
-            or bool(raw_expires_after)
+            not is_valid_cron_expression(raw_schedule)
+            or bool(raw_expires)
+            or bool(raw_until)
         )
 
     @staticmethod
@@ -334,27 +426,6 @@ class ReminderFunctions:
         return default_channel_id, f"<#{default_channel_id}>", {"destination_type": "channel"}
 
     @staticmethod
-    def _build_repeat_schedule_input(
-        time: str,
-        repeat: str,
-        skip_days: Optional[str],
-    ) -> str:
-        raw_time = time.strip()
-        raw_repeat = repeat.strip()
-        raw_skip_days = (skip_days or "").strip()
-
-        if is_valid_cron_expression(raw_time):
-            raise ValidationError(
-                "When `repeat` is set, `time` should be a time of day like `8am`, not a cron expression.",
-            )
-
-        schedule_input = f"{raw_repeat} at {raw_time}"
-        if raw_skip_days:
-            schedule_input = f"{schedule_input}, except on {raw_skip_days}"
-
-        return schedule_input
-
-    @staticmethod
     def _looks_like_recurring_schedule(value: str) -> bool:
         text = value.strip().lower()
         if not text:
@@ -377,11 +448,11 @@ class ReminderFunctions:
 
     @staticmethod
     def _parse_expiration(
-        expires_after: Optional[str],
+        expires: Optional[str],
         timezone: Optional[str],
         ephemeral: bool,
     ) -> Optional[datetime.datetime]:
-        raw_expiration = (expires_after or "").strip()
+        raw_expiration = (expires or "").strip()
         if not raw_expiration:
             return None
 
@@ -391,7 +462,7 @@ class ReminderFunctions:
         )
         if expires_at is None:
             raise ValidationError(
-                "I couldn't understand `expires_after`.",
+                "I couldn't understand `expires`.",
                 hint="Try `in 2 weeks` or a specific date/time.",
                 ephemeral=ephemeral,
             )
@@ -399,11 +470,84 @@ class ReminderFunctions:
         now = datetime.datetime.now().replace(second=0, microsecond=0)
         if expires_at <= now:
             raise ValidationError(
-                "`expires_after` needs to be in the future.",
+                "`expires` needs to be in the future.",
                 ephemeral=ephemeral,
             )
 
         return expires_at
+
+    @staticmethod
+    def _parse_pause_until(
+        until: Optional[str],
+        timezone: Optional[str],
+        ephemeral: bool,
+    ) -> Optional[datetime.datetime]:
+        raw_until = (until or "").strip()
+        if not raw_until:
+            return None
+
+        pause_until = ReminderFunctions._parse_datetime_string(
+            raw_until,
+            timezone=timezone,
+        )
+        if pause_until is None:
+            raise ValidationError(
+                "I couldn't understand `until`.",
+                hint="Try `tomorrow 9am` or a specific date/time.",
+                ephemeral=ephemeral,
+            )
+
+        now = datetime.datetime.now().replace(second=0, microsecond=0)
+        if pause_until <= now:
+            raise ValidationError(
+                "`until` needs to be in the future.",
+                ephemeral=ephemeral,
+            )
+
+        return pause_until
+
+    @staticmethod
+    def _ai_resolve_schedule(
+        raw_schedule: str,
+        timezone: Optional[str],
+    ) -> Optional[Tuple[ScheduleConfig, str]]:
+        payload = OpenAIFunctions.parse_reminder_schedule(
+            raw_schedule,
+            timezone=timezone,
+        )
+        if not payload:
+            return None
+
+        kind = str(payload.get("kind") or "").strip().lower()
+        if kind == "cron":
+            cron_expression = str(payload.get("cron") or "").strip()
+            if not is_valid_cron_expression(cron_expression):
+                return None
+            return (
+                CronSchedule(expression=cron_expression, timezone=timezone),
+                f"`{raw_schedule}` (Cron: `{cron_expression}`)",
+            )
+
+        if kind != "datetime":
+            return None
+
+        raw_datetime = str(payload.get("datetime") or "").strip()
+        if not raw_datetime:
+            return None
+
+        try:
+            scheduled_dt = datetime.datetime.fromisoformat(raw_datetime)
+        except ValueError:
+            return None
+
+        scheduled_dt = scheduled_dt.replace(second=0, microsecond=0)
+        if scheduled_dt.tzinfo is not None:
+            scheduled_dt = scheduled_dt.astimezone().replace(tzinfo=None)
+
+        return (
+            OneTimeSchedule2(datetime=scheduled_dt.isoformat()),
+            f"`{scheduled_dt.strftime('%Y-%m-%d %H:%M')}`",
+        )
 
     @staticmethod
     def _build_message_job_data(
@@ -412,6 +556,7 @@ class ReminderFunctions:
         description: Optional[str],
         thumbnail_url: Optional[str],
         expires_at: Optional[datetime.datetime],
+        notify_ping_users_in_dm: bool = False,
     ) -> Dict[str, Any]:
         title = reminder.strip()
         body = (description or "").strip()
@@ -426,7 +571,10 @@ class ReminderFunctions:
         if not body and not (thumbnail_url or "").strip():
             message_lines.append(title)
 
-        payload: Dict[str, Any] = {"message": "\n".join(message_lines).strip()}
+        payload: Dict[str, Any] = {
+            "message": "\n".join(message_lines).strip(),
+            "reminder_key": ReminderFunctions._reminder_key(title),
+        }
 
         if body or (thumbnail_url or "").strip():
             embed_payload: Dict[str, Any] = {"title": title}
@@ -438,139 +586,106 @@ class ReminderFunctions:
 
         if expires_at is not None:
             payload["expires_at"] = expires_at.isoformat()
+        if notify_ping_users_in_dm:
+            payload["notify_ping_users_in_dm"] = True
         payload["source"] = "reminder"
 
         return payload
 
     @staticmethod
-    def _build_stock_job_data(
-        reminder: str,
-        ping_text: Optional[str],
-        description: Optional[str],
-        thumbnail_url: Optional[str],
-        expires_at: Optional[datetime.datetime],
-        ephemeral: bool,
-    ) -> Tuple[str, Dict[str, Any]]:
-        if (thumbnail_url or "").strip():
-            raise ValidationError(
-                "Stock reminders do not support `thumbnail_url` yet.",
-                ephemeral=ephemeral,
-            )
-
-        stock_value = reminder.strip()[6:].strip()
-        stock_tokens = [
-            token.strip().upper()
-            for token in stock_value.replace(",", " ").split()
-            if token.strip()
-        ]
-        if not stock_tokens:
-            raise ValidationError(
-                "Please provide a stock ticker after `stock:`.",
-                ephemeral=ephemeral,
-            )
-        if len(stock_tokens) != 1:
-            raise ValidationError(
-                "Please provide exactly one stock ticker after `stock:`.",
-                ephemeral=ephemeral,
-            )
-
-        symbol = stock_tokens[0]
-        header_lines = []
-        mention_text = (ping_text or "").strip()
-        if mention_text:
-            header_lines.append(mention_text)
-        if (description or "").strip():
-            header_lines.append(description.strip())
-
-        payload: Dict[str, Any] = {"ticker": symbol}
-        if header_lines:
-            payload["header"] = "\n".join(header_lines)
-        if expires_at is not None:
-            payload["expires_at"] = expires_at.isoformat()
-        payload["source"] = "reminder"
-
-        return symbol, payload
-
-    @staticmethod
     def _resolve_schedule(
-        time: str,
-        repeat: Optional[str],
-        skip_days: Optional[str],
+        schedule: str,
         expires_at: Optional[datetime.datetime],
         ephemeral: bool,
         timezone: Optional[str],
     ) -> Tuple[ScheduleConfig, str]:
-        raw_time = time.strip()
-        raw_repeat = (repeat or "").strip()
-        raw_skip_days = (skip_days or "").strip()
+        raw_schedule = schedule.strip()
 
-        if raw_skip_days and not raw_repeat and not is_valid_cron_expression(raw_time):
-            if not ReminderFunctions._looks_like_recurring_schedule(raw_time):
-                raise ValidationError(
-                    "`skip_days` only applies to recurring reminders.",
-                    ephemeral=ephemeral,
-                )
-
-        if raw_repeat:
-            schedule_input = ReminderFunctions._build_repeat_schedule_input(
-                raw_time,
-                raw_repeat,
-                raw_skip_days,
+        if is_valid_cron_expression(raw_schedule):
+            return (
+                CronSchedule(expression=raw_schedule, timezone=timezone),
+                f"`{raw_schedule}` (Cron: `{raw_schedule}`)",
             )
+
+        if ReminderFunctions._looks_like_recurring_schedule(raw_schedule):
             try:
                 cron_expression = resolve_cron_expression(
-                    schedule_input,
+                    raw_schedule,
                     timezone=timezone,
                 )
             except CronConversionError as exc:
+                ai_schedule = ReminderFunctions._ai_resolve_schedule(
+                    raw_schedule,
+                    timezone,
+                )
+                if ai_schedule is not None:
+                    schedule_config, schedule_label = ai_schedule
+                    if isinstance(schedule_config, CronSchedule):
+                        return schedule_config, schedule_label
+
+                    raw_datetime = str(schedule_config.datetime or "").strip()
+                    try:
+                        scheduled_dt = datetime.datetime.fromisoformat(raw_datetime)
+                    except ValueError:
+                        pass
+                    else:
+                        if expires_at is not None and expires_at <= scheduled_dt:
+                            raise ValidationError(
+                                "`expires` must be later than the reminder time.",
+                                ephemeral=ephemeral,
+                            )
+                        return (
+                            OneTimeSchedule2(datetime=scheduled_dt.isoformat()),
+                            schedule_label,
+                        )
                 raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
 
             return (
                 CronSchedule(expression=cron_expression, timezone=timezone),
-                f"`{schedule_input}` (Cron: `{cron_expression}`)",
-            )
-
-        if is_valid_cron_expression(raw_time):
-            if raw_skip_days:
-                raise ValidationError(
-                    "`skip_days` cannot be combined with a raw cron expression.",
-                    ephemeral=ephemeral,
-                )
-            return (
-                CronSchedule(expression=raw_time, timezone=timezone),
-                f"`{raw_time}` (Cron: `{raw_time}`)",
-            )
-
-        if ReminderFunctions._looks_like_recurring_schedule(raw_time):
-            schedule_input = raw_time
-            if raw_skip_days:
-                schedule_input = f"{schedule_input}, except on {raw_skip_days}"
-            try:
-                cron_expression = resolve_cron_expression(
-                    schedule_input,
-                    timezone=timezone,
-                )
-            except CronConversionError as exc:
-                raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
-
-            return (
-                CronSchedule(expression=cron_expression, timezone=timezone),
-                f"`{schedule_input}` (Cron: `{cron_expression}`)",
+                f"`{raw_schedule}` (Cron: `{cron_expression}`)",
             )
 
         scheduled_dt = ReminderFunctions.parse_time_string(
-            raw_time,
+            raw_schedule,
             timezone=timezone,
         )
         if scheduled_dt is None:
+            ai_schedule = ReminderFunctions._ai_resolve_schedule(
+                raw_schedule,
+                timezone,
+            )
+            if ai_schedule is not None:
+                schedule_config, schedule_label = ai_schedule
+                if isinstance(schedule_config, CronSchedule):
+                    return schedule_config, schedule_label
+
+                raw_datetime = str(schedule_config.datetime or "").strip()
+                try:
+                    scheduled_dt = datetime.datetime.fromisoformat(raw_datetime)
+                except ValueError:
+                    scheduled_dt = None
+                else:
+                    if expires_at is not None and expires_at <= scheduled_dt:
+                        raise ValidationError(
+                            "`expires` must be later than the reminder time.",
+                            ephemeral=ephemeral,
+                        )
+                    return (
+                        OneTimeSchedule2(datetime=scheduled_dt.isoformat()),
+                        schedule_label,
+                    )
+
             raise ValidationError(
-                "I couldn't understand that time.",
-                hint="Try `08:30`, `8pm`, or use a cron expression.",
+                "I couldn't understand that schedule.",
+                hint=(
+                    "Try `08:30`, `tomorrow 8pm`, `every weekday at 9am`, "
+                    "or use a cron expression."
+                ),
                 ephemeral=ephemeral,
             )
         if expires_at is not None and expires_at <= scheduled_dt:
             raise ValidationError(
-                "`expires_after` must be later than the reminder time.",
+                "`expires` must be later than the reminder time.",
                 ephemeral=ephemeral,
             )
 
@@ -592,7 +707,7 @@ class ReminderFunctions:
         # reminder-specific metadata was stored.
         return (
             ReminderFunctions._job_schedule_mode(job) == "one-time"
-            and job.type in {"message", "stock"}
+            and job.type == "message"
         )
 
     @staticmethod
@@ -668,6 +783,75 @@ class ReminderFunctions:
         return reminders
 
     @staticmethod
+    def autocomplete_reminders(
+        guild_id: Optional[int],
+        user_id: int,
+        query: str,
+        paused: Optional[bool] = None,
+        limit: int = 25,
+        candidate_limit: int = 200,
+    ) -> List[DailyJob]:
+        resolved_limit = max(1, min(limit, 25))
+        resolved_candidate_limit = max(resolved_limit, min(candidate_limit, 500))
+        normalized_query = ReminderFunctions._reminder_key(query)
+
+        mongo_query: Dict[str, Any] = {
+            "type": "message",
+            "data.source": "reminder",
+        }
+        if guild_id is None:
+            mongo_query["data.destination_type"] = "private"
+            mongo_query["data.user_id"] = user_id
+        else:
+            mongo_query["guild_id"] = guild_id
+
+        query_limit = resolved_candidate_limit
+        if normalized_query:
+            mongo_query["data.reminder_key"] = {
+                "$regex": f"^{re.escape(normalized_query)}"
+            }
+            query_limit = resolved_limit
+
+        cursor = (
+            mongo_db["tasks"]
+            .find(
+                mongo_query,
+                {
+                    "guild_id": 1,
+                    "channel_id": 1,
+                    "type": 1,
+                    "data": 1,
+                    "schedule": 1,
+                    "last_run": 1,
+                },
+            )
+            .sort("_id", -1)
+            .limit(query_limit)
+        )
+
+        reminders: List[DailyJob] = []
+        for doc in cursor:
+            job = DailyJob(
+                id=doc["_id"],
+                guild_id=doc.get("guild_id"),
+                channel_id=doc.get("channel_id"),
+                type=doc.get("type"),
+                data=dict(doc.get("data") or {}),
+                schedule=doc.get("schedule"),
+                last_run=doc.get("last_run"),
+            )
+            if guild_id is not None and ReminderFunctions.is_private_destination(job):
+                if ReminderFunctions.destination_user_id(job) != user_id:
+                    continue
+            if paused is not None and ReminderFunctions.is_paused(job) != paused:
+                continue
+            reminders.append(job)
+            if len(reminders) >= resolved_limit:
+                break
+
+        return reminders
+
+    @staticmethod
     def pause_all_reminders(guild_id: Optional[int]) -> int:
         manager = DailyJobManager()
         reminders = ReminderFunctions.list_reminders(guild_id, paused=False)
@@ -676,6 +860,7 @@ class ReminderFunctions:
         for job in reminders:
             data = dict(job.data or {})
             data["paused"] = True
+            data.pop("pause_until", None)
             data["source"] = "reminder"
             updated = manager.update_job(
                 str(job.id),
@@ -691,6 +876,9 @@ class ReminderFunctions:
     def pause_reminder(
         reminder_id: str,
         guild_id: Optional[int],
+        until: Optional[str] = None,
+        timezone: Optional[str] = None,
+        ephemeral: bool = True,
     ) -> str:
         manager = DailyJobManager()
         normalized_id = reminder_id.strip()
@@ -705,10 +893,30 @@ class ReminderFunctions:
             raise ValidationError("That ID belongs to a scheduled job, not a reminder.")
 
         data = dict(job.data or {})
-        if ReminderFunctions._as_bool(data.get("paused")):
+        pause_until = ReminderFunctions._parse_pause_until(
+            until,
+            timezone,
+            ephemeral,
+        )
+        existing_pause_until = ReminderFunctions.pause_until_for_job(job)
+        pause_state_changed = not ReminderFunctions.is_paused(job)
+        pause_until_changed = (
+            pause_until is not None
+            and (
+                existing_pause_until is None
+                or existing_pause_until.replace(second=0, microsecond=0)
+                != pause_until.replace(second=0, microsecond=0)
+            )
+        )
+
+        if not pause_state_changed and not pause_until_changed:
             return "already_paused"
 
         data["paused"] = True
+        if pause_until is not None:
+            data["pause_until"] = pause_until.isoformat()
+        elif not ReminderFunctions.is_paused(job):
+            data.pop("pause_until", None)
         data["source"] = "reminder"
 
         updated = manager.update_job(
@@ -736,10 +944,12 @@ class ReminderFunctions:
             raise ValidationError("That ID belongs to a scheduled job, not a reminder.")
 
         data = dict(job.data or {})
-        if not ReminderFunctions._as_bool(data.get("paused")):
+        had_pause_until = bool(str(data.get("pause_until") or "").strip())
+        if not ReminderFunctions.is_paused(job) and not had_pause_until:
             return "already_resumed"
 
         data["paused"] = False
+        data.pop("pause_until", None)
         data["source"] = "reminder"
 
         updated = manager.update_job(
@@ -758,6 +968,7 @@ class ReminderFunctions:
         for job in reminders:
             data = dict(job.data or {})
             data["paused"] = False
+            data.pop("pause_until", None)
             data["source"] = "reminder"
             updated = manager.update_job(
                 str(job.id),
@@ -773,11 +984,12 @@ class ReminderFunctions:
     def update_reminder(
         reminder_id: str,
         guild_id: Optional[int],
-        time: str,
+        schedule: str,
         reminder: str,
         ping_text: Optional[str] = None,
         description: Optional[str] = None,
-        expires_after: Optional[str] = None,
+        expires: Optional[str] = None,
+        notify_ping_users_in_dm: Optional[bool] = None,
         destination_channel_id: Optional[int] = None,
         destination_type: Optional[str] = None,
         destination_user_id: Optional[int] = None,
@@ -803,79 +1015,54 @@ class ReminderFunctions:
         existing_schedule_timezone = schedule_timezone_name(job.schedule)
         raw_ping_text = ping_text.strip() if ping_text is not None else None
         raw_description = description.strip() if description is not None else None
-        raw_expires_after = expires_after
-        if raw_expires_after is None:
-            raw_expires_after = str(existing_data.get("expires_at") or "").strip()
+        effective_notify_ping_users_in_dm = (
+            ReminderFunctions.notify_ping_users_in_dm(job)
+            if notify_ping_users_in_dm is None
+            else bool(notify_ping_users_in_dm)
+        )
+        raw_expires = expires
+        if raw_expires is None:
+            raw_expires = str(existing_data.get("expires_at") or "").strip()
         else:
-            raw_expires_after = raw_expires_after.strip()
-            if raw_expires_after.lower() in {"none", "clear", "off"}:
-                raw_expires_after = ""
+            raw_expires = raw_expires.strip()
+            if raw_expires.lower() in {"none", "clear", "off"}:
+                raw_expires = ""
 
         expires_at = (
             ReminderFunctions._parse_expiration(
-                raw_expires_after,
+                raw_expires,
                 timezone,
                 ephemeral,
             )
-            if raw_expires_after
+            if raw_expires
             else None
         )
         schedule_config, _ = ReminderFunctions._resolve_schedule(
-            time,
-            repeat=None,
-            skip_days=None,
+            schedule,
             expires_at=expires_at,
             ephemeral=ephemeral,
             timezone=timezone or existing_schedule_timezone,
         )
 
-        updated_data: Dict[str, Any]
-        managed_keys = {"expires_at", "source", "paused"}
-
-        if job.type == "stock":
-            effective_ping_text = (
-                edit_values.get("ping_text") if raw_ping_text is None else raw_ping_text
-            ) or None
-            effective_description = (
-                edit_values.get("description")
-                if raw_description is None
-                else raw_description
-            ) or None
-            normalized_reminder = reminder.strip()
-            if not normalized_reminder.lower().startswith("stock:"):
-                normalized_reminder = f"stock: {normalized_reminder}"
-            _, updated_data = ReminderFunctions._build_stock_job_data(
-                normalized_reminder,
-                effective_ping_text,
-                effective_description,
-                None,
-                expires_at,
-                ephemeral,
-            )
-            managed_keys.update({"ticker", "header"})
-        else:
-            if reminder.strip().lower().startswith("stock:"):
-                raise ValidationError(
-                    "Changing a message reminder into a stock reminder is not supported.",
-                    ephemeral=ephemeral,
-                )
-            effective_ping_text = (
-                edit_values.get("ping_text") if raw_ping_text is None else raw_ping_text
-            ) or None
-            effective_description = (
-                edit_values.get("description")
-                if raw_description is None
-                else raw_description
-            ) or None
-            effective_thumbnail_url = edit_values.get("thumbnail_url") or None
-            updated_data = ReminderFunctions._build_message_job_data(
-                reminder,
-                effective_ping_text,
-                effective_description,
-                effective_thumbnail_url,
-                expires_at,
-            )
-            managed_keys.update({"message", "embed"})
+        managed_keys = {"expires_at", "notify_ping_users_in_dm", "source", "paused"}
+        effective_ping_text = (
+            edit_values.get("ping_text") if raw_ping_text is None else raw_ping_text
+        ) or None
+        effective_description = (
+            edit_values.get("description")
+            if raw_description is None
+            else raw_description
+        ) or None
+        effective_thumbnail_url = edit_values.get("thumbnail_url") or None
+        updated_data = ReminderFunctions._build_message_job_data(
+            reminder,
+            effective_ping_text,
+            effective_description,
+            effective_thumbnail_url,
+            expires_at,
+            effective_notify_ping_users_in_dm,
+        )
+        managed_keys.update({"message", "embed"})
 
         for key, value in existing_data.items():
             if key in managed_keys or key in updated_data:
@@ -925,13 +1112,12 @@ class ReminderFunctions:
         guild_id: Optional[int],
         default_channel_id: Optional[int],
         reminder: str,
-        time: str,
-        repeat: Optional[str] = None,
+        schedule: str,
         ping_text: Optional[str] = None,
         thumbnail_url: Optional[str] = None,
-        skip_days: Optional[str] = None,
         description: Optional[str] = None,
-        expires_after: Optional[str] = None,
+        expires: Optional[str] = None,
+        notify_ping_users_in_dm: bool = False,
         destination_channel_id: Optional[int] = None,
         destination_type: str = "channel",
         destination_user_id: Optional[int] = None,
@@ -939,7 +1125,7 @@ class ReminderFunctions:
         timezone: Optional[str] = None,
     ) -> Tuple[DailyJob, str]:
         expires_at = ReminderFunctions._parse_expiration(
-            expires_after,
+            expires,
             timezone,
             ephemeral,
         )
@@ -952,49 +1138,28 @@ class ReminderFunctions:
         )
 
         schedule_config, schedule_label = ReminderFunctions._resolve_schedule(
-            time,
-            repeat,
-            skip_days,
+            schedule,
             expires_at,
             ephemeral,
             timezone,
         )
-        job_type = "message"
 
-        if reminder.strip().lower().startswith("stock:"):
-            symbol, job_data = ReminderFunctions._build_stock_job_data(
-                reminder,
-                ping_text,
-                description,
-                thumbnail_url,
-                expires_at,
-                ephemeral,
+        job_data = ReminderFunctions._build_message_job_data(
+            reminder,
+            ping_text,
+            description,
+            thumbnail_url,
+            expires_at,
+            notify_ping_users_in_dm,
+        )
+        if isinstance(schedule_config, CronSchedule):
+            confirmation = (
+                f"Scheduled recurring reminder in {destination_label} on {schedule_label}."
             )
-            job_type = "stock"
-            if isinstance(schedule_config, CronSchedule):
-                confirmation = (
-                    f"Scheduled recurring stock reminder for `{symbol}` in {destination_label} on {schedule_label}."
-                )
-            else:
-                confirmation = (
-                    f"Got it! I'll post stock price for `{symbol}` in {destination_label} at {schedule_label}."
-                )
         else:
-            job_data = ReminderFunctions._build_message_job_data(
-                reminder,
-                ping_text,
-                description,
-                thumbnail_url,
-                expires_at,
+            confirmation = (
+                f"Got it! I'll post that reminder in {destination_label} at {schedule_label}."
             )
-            if isinstance(schedule_config, CronSchedule):
-                confirmation = (
-                    f"Scheduled recurring reminder in {destination_label} on {schedule_label}."
-                )
-            else:
-                confirmation = (
-                    f"Got it! I'll post that reminder in {destination_label} at {schedule_label}."
-                )
 
         job_data.update(destination_data)
 
@@ -1003,7 +1168,7 @@ class ReminderFunctions:
             created_job = manager.insert_job(
                 guild_id,
                 channel_id,
-                job_type,
+                "message",
                 job_data,
                 schedule_config,
             )

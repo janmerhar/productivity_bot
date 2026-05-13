@@ -6,6 +6,7 @@ google-auth-oauthlib
 gcsa
 parsedatetime
 python-dotenv>=1.0.1
+pydantic-settings>=2.0
 ticktick-py
 pymongo
 dnspython
@@ -14,5 +15,6 @@ openai
 dateparser
 yfinance==0.2.66
 croniter
+cron-descriptor
 cachetools
 watchfiles>=1.1.1

@@ -8,7 +8,7 @@ from classes.DailyJobManager import DailyJobManager
 from classes.OpenAIFunctions import OpenAIFunctions
 from classes.PriceAlertFunctions import create_alert
 from classes.StocksFunctions import StocksFunctions
-from config.env import env
+from config.env import settings
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from services.cron_schedule import (
     CronConversionError,
@@ -58,9 +58,10 @@ class StockAlertModal(discord.ui.Modal, title="Create Stock Alert"):
         max_length=100,
     )
 
-    def __init__(self, symbol: str) -> None:
+    def __init__(self, symbol: str, *, response_ephemeral: bool) -> None:
         super().__init__()
         self.ticker.default = symbol.strip().upper()
+        self._response_ephemeral = bool(response_ephemeral)
 
     async def _set_stock_alert(
         self,
@@ -80,7 +81,7 @@ class StockAlertModal(discord.ui.Modal, title="Create Stock Alert"):
             raise UserVisibleError(
                 f"Failed to fetch `{symbol}` price data.",
                 hint="Check the ticker and try again.",
-                ephemeral=False,
+                ephemeral=self._response_ephemeral,
                 cause=exc,
             ) from exc
 
@@ -88,17 +89,17 @@ class StockAlertModal(discord.ui.Modal, title="Create Stock Alert"):
             raise ValidationError(
                 f"No live price data returned for `{symbol}`.",
                 hint="Try another ticker or retry in a minute.",
-                ephemeral=False,
+                ephemeral=self._response_ephemeral,
             )
 
         expires_at = None
         if expires_text:
-            api_key = env.get("OPENAI_API_KEY")
+            api_key = settings.openai_api_key
             if not api_key:
                 raise ValidationError(
                     "OpenAI API key is not configured.",
                     hint="Set `OPENAI_API_KEY` to use natural-language alert expiry.",
-                    ephemeral=False,
+                    ephemeral=self._response_ephemeral,
                 )
 
             expires_at = await asyncio.to_thread(
@@ -111,7 +112,7 @@ class StockAlertModal(discord.ui.Modal, title="Create Stock Alert"):
                 raise ValidationError(
                     "I couldn't understand that alert expiry value.",
                     hint="Try `3 days`, `tomorrow 8pm`, or `in 2 hours`.",
-                    ephemeral=False,
+                    ephemeral=self._response_ephemeral,
                 )
 
         currency_code = (quote.get("currency") or "").upper()
@@ -139,7 +140,10 @@ class StockAlertModal(discord.ui.Modal, title="Create Stock Alert"):
         if expires_at is not None:
             message = f"{message} Expires: <t:{int(expires_at.timestamp())}:f>."
 
-        await interaction.followup.send(message, ephemeral=False)
+        await interaction.followup.send(
+            message,
+            ephemeral=self._response_ephemeral,
+        )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         symbol = (self.ticker.value or "").strip().upper()
@@ -153,7 +157,7 @@ class StockAlertModal(discord.ui.Modal, title="Create Stock Alert"):
                 interaction,
                 ValidationError(
                     "Target price must be a number.",
-                    ephemeral=False,
+                    ephemeral=self._response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -161,18 +165,21 @@ class StockAlertModal(discord.ui.Modal, title="Create Stock Alert"):
 
         try:
             if not symbol:
-                raise ValidationError("Please provide a stock ticker.", ephemeral=False)
+                raise ValidationError(
+                    "Please provide a stock ticker.",
+                    ephemeral=self._response_ephemeral,
+                )
             if target_price <= 0:
                 raise ValidationError(
                     "Target price must be greater than 0.",
-                    ephemeral=False,
+                    ephemeral=self._response_ephemeral,
                 )
 
             rule = (self.condition.value or "").strip().lower()
             if rule not in {"above", "below"}:
                 raise ValidationError(
                     "Condition must be either `above` or `below`.",
-                    ephemeral=False,
+                    ephemeral=self._response_ephemeral,
                 )
 
             destination_type, destination_channel_id, destination_label = (
@@ -202,18 +209,19 @@ class StockAlertModal(discord.ui.Modal, title="Create Stock Alert"):
                         await handle_interaction_error(
                             followup_interaction,
                             exc,
-                            ephemeral=False,
+                            ephemeral=self._response_ephemeral,
                         )
 
                 timezone = await ensure_user_timezone(
                     interaction,
                     _continue_with_timezone,
                     continue_message="Timezone saved as `{timezone}`. Continuing stock alert setup.",
+                    response_ephemeral=self._response_ephemeral,
                 )
                 if timezone is None:
                     return
 
-            await interaction.response.defer(ephemeral=False)
+            await interaction.response.defer(ephemeral=self._response_ephemeral)
             await self._set_stock_alert(
                 interaction=interaction,
                 symbol=symbol,
@@ -226,7 +234,11 @@ class StockAlertModal(discord.ui.Modal, title="Create Stock Alert"):
                 timezone=timezone,
             )
         except Exception as exc:
-            await handle_interaction_error(interaction, exc, ephemeral=False)
+            await handle_interaction_error(
+                interaction,
+                exc,
+                ephemeral=self._response_ephemeral,
+            )
 
 
 class StockDailyJobModal(discord.ui.Modal, title="Schedule Daily Stock Check"):
@@ -249,9 +261,10 @@ class StockDailyJobModal(discord.ui.Modal, title="Schedule Daily Stock Check"):
         max_length=200,
     )
 
-    def __init__(self, symbol: str) -> None:
+    def __init__(self, symbol: str, *, response_ephemeral: bool) -> None:
         super().__init__()
         self.ticker.default = symbol.strip().upper()
+        self._response_ephemeral = bool(response_ephemeral)
 
     async def _create_stock_schedule(
         self,
@@ -268,11 +281,15 @@ class StockDailyJobModal(discord.ui.Modal, title="Schedule Daily Stock Check"):
                 timezone=timezone,
             )
         except CronConversionError as exc:
-            raise ValidationError(str(exc), ephemeral=False, cause=exc) from exc
+            raise ValidationError(
+                str(exc),
+                ephemeral=self._response_ephemeral,
+                cause=exc,
+            ) from exc
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while parsing that schedule.",
-                ephemeral=False,
+                ephemeral=self._response_ephemeral,
                 cause=exc,
             ) from exc
 
@@ -296,12 +313,12 @@ class StockDailyJobModal(discord.ui.Modal, title="Schedule Daily Stock Check"):
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while storing that job. Please try again.",
-                ephemeral=False,
+                ephemeral=self._response_ephemeral,
                 cause=exc,
             ) from exc
 
         await interaction.followup.send(
-            ephemeral=False,
+            ephemeral=self._response_ephemeral,
             **DailyTaskEmbeds.job_details_embed(
                 job_id=str(created_job.id),
                 job_type="stock",
@@ -315,7 +332,7 @@ class StockDailyJobModal(discord.ui.Modal, title="Schedule Daily Stock Check"):
                 job_id=str(created_job.id),
                 channel_id=interaction.channel_id,
                 guild_id=interaction.guild_id,
-                response_ephemeral=False,
+                response_ephemeral=self._response_ephemeral,
             ),
         )
 
@@ -326,7 +343,10 @@ class StockDailyJobModal(discord.ui.Modal, title="Schedule Daily Stock Check"):
 
         try:
             if not symbol:
-                raise ValidationError("Please provide a stock ticker.", ephemeral=False)
+                raise ValidationError(
+                    "Please provide a stock ticker.",
+                    ephemeral=self._response_ephemeral,
+                )
 
             timezone = None
             if not is_valid_cron_expression(raw_schedule):
@@ -347,18 +367,19 @@ class StockDailyJobModal(discord.ui.Modal, title="Schedule Daily Stock Check"):
                         await handle_interaction_error(
                             followup_interaction,
                             exc,
-                            ephemeral=False,
+                            ephemeral=self._response_ephemeral,
                         )
 
                 timezone = await ensure_user_timezone(
                     interaction,
                     _continue_with_timezone,
                     continue_message="Timezone saved as `{timezone}`. Continuing stock schedule setup.",
+                    response_ephemeral=self._response_ephemeral,
                 )
                 if timezone is None:
                     return
 
-            await interaction.response.defer(ephemeral=False)
+            await interaction.response.defer(ephemeral=self._response_ephemeral)
             await self._create_stock_schedule(
                 interaction=interaction,
                 symbol=symbol,
@@ -370,45 +391,78 @@ class StockDailyJobModal(discord.ui.Modal, title="Schedule Daily Stock Check"):
             await handle_interaction_error(
                 interaction,
                 exc,
-                ephemeral=False,
+                ephemeral=self._response_ephemeral,
             )
 
 
 class StockActionView(discord.ui.View):
-    def __init__(self, symbol: str, *, timeout: float = 3600) -> None:
+    def __init__(
+        self,
+        symbol: str,
+        *,
+        response_ephemeral: bool = False,
+        timeout: float | None = None,
+    ) -> None:
         super().__init__(timeout=timeout)
         self.symbol = symbol.strip().upper()
+        self.response_ephemeral = bool(response_ephemeral)
+        self._build()
 
-    @discord.ui.button(label="Set Alert", style=discord.ButtonStyle.success)
-    async def set_alert(
+    def _build(self) -> None:
+        self.clear_items()
+
+        from views.stock_action_dynamic_items import (
+            StockScheduleDailyCheckButton,
+            StockSetAlertButton,
+        )
+
+        symbol = self.symbol
+        self.add_item(
+            StockSetAlertButton(
+                symbol=symbol,
+                disabled=not bool(symbol),
+            )
+        )
+        self.add_item(
+            StockScheduleDailyCheckButton(
+                symbol=symbol,
+                disabled=not bool(symbol),
+            )
+        )
+
+    async def open_set_alert_modal(self, interaction: discord.Interaction) -> None:
+        if not self.symbol:
+            await handle_interaction_error(
+                interaction,
+                ValidationError(
+                    "Missing stock ticker for this action.",
+                    ephemeral=self.response_ephemeral,
+                ),
+            )
+            return
+        await interaction.response.send_modal(
+            StockAlertModal(
+                self.symbol,
+                response_ephemeral=self.response_ephemeral,
+            )
+        )
+
+    async def open_schedule_daily_check_modal(
         self,
         interaction: discord.Interaction,
-        _: discord.ui.Button,
     ) -> None:
         if not self.symbol:
             await handle_interaction_error(
                 interaction,
                 ValidationError(
-                    "Missing stock ticker for this action.", ephemeral=False
+                    "Missing stock ticker for this action.",
+                    ephemeral=self.response_ephemeral,
                 ),
             )
             return
-        await interaction.response.send_modal(StockAlertModal(self.symbol))
-
-    @discord.ui.button(
-        label="Schedule Daily Check", style=discord.ButtonStyle.secondary
-    )
-    async def schedule_daily_check(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        if not self.symbol:
-            await handle_interaction_error(
-                interaction,
-                ValidationError(
-                    "Missing stock ticker for this action.", ephemeral=False
-                ),
+        await interaction.response.send_modal(
+            StockDailyJobModal(
+                self.symbol,
+                response_ephemeral=self.response_ephemeral,
             )
-            return
-        await interaction.response.send_modal(StockDailyJobModal(self.symbol))
+        )

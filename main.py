@@ -36,31 +36,105 @@ _seed_windows_uname_cache()
 
 import discord
 import asyncio
-from datetime import datetime
+import os
+import uuid
+from datetime import datetime, timezone
+from discord import app_commands
 from discord.ext import commands
 
-from config.env import env
+from config.env import settings
 from config.logger import setup_logging
 from services.error_reporting import handle_app_command_error
+from views.habit_list_dynamic_items import register_habit_list_dynamic_items
+from views.habit_dynamic_items import register_habit_dynamic_items
+from views.pomodoro_dynamic_items import register_pomodoro_dynamic_items
+from views.reminder_dynamic_items import register_reminder_dynamic_items
+from views.stock_list_dynamic_items import register_stock_list_dynamic_items
+from views.scheduled_job_dynamic_items import register_scheduled_job_dynamic_items
+from views.stock_alert_dynamic_items import register_stock_alert_dynamic_items
+from views.stock_action_dynamic_items import register_stock_action_dynamic_items
+from views.crypto_action_dynamic_items import register_crypto_action_dynamic_items
+from views.todo_list_directory_dynamic_items import (
+    register_todo_list_directory_dynamic_items,
+)
+from views.todo_list_description_dynamic_items import (
+    register_todo_list_description_dynamic_items,
+)
+from views.todo_list_items_dynamic_items import register_todo_list_items_dynamic_items
+from views.toggl_dynamic_items import register_toggl_dynamic_items
 
-tick_disabled = env.get("TICK_DISABLED") == "true"
-alias_disabled = env.get("ALIAS_DISABLED") == "true"
-dev_mode = env.get("DEV_MODE") == "true"
-dev_guild_id = env.get("DEV_GUILD_ID")
+_runtime_sync_commands_on_start: bool | None = None
 
 
-def _env_flag(name: str, default: bool = False) -> bool:
-    raw_value = env.get(name)
-    if raw_value is None:
-        return default
-    return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}
+def configure_runtime(*, sync_commands_on_start: bool | None = None) -> None:
+    global _runtime_sync_commands_on_start
+    _runtime_sync_commands_on_start = sync_commands_on_start
+
+
+def should_sync_commands_on_start() -> bool:
+    if _runtime_sync_commands_on_start is not None:
+        return _runtime_sync_commands_on_start
+    return settings.sync_commands_on_start
 
 
 setup_logging()
 
+INSTANCE_ID = os.environ.get("BOT_INSTANCE_ID") or str(uuid.uuid4())[:8]
+os.environ.setdefault("BOT_INSTANCE_ID", INSTANCE_ID)
+
+
+class InstrumentedCommandTree(app_commands.CommandTree):
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        logger = logging.getLogger(__name__)
+        created_at = getattr(interaction, "created_at", None)
+        age_ms: int | None = None
+        if created_at is not None:
+            age_ms = int(
+                (datetime.now(timezone.utc) - created_at).total_seconds() * 1000
+            )
+
+        command = getattr(interaction, "command", None)
+        command_name = getattr(command, "qualified_name", None) or getattr(
+            command,
+            "name",
+            None,
+        )
+        log_context = {
+            "instance": INSTANCE_ID,
+            "pid": os.getpid(),
+            "id": interaction.id,
+            "type": getattr(interaction.type, "name", interaction.type),
+            "command": command_name,
+            "age_ms": age_ms,
+            "user": getattr(getattr(interaction, "user", None), "id", None),
+            "guild": getattr(getattr(interaction, "guild", None), "id", None),
+            "channel": getattr(getattr(interaction, "channel", None), "id", None),
+        }
+
+        if age_ms is not None and age_ms >= 2500:
+            logger.warning(
+                "Received stale interaction | instance=%(instance)s pid=%(pid)s "
+                "interaction=%(id)s type=%(type)s command=%(command)s "
+                "age_ms=%(age_ms)s user=%(user)s guild=%(guild)s channel=%(channel)s",
+                log_context,
+            )
+        else:
+            logger.info(
+                "Received interaction | instance=%(instance)s pid=%(pid)s "
+                "interaction=%(id)s type=%(type)s command=%(command)s "
+                "age_ms=%(age_ms)s user=%(user)s guild=%(guild)s channel=%(channel)s",
+                log_context,
+            )
+        return True
+
+
 intents = discord.Intents.default()
 # intents.message_content = True
-bot = commands.Bot(command_prefix=".", intents=intents)
+bot = commands.Bot(
+    command_prefix=".",
+    intents=intents,
+    tree_cls=InstrumentedCommandTree,
+)
 
 _sync_done = False
 _global_sync_task: asyncio.Task | None = None
@@ -76,7 +150,7 @@ async def _sync_global_commands() -> None:
         )
         return
 
-    if dev_mode:
+    if settings.dev_mode:
         logging.getLogger(__name__).info(
             "Synced %d global application commands (DEV_MODE).",
             len(synced),
@@ -114,8 +188,19 @@ def _start_import_prewarm() -> None:
 @bot.event
 async def on_ready():
     global _sync_done
+    logging.getLogger(__name__).info(
+        "Bot ready | instance=%s pid=%s user=%s app_id=%s guilds=%s "
+        "dev_mode=%s sync_on_start=%s",
+        INSTANCE_ID,
+        os.getpid(),
+        bot.user,
+        getattr(bot.user, "id", None),
+        len(bot.guilds),
+        settings.dev_mode,
+        should_sync_commands_on_start(),
+    )
     if not _sync_done:
-        if not _env_flag("SYNC_COMMANDS_ON_START", default=True):
+        if not should_sync_commands_on_start():
             logging.getLogger(__name__).info(
                 "Skipping application command sync on startup."
             )
@@ -125,30 +210,23 @@ async def on_ready():
             return
 
         try:
-            if dev_mode:
-                if not dev_guild_id:
+            if settings.dev_mode:
+                if not settings.dev_guild_id:
                     logging.getLogger(__name__).warning(
                         "DEV_MODE is true but DEV_GUILD_ID is not set; syncing global in background only."
                     )
                     _start_global_command_sync()
                 else:
-                    try:
-                        guild_object = discord.Object(id=int(dev_guild_id))
-                    except ValueError:
-                        logging.getLogger(__name__).warning(
-                            "DEV_GUILD_ID must be an integer; syncing global in background only."
-                        )
-                        _start_global_command_sync()
-                    else:
-                        bot.tree.clear_commands(guild=guild_object)
-                        bot.tree.copy_global_to(guild=guild_object)
-                        synced_guild = await bot.tree.sync(guild=guild_object)
-                        logging.getLogger(__name__).info(
-                            "Synced %d dev guild application commands for guild %s.",
-                            len(synced_guild),
-                            dev_guild_id,
-                        )
-                        _start_global_command_sync()
+                    guild_object = discord.Object(id=settings.dev_guild_id)
+                    bot.tree.clear_commands(guild=guild_object)
+                    bot.tree.copy_global_to(guild=guild_object)
+                    synced_guild = await bot.tree.sync(guild=guild_object)
+                    logging.getLogger(__name__).info(
+                        "Synced %d dev guild application commands for guild %s.",
+                        len(synced_guild),
+                        settings.dev_guild_id,
+                    )
+                    _start_global_command_sync()
             else:
                 _start_global_command_sync()
         except Exception:
@@ -169,22 +247,28 @@ async def load():
     extensions = [
         "cogs.AutomationCog",
         "cogs.BugReportCog",
+        "cogs.GuildEventsCog",
         "cogs.DailyTaskCog",
         "cogs.FeatureRequestCog",
         "cogs.HabitCog",
         "cogs.PomodoroCog",
         "cogs.ReminderCog",
         "cogs.RouterCog",
+        "cogs.SettingsCog",
         "cogs.TodoCog",
         "cogs.TogglCog",
-        "cogs.CryptoCog",
-        "cogs.StocksCog",
     ]
 
-    if not alias_disabled:
+    if not settings.alias_disabled:
         extensions.append("cogs.AliasCog")
 
-    if not tick_disabled:
+    if not settings.crypto_disabled:
+        extensions.append("cogs.CryptoCog")
+
+    if not settings.stock_disabled:
+        extensions.append("cogs.StocksCog")
+
+    if not settings.tick_disabled:
         extensions.append("cogs.TickTickCog")
 
     for extension in extensions:
@@ -193,7 +277,20 @@ async def load():
 
 async def main():
     await load()
-    await bot.start(env["DISCORD_TOKEN"])
+    await register_habit_list_dynamic_items(bot)
+    await register_habit_dynamic_items(bot)
+    await register_pomodoro_dynamic_items(bot)
+    await register_reminder_dynamic_items(bot)
+    await register_stock_list_dynamic_items(bot)
+    await register_scheduled_job_dynamic_items(bot)
+    await register_stock_alert_dynamic_items(bot)
+    await register_stock_action_dynamic_items(bot)
+    await register_crypto_action_dynamic_items(bot)
+    await register_todo_list_directory_dynamic_items(bot)
+    await register_todo_list_description_dynamic_items(bot)
+    await register_todo_list_items_dynamic_items(bot)
+    await register_toggl_dynamic_items(bot)
+    await bot.start(settings.discord_token)
 
 
 def run() -> None:

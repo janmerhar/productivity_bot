@@ -1,8 +1,11 @@
 import asyncio
+from typing import Optional
 
 import discord
+from discord.utils import MISSING
 
 from classes.HabitFunctions import HabitFunctions
+from embeds.HabitEmbeds import HabitEmbeds
 
 
 class HabitActionView(discord.ui.View):
@@ -12,61 +15,131 @@ class HabitActionView(discord.ui.View):
         habit_name: str,
         user_id: int,
         *,
-        timeout: float = 3600,
+        today_status: Optional[str] = None,
+        timeout: float | None = None,
     ) -> None:
         super().__init__(timeout=timeout)
         self.habit_id = habit_id
         self.habit_name = habit_name
         self.user_id = user_id
+        self.today_status = today_status
+        self.message: Optional[discord.Message] = None
+        self._rebuild_items(today_status=self.today_status)
 
-    async def _record(self, interaction: discord.Interaction, mode: str) -> None:
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                ephemeral=True,
-                content="Only the habit owner can update this habit.",
-            )
-            return
+    def button_view_kind(self) -> str:
+        return "basic"
 
-        await interaction.response.defer(ephemeral=True)
-        updated = await asyncio.to_thread(
-            HabitFunctions.add_completion,
-            self.habit_id,
-            interaction.guild_id,
-            mode,
+    def _rebuild_items(
+        self,
+        *,
+        disabled: bool = False,
+        today_status: Optional[str] = None,
+    ) -> None:
+        from views.habit_dynamic_items import (
+            HabitCompleteButton,
+            HabitSkipButton,
         )
 
-        if not updated:
-            await interaction.followup.send(
-                ephemeral=True,
-                content=f"Couldn't update '{self.habit_name}'.",
-            )
-            return
+        normalized_status = str(today_status or "").strip().lower() or None
+        complete_disabled = disabled or normalized_status == "complete"
+        skip_disabled = disabled or normalized_status == "skip"
 
-        await interaction.followup.send(
-            ephemeral=True,
-            content=f"Marked '{self.habit_name}' as {mode}.",
+        self.clear_items()
+        self.add_item(
+            HabitCompleteButton(
+                self.habit_id,
+                self.user_id,
+                view_kind=self.button_view_kind(),
+                disabled=complete_disabled,
+            )
+        )
+        self.add_item(
+            HabitSkipButton(
+                self.habit_id,
+                self.user_id,
+                view_kind=self.button_view_kind(),
+                disabled=skip_disabled,
+            )
         )
 
-    @discord.ui.button(label="complete", style=discord.ButtonStyle.success)
-    async def complete_button(
+    async def refresh_message(
         self,
         interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        await self._record(interaction, "complete")
+        *,
+        source_message: Optional[discord.Message] = None,
+        habit: Optional[dict] = None,
+        content=MISSING,
+    ) -> bool:
+        if habit is None:
+            habit = await asyncio.to_thread(
+                HabitFunctions.fetch_habit,
+                self.habit_id,
+                interaction.guild_id,
+                self.user_id,
+            )
 
-    @discord.ui.button(label="skip", style=discord.ButtonStyle.secondary)
-    async def skip_button(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        await self._record(interaction, "skip")
+        if habit is None:
+            self.today_status = None
+            self._rebuild_items(disabled=True)
+            embed = discord.Embed(
+                title=self.habit_name or "Habit",
+                description="This habit is no longer available.",
+                color=discord.Colour.red(),
+            )
+        else:
+            self.habit_name = str(habit.get("name") or self.habit_name or "Habit")
+            self.today_status = HabitFunctions.today_status(habit)
+            self._rebuild_items(today_status=self.today_status)
+            payload = HabitEmbeds.habit_item_embed(
+                habit,
+                self.today_status,
+                HabitFunctions.recent_progress(habit, days=5),
+            )
+            embed = payload["embed"]
 
-    @discord.ui.button(label="incomplete", style=discord.ButtonStyle.danger)
-    async def incomplete_button(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        await self._record(interaction, "incomplete")
+        if getattr(interaction, "message", None) is not None:
+            try:
+                await interaction.edit_original_response(
+                    content=content,
+                    embed=embed,
+                    view=self,
+                )
+                self.message = interaction.message
+                return True
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                pass
+
+        candidates = []
+        for candidate in (source_message, interaction.message, self.message):
+            if candidate is None:
+                continue
+            if any(
+                getattr(existing, "id", None) == getattr(candidate, "id", None)
+                for existing in candidates
+            ):
+                continue
+            candidates.append(candidate)
+
+        for candidate in candidates:
+            try:
+                await candidate.edit(content=content, embed=embed, view=self)
+                self.message = candidate
+                return True
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                continue
+
+        source_message_id = getattr(source_message, "id", None)
+        if source_message_id is not None:
+            try:
+                await interaction.followup.edit_message(
+                    source_message_id,
+                    content=content,
+                    embed=embed,
+                    view=self,
+                )
+                self.message = source_message
+                return True
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                pass
+
+        return False

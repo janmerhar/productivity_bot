@@ -51,6 +51,19 @@ class PomodoroResumeResult:
     duration_minutes: Optional[int] = None
 
 
+@dataclass
+class PomodoroState:
+    exists: bool
+    mode: str = "focus"
+    end_time: Optional[datetime.datetime] = None
+    duration_minutes: Optional[int] = None
+    is_paused: bool = False
+    auto_cycle_enabled: bool = False
+    focus_duration: Optional[int] = None
+    break_duration: Optional[int] = None
+    streak: int = 0
+
+
 class PomodoroFunctions:
     @staticmethod
     def _normalize_datetime(
@@ -888,4 +901,89 @@ class PomodoroFunctions:
             end_time=new_end_time,
             duration_minutes=new_duration,
             mode=mode,
+        )
+
+    @staticmethod
+    async def get_user_pomodoro_state(
+        interaction: discord.Interaction,
+    ) -> PomodoroState:
+        manager = DailyJobManager()
+
+        try:
+            jobs = await PomodoroFunctions._list_scope_jobs(manager, interaction)
+        except Exception:
+            return PomodoroState(exists=False)
+
+        user_id = str(interaction.user.id)
+        user_jobs = [
+            job
+            for job in jobs
+            if job.type == "pomodoro" and str(job.data.get("user")) == user_id
+        ]
+        if not user_jobs:
+            return PomodoroState(exists=False)
+
+        running_job, running_end_time = PomodoroFunctions._select_user_job_by_pause_state(
+            user_jobs,
+            paused=False,
+        )
+        if running_job is not None and running_end_time is not None:
+            data = running_job.data or {}
+            mode = str(data.get("mode", "focus")).strip().lower()
+            if mode not in ("focus", "break"):
+                mode = "focus"
+            duration_minutes = PomodoroFunctions._safe_int(
+                data.get("duration"),
+                default=0,
+            )
+            raw_focus = str(data.get("focus_duration") or "").strip()
+            raw_break = str(data.get("break_duration") or "").strip()
+            return PomodoroState(
+                exists=True,
+                mode=mode,
+                end_time=running_end_time,
+                duration_minutes=duration_minutes or None,
+                is_paused=False,
+                auto_cycle_enabled=PomodoroFunctions._is_truthy(data.get("auto_cycle")),
+                focus_duration=int(raw_focus) if raw_focus.isdigit() else None,
+                break_duration=int(raw_break) if raw_break.isdigit() else None,
+                streak=PomodoroFunctions._safe_int(data.get("streak"), default=0),
+            )
+
+        paused_job, _ = PomodoroFunctions._select_user_job_by_pause_state(
+            user_jobs,
+            paused=True,
+        )
+        if paused_job is None:
+            return PomodoroState(exists=False)
+
+        paused_data = paused_job.data or {}
+        paused_mode = str(paused_data.get("mode", "focus")).strip().lower()
+        if paused_mode not in ("focus", "break"):
+            paused_mode = "focus"
+
+        remaining_seconds = PomodoroFunctions._safe_int(
+            paused_data.get("paused_remaining_seconds"),
+            default=0,
+        )
+        if remaining_seconds <= 0:
+            fallback_minutes = PomodoroFunctions._safe_int(
+                paused_data.get("duration"),
+                default=0,
+            )
+            remaining_seconds = max(0, fallback_minutes * 60)
+
+        duration_minutes = max(1, math.ceil(remaining_seconds / 60)) if remaining_seconds > 0 else None
+        raw_focus = str(paused_data.get("focus_duration") or "").strip()
+        raw_break = str(paused_data.get("break_duration") or "").strip()
+        return PomodoroState(
+            exists=True,
+            mode=paused_mode,
+            end_time=None,
+            duration_minutes=duration_minutes,
+            is_paused=True,
+            auto_cycle_enabled=PomodoroFunctions._is_truthy(paused_data.get("auto_cycle")),
+            focus_duration=int(raw_focus) if raw_focus.isdigit() else None,
+            break_duration=int(raw_break) if raw_break.isdigit() else None,
+            streak=PomodoroFunctions._safe_int(paused_data.get("streak"), default=0),
         )

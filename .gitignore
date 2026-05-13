@@ -3,6 +3,8 @@ google/*/
 token.json
 __pycache__/
 .env*
+!.env.example
+!tests/e2e/.env.example
 .token-oauth
 
 # GCSA authentication files
@@ -12,5 +14,12 @@ token.pickle
 # Log files
 *.log*
 assets/*
+!assets/README.md
 
 .venv
+
+# Playwright / Discord Web E2E
+node_modules/
+playwright-report/
+test-results/
+tests/e2e/.auth/*.json

@@ -23,5 +23,6 @@ RUN pip install --no-cache-dir -r packages.pip
 # Copy the rest of the application code.
 COPY . .
 
-# Run command cleanup before starting the bot.
-CMD ["sh", "-c", "python scripts/cleanup_app_commands.py --apply && exec python main.py"]
+# Run command cleanup before starting the bot. Cleanup already syncs commands,
+# so the runtime skips the second startup sync.
+CMD ["sh", "-c", "python scripts/cleanup_app_commands.py --apply && SYNC_COMMANDS_ON_START=false exec python main.py"]

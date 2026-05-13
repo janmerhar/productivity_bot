@@ -1,5 +1,5 @@
 import asyncio
-from typing import List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import discord
 from discord import app_commands
@@ -16,10 +16,15 @@ from services.discord_helpers import (
 from services.error_reporting import UserVisibleError
 from services.error_reporting import ValidationError
 from services.timezone_gate import ensure_user_timezone
-from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from services.visibility import (
+    VISIBILITY_CHOICES,
+    VISIBILITY_DESC,
+    resolve_visibility_for_context,
+)
 from views.ReminderEditModal import (
     ReminderCreateModal,
     ReminderEditModal,
+    ReminderPingModal,
     _build_destination_select_options,
 )
 from views.ReminderListView import ReminderListView
@@ -30,6 +35,12 @@ _REMINDER_LIST_STATUS_CHOICES = [
     app_commands.Choice(name="Active", value="active"),
     app_commands.Choice(name="Paused", value="paused"),
 ]
+_REMINDER_LIST_SORT_CHOICES = [
+    app_commands.Choice(name="Ascending", value="ascending"),
+    app_commands.Choice(name="Descending", value="descending"),
+]
+
+
 @app_commands.context_menu(name="Create Reminder")
 async def create_reminder_from_message(
     interaction: discord.Interaction,
@@ -68,6 +79,44 @@ class ReminderCog(commands.Cog):
     async def on_ready(self) -> None:
         print("ReminderCog cog loaded")
 
+    @staticmethod
+    def _resolve_default_ephemeral(
+        interaction: discord.Interaction,
+        visibility: Optional[app_commands.Choice[str]],
+    ) -> bool:
+        return resolve_visibility_for_context(
+            interaction.guild_id,
+            visibility,
+            guild_default="public",
+        )
+
+    @staticmethod
+    def _resolve_destination_ephemeral(
+        interaction: discord.Interaction,
+        destination_type: str,
+        visibility: Optional[app_commands.Choice[str]],
+    ) -> bool:
+        return resolve_visibility_for_context(
+            interaction.guild_id,
+            visibility,
+            guild_default="public",
+        )
+
+    def _resolve_reminder_ephemeral(
+        self,
+        interaction: discord.Interaction,
+        job,
+        visibility: Optional[app_commands.Choice[str]],
+    ) -> bool:
+        destination_type = (
+            "private" if ReminderFunctions.is_private_destination(job) else "channel"
+        )
+        return self._resolve_destination_ephemeral(
+            interaction,
+            destination_type,
+            visibility,
+        )
+
     async def _send_reminder_output(
         self,
         interaction: discord.Interaction,
@@ -92,14 +141,14 @@ class ReminderCog(commands.Cog):
     async def _get_visible_reminder(
         self,
         interaction: discord.Interaction,
-        reminder_id: str,
+        reminder: str,
         *,
         ephemeral: bool,
     ):
         try:
             job = await asyncio.to_thread(
                 ReminderFunctions.get_reminder,
-                reminder_id,
+                reminder,
                 interaction.guild_id,
             )
         except ValueError as exc:
@@ -116,6 +165,222 @@ class ReminderCog(commands.Cog):
             )
 
         return job
+
+    async def _list_visible_reminders(
+        self,
+        interaction: discord.Interaction,
+        *,
+        paused: Optional[bool] = None,
+        ephemeral: bool = True,
+    ):
+        try:
+            reminders = await asyncio.to_thread(
+                ReminderFunctions.list_reminders,
+                interaction.guild_id if interaction.guild_id is not None else None,
+                paused,
+            )
+        except Exception as exc:
+            raise UserVisibleError(
+                "Something went wrong while loading reminders.",
+                ephemeral=ephemeral,
+                cause=exc,
+            )
+        return self._filter_visible_reminders(interaction, reminders)
+
+    @staticmethod
+    def _is_all_reminders_value(reminder: str) -> bool:
+        normalized_reminder = reminder.strip().lower()
+        return normalized_reminder in {
+            "all",
+            ReminderFunctions.ALL_REMINDERS_TOKEN.lower(),
+        }
+
+    async def _send_bulk_reminder_result(
+        self,
+        interaction: discord.Interaction,
+        *,
+        count: int,
+        action: str,
+        ephemeral: bool,
+    ) -> None:
+        reminder_label = "reminder" if count == 1 else "reminders"
+        await interaction.followup.send(
+            ephemeral=ephemeral,
+            **DailyTaskEmbeds.reminder_embed(
+                f"{action} {count} {reminder_label}.",
+                ok=True,
+            ),
+        )
+
+    async def _apply_bulk_reminder_action(
+        self,
+        interaction: discord.Interaction,
+        *,
+        paused: bool,
+        action_fn: Callable[..., str],
+        action_kwargs: Optional[Dict[str, Any]] = None,
+        success_result: str,
+        empty_message: str,
+        success_message: str,
+        ephemeral: bool,
+    ) -> None:
+        reminders = await self._list_visible_reminders(
+            interaction,
+            paused=paused,
+            ephemeral=ephemeral,
+        )
+        if not reminders:
+            raise ValidationError(
+                empty_message,
+                ephemeral=ephemeral,
+            )
+
+        changed_count = 0
+        for job in reminders:
+            result = await asyncio.to_thread(
+                action_fn,
+                str(job.id),
+                interaction.guild_id,
+                **(action_kwargs or {}),
+            )
+            if result == success_result:
+                changed_count += 1
+
+        if changed_count == 0:
+            raise ValidationError(
+                empty_message,
+                ephemeral=ephemeral,
+            )
+
+        await self._send_bulk_reminder_result(
+            interaction,
+            count=changed_count,
+            action=success_message,
+            ephemeral=ephemeral,
+        )
+
+    async def _apply_single_reminder_action(
+        self,
+        interaction: discord.Interaction,
+        *,
+        reminder: str,
+        action_fn: Callable[..., str],
+        action_kwargs: Optional[Dict[str, Any]] = None,
+        already_result: str,
+        success_message: str,
+        already_message: str,
+        missing_message: str,
+        ephemeral: bool,
+    ) -> None:
+        await self._get_visible_reminder(
+            interaction,
+            reminder,
+            ephemeral=ephemeral,
+        )
+        result = await asyncio.to_thread(
+            action_fn,
+            reminder,
+            interaction.guild_id,
+            **(action_kwargs or {}),
+        )
+
+        if result == "missing":
+            raise ValidationError(
+                missing_message,
+                ephemeral=ephemeral,
+            )
+
+        job = await self._get_visible_reminder(
+            interaction,
+            reminder,
+            ephemeral=ephemeral,
+        )
+
+        result_message = (
+            already_message.format(reminder=reminder)
+            if result == already_result
+            else success_message.format(reminder=reminder)
+        )
+        await self._send_reminder_output(
+            interaction,
+            job=job,
+            result_message=result_message,
+            ephemeral=ephemeral,
+        )
+
+    async def _apply_reminder_action(
+        self,
+        interaction: discord.Interaction,
+        *,
+        reminder: str,
+        list_paused: bool,
+        action_fn: Callable[..., str],
+        action_kwargs: Optional[Dict[str, Any]] = None,
+        success_result: str,
+        already_result: str,
+        success_message: str,
+        already_message: str,
+        empty_bulk_message: str,
+        bulk_success_message: str,
+        missing_message: str,
+        ephemeral: bool,
+    ) -> None:
+        if self._is_all_reminders_value(reminder):
+            await self._apply_bulk_reminder_action(
+                interaction,
+                paused=list_paused,
+                action_fn=action_fn,
+                action_kwargs=action_kwargs,
+                success_result=success_result,
+                empty_message=empty_bulk_message,
+                success_message=bulk_success_message,
+                ephemeral=ephemeral,
+            )
+            return
+
+        await self._apply_single_reminder_action(
+            interaction,
+            reminder=reminder,
+            action_fn=action_fn,
+            action_kwargs=action_kwargs,
+            already_result=already_result,
+            success_message=success_message,
+            already_message=already_message,
+            missing_message=missing_message,
+            ephemeral=ephemeral,
+        )
+
+    async def _pause_reminder_from_options(
+        self,
+        interaction: discord.Interaction,
+        *,
+        reminder: str,
+        until: Optional[str],
+        ephemeral: bool,
+        timezone: Optional[str],
+    ) -> None:
+        action_kwargs: Dict[str, Any] = {}
+        until_value = (until or "").strip()
+        if until_value:
+            action_kwargs["until"] = until_value
+            action_kwargs["timezone"] = timezone
+            action_kwargs["ephemeral"] = ephemeral
+
+        await self._apply_reminder_action(
+            interaction,
+            reminder=reminder.strip(),
+            list_paused=False,
+            action_fn=ReminderFunctions.pause_reminder,
+            action_kwargs=action_kwargs,
+            success_result="paused",
+            already_result="already_paused",
+            success_message="Paused reminder `{reminder}`.",
+            already_message="Reminder `{reminder}` is already paused.",
+            empty_bulk_message="No active reminders found that you can pause.",
+            bulk_success_message="Paused",
+            missing_message="No reminder found with that ID in this server.",
+            ephemeral=ephemeral,
+        )
 
     @staticmethod
     def _can_view_reminder(
@@ -139,18 +404,15 @@ class ReminderCog(commands.Cog):
 
     @reminder_group.command(
         name="add",
-        description="Create a one-time or recurring reminder.",
+        description="Create a one-time or recurring reminder",
     )
     @app_commands.describe(
-        reminder="Reminder title or primary content",
-        time="Cron expression or natural language schedule",
-        repeat="Repeat interval or custom repeat expression",
-        ping="User or role to ping",
-        thumbnail_url="Thumbnail URL",
-        skip_days="Comma-separated days to skip",
-        description="Reminder description",
-        expires_after="Expiration time",
-        channel="Destination channel",
+        reminder="Reminder text",
+        schedule="Natural language schedule or cron expression",
+        add_pings="Choose users to mention in this reminder",
+        description="Longer description",
+        expires="Stop sending after this time",
+        destination="Where to send it (channel or DM)",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
@@ -160,29 +422,69 @@ class ReminderCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         reminder: str,
-        time: str,
-        repeat: Optional[str] = None,
-        ping: Optional[discord.Member | discord.Role] = None,
-        thumbnail_url: Optional[str] = None,
-        skip_days: Optional[str] = None,
+        schedule: str,
+        add_pings: bool = False,
         description: Optional[str] = None,
-        expires_after: Optional[str] = None,
-        channel: Optional[str] = None,
+        expires: Optional[str] = None,
+        destination: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
+        ephemeral = self._resolve_default_ephemeral(interaction, visibility)
         try:
-            destination_type, destination_channel_id, _ = normalize_reminder_destination(
-                interaction,
-                channel,
+            destination_type, destination_channel_id, _ = (
+                normalize_reminder_destination(
+                    interaction,
+                    destination,
+                )
             )
         except ValueError as exc:
             raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
 
+        ephemeral = self._resolve_destination_ephemeral(
+            interaction,
+            destination_type,
+            visibility,
+        )
+
+        if add_pings:
+            if interaction.guild is None:
+                raise ValidationError(
+                    "`add_pings` is only available in servers.",
+                    ephemeral=True,
+                )
+
+            setup_default_channel_id = (
+                destination_channel_id
+                if destination_type == "channel" and destination_channel_id is not None
+                else interaction.channel_id
+            )
+            try:
+                await interaction.response.send_modal(
+                    ReminderPingModal(
+                        guild=interaction.guild,
+                        guild_id=interaction.guild_id,
+                        default_channel_id=setup_default_channel_id,
+                        reminder=reminder,
+                        schedule=schedule,
+                        description=description,
+                        until=expires,
+                        destination_type=destination_type,
+                        destination_channel_id=destination_channel_id,
+                        response_ephemeral=ephemeral,
+                        user_id=interaction.user.id,
+                    )
+                )
+            except discord.HTTPException as exc:
+                raise UserVisibleError(
+                    "Something went wrong while opening the ping picker.",
+                    ephemeral=ephemeral,
+                    cause=exc,
+                )
+            return
+
         needs_timezone = ReminderFunctions.needs_timezone(
-            time,
-            repeat=repeat,
-            expires_after=expires_after,
+            schedule,
+            expires=expires,
         )
 
         async def _continue_with_timezone(
@@ -192,13 +494,9 @@ class ReminderCog(commands.Cog):
             await self._create_reminder_from_options(
                 interaction=followup_interaction,
                 reminder=reminder,
-                time=time,
-                repeat=repeat,
-                ping=ping,
-                thumbnail_url=thumbnail_url,
-                skip_days=skip_days,
+                schedule=schedule,
                 description=description,
-                expires_after=expires_after,
+                expires=expires,
                 destination_type=destination_type,
                 destination_channel_id=destination_channel_id,
                 ephemeral=ephemeral,
@@ -220,13 +518,9 @@ class ReminderCog(commands.Cog):
         await self._create_reminder_from_options(
             interaction=interaction,
             reminder=reminder,
-            time=time,
-            repeat=repeat,
-            ping=ping,
-            thumbnail_url=thumbnail_url,
-            skip_days=skip_days,
+            schedule=schedule,
             description=description,
-            expires_after=expires_after,
+            expires=expires,
             destination_type=destination_type,
             destination_channel_id=destination_channel_id,
             ephemeral=ephemeral,
@@ -235,21 +529,24 @@ class ReminderCog(commands.Cog):
 
     @reminder_group.command(
         name="list",
-        description="View reminders.",
+        description="View reminders",
     )
     @app_commands.describe(
-        channel="Which channel or private destination to show",
+        destination="Which destination to show",
+        sort="Sort order for reminders",
         status="Filter reminders by status",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
+        sort=_REMINDER_LIST_SORT_CHOICES,
         status=_REMINDER_LIST_STATUS_CHOICES,
         visibility=VISIBILITY_CHOICES,
     )
     async def reminder_list(
         self,
         interaction: discord.Interaction,
-        channel: Optional[str] = None,
+        destination: Optional[str] = None,
+        sort: Optional[app_commands.Choice[str]] = None,
         status: Optional[app_commands.Choice[str]] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
@@ -260,17 +557,19 @@ class ReminderCog(commands.Cog):
             scope_label,
         ) = self._resolve_reminder_list_target(
             interaction,
-            channel,
+            destination,
         )
         ephemeral = resolve_ephemeral_from_scope(
             interaction.guild_id,
             target_value,
             visibility,
-            private_scope_values=("private",),
+            private_scope_values=(),
             guild_default_visibility="public",
             dm_default_visibility="public",
         )
-        paused_filter, status_label = self._resolve_reminder_list_status(status)
+        status_value = status.value if status else "all"
+        paused_filter = self._resolve_reminder_list_status(status)
+        sort_value = sort.value if sort else "ascending"
 
         await interaction.response.defer(ephemeral=ephemeral)
 
@@ -290,59 +589,59 @@ class ReminderCog(commands.Cog):
                 cause=exc,
             )
         reminders = self._filter_visible_reminders(interaction, reminders)
+        if sort_value == "descending":
+            reminders.reverse()
 
         view = ReminderListView(
             reminders=reminders,
             scope_label=scope_label,
-            status_label=status_label,
+            target_value=target_value,
+            status_filter=status_value,
             guild_id=interaction.guild_id if interaction.guild_id is not None else None,
             channel_id=selected_channel_id,
             destination_type=destination_type,
-            paused_filter=paused_filter,
             user_id=interaction.user.id,
+            sort=sort_value,
             response_ephemeral=ephemeral,
         )
-        if not reminders:
-            await interaction.followup.send(
-                ephemeral=ephemeral,
-                **view.payload(),
-            )
-            return
-
-        await interaction.followup.send(
+        await view.ensure_session()
+        message = await interaction.followup.send(
             ephemeral=ephemeral,
             view=view,
+            wait=True,
             **view.payload(),
         )
+        view.message = message
 
     @reminder_group.command(
-        name="remove",
-        description="Remove a scheduled reminder by ID.",
+        name="delete",
+        description="Delete a scheduled reminder",
     )
     @app_commands.describe(
-        reminder_id="Reminder ID",
+        reminder="Reminder to delete",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def reminder_remove(
         self,
         interaction: discord.Interaction,
-        reminder_id: str,
+        reminder: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
-        await interaction.response.defer(ephemeral=ephemeral)
-        reminder_id_value = reminder_id.strip()
+        provisional_ephemeral = self._resolve_default_ephemeral(interaction, visibility)
+        reminder_value = reminder.strip()
 
-        await self._get_visible_reminder(
+        job = await self._get_visible_reminder(
             interaction,
-            reminder_id_value,
-            ephemeral=ephemeral,
+            reminder_value,
+            ephemeral=provisional_ephemeral,
         )
+        ephemeral = self._resolve_reminder_ephemeral(interaction, job, visibility)
+        await interaction.response.defer(ephemeral=ephemeral)
 
         deleted = await asyncio.to_thread(
             ReminderFunctions.delete_reminder,
-            reminder_id_value,
+            reminder_value,
             interaction.guild_id,
         )
 
@@ -355,17 +654,17 @@ class ReminderCog(commands.Cog):
         await interaction.followup.send(
             ephemeral=ephemeral,
             **DailyTaskEmbeds.reminder_embed(
-                f"Deleted reminder `{reminder_id.strip()}`.",
+                f"Deleted reminder `{reminder_value}`.",
                 ok=True,
             ),
         )
 
     @reminder_group.command(
         name="edit",
-        description="Edit an existing reminder.",
+        description="Edit an existing reminder",
     )
     @app_commands.describe(
-        reminder="Reminder from autocomplete",
+        reminder="Reminder to edit",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -375,12 +674,13 @@ class ReminderCog(commands.Cog):
         reminder: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
+        provisional_ephemeral = self._resolve_default_ephemeral(interaction, visibility)
         job = await self._get_visible_reminder(
             interaction,
             reminder,
-            ephemeral=ephemeral,
+            ephemeral=provisional_ephemeral,
         )
+        ephemeral = self._resolve_reminder_ephemeral(interaction, job, visibility)
 
         try:
             channel_options = _build_destination_select_options(
@@ -404,10 +704,10 @@ class ReminderCog(commands.Cog):
 
     @reminder_group.command(
         name="show",
-        description="Show a specific reminder.",
+        description="Show a specific reminder",
     )
     @app_commands.describe(
-        reminder="Reminder from autocomplete",
+        reminder="Reminder to show",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -417,135 +717,129 @@ class ReminderCog(commands.Cog):
         reminder: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
-        await interaction.response.defer(ephemeral=ephemeral)
+        provisional_ephemeral = self._resolve_default_ephemeral(interaction, visibility)
         job = await self._get_visible_reminder(
             interaction,
             reminder,
-            ephemeral=ephemeral,
+            ephemeral=provisional_ephemeral,
         )
+        ephemeral = self._resolve_reminder_ephemeral(interaction, job, visibility)
+        await interaction.response.defer(ephemeral=ephemeral)
 
         await self._send_reminder_output(
             interaction,
             job=job,
-            result_message=f"Showing reminder `{str(job.id)}`.",
+            result_message="",
             ephemeral=ephemeral,
         )
 
     @reminder_group.command(
         name="pause",
-        description="Pause a reminder by ID.",
+        description="Pause a reminder, or all active reminders",
     )
     @app_commands.describe(
-        reminder_id="Reminder ID",
+        reminder="Reminder to pause",
+        until="Auto-resume at this time",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def reminder_pause(
         self,
         interaction: discord.Interaction,
-        reminder_id: str,
+        reminder: str,
+        until: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
-        await interaction.response.defer(ephemeral=ephemeral)
-        reminder_id_value = reminder_id.strip()
-
-        await self._get_visible_reminder(
-            interaction,
-            reminder_id_value,
-            ephemeral=ephemeral,
-        )
-        result = await asyncio.to_thread(
-            ReminderFunctions.pause_reminder,
-            reminder_id_value,
-            interaction.guild_id,
-        )
-
-        if result == "missing":
-            raise ValidationError(
-                "No reminder found with that ID in this server.",
-                ephemeral=ephemeral,
-            )
-
-        paused_job = await self._get_visible_reminder(
-            interaction,
-            reminder_id_value,
-            ephemeral=ephemeral,
-        )
-
-        if result == "already_paused":
-            await self._send_reminder_output(
+        reminder_value = reminder.strip()
+        provisional_ephemeral = self._resolve_default_ephemeral(interaction, visibility)
+        job = None
+        if not self._is_all_reminders_value(reminder_value):
+            job = await self._get_visible_reminder(
                 interaction,
-                job=paused_job,
-                result_message=f"Reminder `{reminder_id_value}` is already paused.",
-                ephemeral=ephemeral,
+                reminder_value,
+                ephemeral=provisional_ephemeral,
             )
-            return
+        ephemeral = (
+            self._resolve_reminder_ephemeral(interaction, job, visibility)
+            if job is not None
+            else provisional_ephemeral
+        )
+        until_value = (until or "").strip() or None
 
-        await self._send_reminder_output(
+        async def _continue_with_timezone(
+            followup_interaction: discord.Interaction,
+            resolved_timezone: str,
+        ) -> None:
+            await self._pause_reminder_from_options(
+                followup_interaction,
+                reminder=reminder,
+                until=until_value,
+                ephemeral=ephemeral,
+                timezone=resolved_timezone,
+            )
+
+        timezone = None
+        if until_value:
+            timezone = await ensure_user_timezone(
+                interaction,
+                _continue_with_timezone,
+                continue_message="Timezone saved as `{timezone}`. Continuing `/reminder pause`.",
+                response_ephemeral=ephemeral,
+            )
+            if timezone is None:
+                return
+
+        await interaction.response.defer(ephemeral=ephemeral)
+        await self._pause_reminder_from_options(
             interaction,
-            job=paused_job,
-            result_message=f"Paused reminder `{reminder_id_value}`.",
+            reminder=reminder_value,
+            until=until_value,
             ephemeral=ephemeral,
+            timezone=timezone,
         )
 
     @reminder_group.command(
         name="resume",
-        description="Resume a paused reminder by ID.",
+        description="Resume a reminder, or all paused reminders",
     )
     @app_commands.describe(
-        reminder_id="Reminder ID",
+        reminder="Reminder to resume",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
     async def reminder_resume(
         self,
         interaction: discord.Interaction,
-        reminder_id: str,
+        reminder: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="public")
-        await interaction.response.defer(ephemeral=ephemeral)
-
-        reminder_id_value = reminder_id.strip()
-
-        await self._get_visible_reminder(
-            interaction,
-            reminder_id_value,
-            ephemeral=ephemeral,
-        )
-        result = await asyncio.to_thread(
-            ReminderFunctions.resume_reminder,
-            reminder_id_value,
-            interaction.guild_id,
-        )
-
-        if result == "missing":
-            raise ValidationError(
-                "No reminder found with that ID in this server.",
-                ephemeral=ephemeral,
-            )
-
-        resumed_job = await self._get_visible_reminder(
-            interaction,
-            reminder_id_value,
-            ephemeral=ephemeral,
-        )
-
-        if result == "already_resumed":
-            await self._send_reminder_output(
+        reminder_value = reminder.strip()
+        provisional_ephemeral = self._resolve_default_ephemeral(interaction, visibility)
+        job = None
+        if not self._is_all_reminders_value(reminder_value):
+            job = await self._get_visible_reminder(
                 interaction,
-                job=resumed_job,
-                result_message=f"Reminder `{reminder_id_value}` is already active.",
-                ephemeral=ephemeral,
+                reminder_value,
+                ephemeral=provisional_ephemeral,
             )
-            return
-
-        await self._send_reminder_output(
+        ephemeral = (
+            self._resolve_reminder_ephemeral(interaction, job, visibility)
+            if job is not None
+            else provisional_ephemeral
+        )
+        await interaction.response.defer(ephemeral=ephemeral)
+        await self._apply_reminder_action(
             interaction,
-            job=resumed_job,
-            result_message=f"Resumed reminder `{reminder_id_value}`.",
+            reminder=reminder_value,
+            list_paused=True,
+            action_fn=ReminderFunctions.resume_reminder,
+            success_result="resumed",
+            already_result="already_resumed",
+            success_message="Resumed reminder `{reminder}`.",
+            already_message="Reminder `{reminder}` is already active.",
+            empty_bulk_message="No paused reminders found that you can resume.",
+            bulk_success_message="Resumed",
+            missing_message="No reminder found with that ID in this server.",
             ephemeral=ephemeral,
         )
 
@@ -553,36 +847,29 @@ class ReminderCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         reminder: str,
-        time: str,
-        repeat: Optional[str],
-        ping: Optional[discord.Member | discord.Role],
-        thumbnail_url: Optional[str],
-        skip_days: Optional[str],
+        schedule: str,
         description: Optional[str],
-        expires_after: Optional[str],
+        expires: Optional[str],
         destination_type: str,
         destination_channel_id: Optional[int],
         ephemeral: bool,
         timezone: Optional[str],
+        thumbnail_url: Optional[str] = None,
     ) -> None:
-        ping_text = ping.mention if ping is not None else None
         created_job, confirmation = await asyncio.to_thread(
             ReminderFunctions.create_reminder,
-            interaction.guild_id,
-            interaction.channel_id,
-            reminder,
-            time,
-            repeat,
-            ping_text,
-            thumbnail_url,
-            skip_days,
-            description,
-            expires_after,
-            destination_channel_id,
-            destination_type,
-            interaction.user.id,
-            ephemeral,
-            timezone,
+            guild_id=interaction.guild_id,
+            default_channel_id=interaction.channel_id,
+            reminder=reminder,
+            schedule=schedule,
+            thumbnail_url=thumbnail_url,
+            description=description,
+            expires=expires,
+            destination_channel_id=destination_channel_id,
+            destination_type=destination_type,
+            destination_user_id=interaction.user.id,
+            ephemeral=ephemeral,
+            timezone=timezone,
         )
         await self._send_reminder_output(
             interaction,
@@ -613,16 +900,14 @@ class ReminderCog(commands.Cog):
             )
 
         options.extend(
-            option for option in base_options if not query or query in option.name.lower()
+            option
+            for option in base_options
+            if not query or query in option.name.lower()
         )
 
         guild = interaction.guild
         if guild is None:
-            return [
-                option
-                for option in options
-                if option.value == "private"
-            ][:25]
+            return [option for option in options if option.value == "private"][:25]
 
         for channel in guild.text_channels:
             if len(options) >= 25:
@@ -631,7 +916,11 @@ class ReminderCog(commands.Cog):
             channel_id = getattr(channel, "id", None)
             if channel_name is None or channel_id is None:
                 continue
-            if query and query not in channel_name.lower() and query not in str(channel_id):
+            if (
+                query
+                and query not in channel_name.lower()
+                and query not in str(channel_id)
+            ):
                 continue
             permissions = channel.permissions_for(interaction.user)
             if not permissions.view_channel:
@@ -648,9 +937,9 @@ class ReminderCog(commands.Cog):
     def _resolve_reminder_list_target(
         self,
         interaction: discord.Interaction,
-        channel: Optional[str],
+        destination: Optional[str],
     ) -> tuple[str, Optional[int], str, str]:
-        target_value = (channel or "").strip()
+        target_value = (destination or "").strip()
         if not target_value:
             target_value = "channel" if interaction.guild is not None else "private"
 
@@ -667,7 +956,7 @@ class ReminderCog(commands.Cog):
                 channel_id = int(target_value.split(":", 1)[1])
             except (ValueError, IndexError):
                 raise ValidationError(
-                    "Please select a valid channel from autocomplete.",
+                    "Please select a valid destination from autocomplete.",
                     ephemeral=True,
                 )
             selected_channel = interaction.guild.get_channel(channel_id)
@@ -696,7 +985,7 @@ class ReminderCog(commands.Cog):
 
         if target_value != "channel":
             raise ValidationError(
-                "Please select a valid list from autocomplete.",
+                "Please select a valid destination from autocomplete.",
                 ephemeral=True,
             )
 
@@ -711,34 +1000,53 @@ class ReminderCog(commands.Cog):
     @staticmethod
     def _resolve_reminder_list_status(
         status: Optional[app_commands.Choice[str]],
-    ) -> tuple[Optional[bool], str]:
+    ) -> Optional[bool]:
         status_value = status.value if status else "all"
         if status_value == "active":
-            return False, "Active"
+            return False
         if status_value == "paused":
-            return True, "Paused"
-        return None, "All"
+            return True
+        return None
 
-    async def _reminder_id_autocomplete(
+    async def _reminder_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
         *,
         paused: Optional[bool] = None,
+        include_all_option: bool = False,
     ) -> List[app_commands.Choice[str]]:
         query = (current or "").strip().lower()
+        options: List[app_commands.Choice[str]] = []
+        if include_all_option:
+            all_search_text = "all"
+            all_choice = app_commands.Choice(
+                name="All",
+                value="all",
+            )
+            if not query or query in all_search_text:
+                options.append(all_choice)
+
         try:
             reminders = await asyncio.to_thread(
-                ReminderFunctions.list_reminders,
-                interaction.guild_id,
-                paused,
+                ReminderFunctions.autocomplete_reminders,
+                interaction.guild_id if interaction.guild_id is not None else None,
+                interaction.user.id,
+                current,
+                paused=paused,
+                limit=25,
+                candidate_limit=200,
             )
+        except UserVisibleError:
+            return []
         except Exception:
             return []
+
         reminders = self._filter_visible_reminders(interaction, reminders)
 
-        options: List[app_commands.Choice[str]] = []
         for job in reminders:
+            if len(options) >= 25:
+                break
             label = ReminderFunctions.reminder_label(job)
             job_id = str(job.id)
             search_text = f"{label} {job_id}".lower()
@@ -751,13 +1059,11 @@ class ReminderCog(commands.Cog):
                     name=choice_name[:100],
                     value=job_id,
                 )
-                )
-            if len(options) >= 25:
-                break
+            )
 
         return options[:25]
 
-    @reminder_add.autocomplete("channel")
+    @reminder_add.autocomplete("destination")
     async def reminder_add_destination_autocomplete(
         self,
         interaction: discord.Interaction,
@@ -765,7 +1071,7 @@ class ReminderCog(commands.Cog):
     ) -> List[app_commands.Choice[str]]:
         return reminder_destination_autocomplete(interaction, current)
 
-    @reminder_list.autocomplete("channel")
+    @reminder_list.autocomplete("destination")
     async def reminder_list_target_autocomplete(
         self,
         interaction: discord.Interaction,
@@ -776,13 +1082,13 @@ class ReminderCog(commands.Cog):
             current,
         )
 
-    @reminder_remove.autocomplete("reminder_id")
+    @reminder_remove.autocomplete("reminder")
     async def reminder_remove_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
-        return await self._reminder_id_autocomplete(interaction, current)
+        return await self._reminder_autocomplete(interaction, current)
 
     @reminder_edit.autocomplete("reminder")
     async def reminder_edit_autocomplete(
@@ -790,7 +1096,7 @@ class ReminderCog(commands.Cog):
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
-        return await self._reminder_id_autocomplete(interaction, current)
+        return await self._reminder_autocomplete(interaction, current)
 
     @reminder_show.autocomplete("reminder")
     async def reminder_show_autocomplete(
@@ -798,30 +1104,32 @@ class ReminderCog(commands.Cog):
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
-        return await self._reminder_id_autocomplete(interaction, current)
+        return await self._reminder_autocomplete(interaction, current)
 
-    @reminder_pause.autocomplete("reminder_id")
+    @reminder_pause.autocomplete("reminder")
     async def reminder_pause_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
-        return await self._reminder_id_autocomplete(
+        return await self._reminder_autocomplete(
             interaction,
             current,
             paused=False,
+            include_all_option=True,
         )
 
-    @reminder_resume.autocomplete("reminder_id")
+    @reminder_resume.autocomplete("reminder")
     async def reminder_resume_autocomplete(
         self,
         interaction: discord.Interaction,
         current: str,
     ) -> List[app_commands.Choice[str]]:
-        return await self._reminder_id_autocomplete(
+        return await self._reminder_autocomplete(
             interaction,
             current,
             paused=True,
+            include_all_option=True,
         )
 
 

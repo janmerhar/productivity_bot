@@ -5,13 +5,17 @@ from discord import app_commands
 from discord.ext import commands
 
 from classes.SlashCommandRouter import SlashCommandRouter
-from config.env import env
-from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from config.env import settings
+from services.visibility import (
+    VISIBILITY_CHOICES,
+    VISIBILITY_DESC,
+    resolve_visibility_for_context,
+)
 
 
 class RouterCog(commands.Cog):
     assistant_group = app_commands.Group(
-        name="assistant", description="Assistant utilities"
+        name="assistant", description="Run commands using natural language"
     )
 
     def __init__(self, client: commands.Bot) -> None:
@@ -23,10 +27,10 @@ class RouterCog(commands.Cog):
 
     @assistant_group.command(
         name="run",
-        description="Run an existing slash command from natural language",
+        description="Run a command from a natural-language request",
     )
     @app_commands.describe(
-        query="Instruction for the bot",
+        query="What you want the bot to do",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(visibility=VISIBILITY_CHOICES)
@@ -36,8 +40,12 @@ class RouterCog(commands.Cog):
         query: str,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
-        if env.get("DEV_MODE") == "true":
+        ephemeral = resolve_visibility_for_context(
+            interaction.guild_id,
+            visibility,
+            guild_default="private",
+        )
+        if settings.dev_mode:
             await interaction.response.send_message(
                 "This command is in development.",
                 ephemeral=ephemeral,

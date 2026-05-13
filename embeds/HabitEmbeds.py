@@ -3,8 +3,6 @@ from typing import Optional, Dict, Any
 
 import discord
 
-from views.HabitActionView import HabitActionView
-
 
 class HabitEmbeds:
     _PROGRESS_EMOJI = {
@@ -24,7 +22,10 @@ class HabitEmbeds:
                 dt = datetime.datetime.fromisoformat(str(value))
             except ValueError:
                 return str(value)
-        return dt.strftime("%Y-%m-%d")
+        try:
+            return f"<t:{int(dt.timestamp())}:D>"
+        except (OverflowError, OSError, ValueError):
+            return dt.strftime("%Y-%m-%d")
 
     @staticmethod
     def _format_status(status: Optional[str]) -> str:
@@ -64,8 +65,19 @@ class HabitEmbeds:
         )
         if mode == "incomplete":
             embed.description = "No incomplete habits for today."
+        elif mode == "skipped":
+            embed.description = "No skipped habits for today."
         else:
             embed.description = "No habits found."
+        return {"embed": embed}
+
+    @staticmethod
+    def deleted_habit_embed(name: str) -> dict:
+        embed = discord.Embed(
+            title=str(name or "Habit"),
+            description="This habit was deleted.",
+            color=discord.Colour.red(),
+        )
         return {"embed": embed}
 
     @staticmethod
@@ -73,26 +85,46 @@ class HabitEmbeds:
         habit: Dict[str, Any],
         status: Optional[str],
         progress: Optional[list[str]] = None,
+        reminder_time: Optional[datetime.time] = None,
     ) -> dict:
         name = str(habit.get("name") or "Habit")
-        description = habit.get("description")
+        description = str(habit.get("description") or "").strip()
         created = habit.get("created")
+        normalized_status = str(status or "").strip().lower()
 
-        embed = discord.Embed(
-            title=name,
-            color=discord.Colour.blurple(),
-        )
+        color_map = {
+            "complete": discord.Colour.green(),
+            "skip": discord.Colour.light_grey(),
+            "incomplete": discord.Colour.orange(),
+        }
+        color = color_map.get(normalized_status, discord.Colour.blurple())
 
-        lines = []
-        if description:
-            lines.append(str(description))
-        if created:
-            lines.append(f"📅 {HabitEmbeds._format_created(created)}")
-        lines.append(f"Today: {HabitEmbeds._format_status(status)}")
+        embed = discord.Embed(title=name, color=color)
+        embed.set_author(name="🏃 Habit")
+
+        if description and description.lower() != name.lower():
+            embed.description = description
+
+        status_chips = {
+            "complete": "✅ Complete",
+            "skip": "⏭️ Skipped",
+            "incomplete": "❌ Incomplete",
+        }
+        status_chip = status_chips.get(normalized_status, "⬜ Not tracked")
+        embed.add_field(name="Today", value=status_chip, inline=True)
+
+        if reminder_time is not None:
+            time_str = reminder_time.strftime("%I:%M %p").lstrip("0") or reminder_time.strftime("%I:%M %p")
+            embed.add_field(name="Reminder", value=time_str, inline=True)
+
         if progress:
-            lines.append(HabitEmbeds.progress_line(progress))
+            emojis = [HabitEmbeds._PROGRESS_EMOJI.get(mode, "❌") for mode in progress]
+            embed.add_field(
+                name=f"Last {len(progress)} {'day' if len(progress) == 1 else 'days'}",
+                value=" ".join(emojis),
+                inline=False,
+            )
 
-        embed.description = "\n".join(lines) if lines else "No details"
         return {"embed": embed}
 
     @staticmethod
@@ -104,6 +136,8 @@ class HabitEmbeds:
 
     @staticmethod
     def habit_reminder_payload(habit: Dict[str, Any]) -> dict:
+        from views.HabitActionView import HabitActionView
+
         name = str(habit.get("name") or "Habit")
         description = habit.get("description")
         user_id = habit.get("user_id")

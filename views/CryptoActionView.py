@@ -8,7 +8,7 @@ from classes.DailyJob import CronSchedule
 from classes.DailyJobManager import DailyJobManager
 from classes.OpenAIFunctions import OpenAIFunctions
 from classes.PriceAlertFunctions import create_alert
-from config.env import env
+from config.env import settings
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from services.cron_schedule import (
     CronConversionError,
@@ -57,10 +57,17 @@ class CryptoAlertModal(discord.ui.Modal, title="Create Crypto Alert"):
         max_length=100,
     )
 
-    def __init__(self, coin_id: str, currency: str) -> None:
+    def __init__(
+        self,
+        coin_id: str,
+        currency: str,
+        *,
+        response_ephemeral: bool,
+    ) -> None:
         super().__init__()
         self.coin_id = coin_id.strip().lower()
         self.currency.default = currency.strip().lower() or "usd"
+        self._response_ephemeral = bool(response_ephemeral)
 
     async def _set_crypto_alert(
         self,
@@ -86,7 +93,7 @@ class CryptoAlertModal(discord.ui.Modal, title="Create Crypto Alert"):
             raise UserVisibleError(
                 f"Failed to fetch `{coin_id}` price data.",
                 hint="Check the coin id and currency.",
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
                 cause=exc,
             ) from exc
 
@@ -94,24 +101,24 @@ class CryptoAlertModal(discord.ui.Modal, title="Create Crypto Alert"):
             raise ValidationError(
                 f"No market data returned for `{coin_id}` in `{vs_currency}`.",
                 hint="Use CoinGecko ids such as `bitcoin` or `ethereum`.",
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
             )
 
         coin = results[0]
         if coin.get("current_price") is None:
             raise ValidationError(
                 f"No live price data returned for `{coin_id}`.",
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
             )
 
         expires_at = None
         if expires_text:
-            api_key = env.get("OPENAI_API_KEY")
+            api_key = settings.openai_api_key
             if not api_key:
                 raise ValidationError(
                     "OpenAI API key is not configured.",
                     hint="Set `OPENAI_API_KEY` to use natural-language alert expiry.",
-                    ephemeral=True,
+                    ephemeral=self._response_ephemeral,
                 )
 
             expires_at = await asyncio.to_thread(
@@ -124,7 +131,7 @@ class CryptoAlertModal(discord.ui.Modal, title="Create Crypto Alert"):
                 raise ValidationError(
                     "I couldn't understand that alert expiry value.",
                     hint="Try `3 days`, `tomorrow 8pm`, or `in 2 hours`.",
-                    ephemeral=True,
+                    ephemeral=self._response_ephemeral,
                 )
 
         alert_id = await asyncio.to_thread(
@@ -151,7 +158,10 @@ class CryptoAlertModal(discord.ui.Modal, title="Create Crypto Alert"):
         if expires_at is not None:
             message = f"{message} Expires: <t:{int(expires_at.timestamp())}:f>."
 
-        await interaction.followup.send(message, ephemeral=True)
+        await interaction.followup.send(
+            message,
+            ephemeral=self._response_ephemeral,
+        )
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         coin_id = self.coin_id
@@ -166,7 +176,7 @@ class CryptoAlertModal(discord.ui.Modal, title="Create Crypto Alert"):
                 interaction,
                 ValidationError(
                     "Target price must be a number.",
-                    ephemeral=True,
+                    ephemeral=self._response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -177,22 +187,26 @@ class CryptoAlertModal(discord.ui.Modal, title="Create Crypto Alert"):
                 normalize_alert_destination(interaction, destination_text or None)
             )
             if not vs_currency:
-                raise ValidationError("Please provide a currency.", ephemeral=True)
+                raise ValidationError(
+                    "Please provide a currency.",
+                    ephemeral=self._response_ephemeral,
+                )
             if target_price <= 0:
                 raise ValidationError(
                     "Target price must be greater than 0.",
-                    ephemeral=True,
+                    ephemeral=self._response_ephemeral,
                 )
 
             rule = (self.condition.value or "").strip().lower()
             if rule not in {"above", "below"}:
                 raise ValidationError(
                     "Condition must be either `above` or `below`.",
-                    ephemeral=True,
+                    ephemeral=self._response_ephemeral,
                 )
 
             timezone = None
             if expires_text:
+
                 async def _continue_with_timezone(
                     followup_interaction: discord.Interaction,
                     resolved_timezone: str,
@@ -214,18 +228,19 @@ class CryptoAlertModal(discord.ui.Modal, title="Create Crypto Alert"):
                         await handle_interaction_error(
                             followup_interaction,
                             exc,
-                            ephemeral=True,
+                            ephemeral=self._response_ephemeral,
                         )
 
                 timezone = await ensure_user_timezone(
                     interaction,
                     _continue_with_timezone,
                     continue_message="Timezone saved as `{timezone}`. Continuing crypto alert setup.",
+                    response_ephemeral=self._response_ephemeral,
                 )
                 if timezone is None:
                     return
 
-            await interaction.response.defer(ephemeral=True)
+            await interaction.response.defer(ephemeral=self._response_ephemeral)
             await self._set_crypto_alert(
                 interaction=interaction,
                 coin_id=coin_id,
@@ -239,7 +254,11 @@ class CryptoAlertModal(discord.ui.Modal, title="Create Crypto Alert"):
                 timezone=timezone,
             )
         except Exception as exc:
-            await handle_interaction_error(interaction, exc, ephemeral=True)
+            await handle_interaction_error(
+                interaction,
+                exc,
+                ephemeral=self._response_ephemeral,
+            )
 
 
 class CryptoDailyJobModal(discord.ui.Modal, title="Schedule Daily Crypto Check"):
@@ -268,10 +287,17 @@ class CryptoDailyJobModal(discord.ui.Modal, title="Schedule Daily Crypto Check")
         max_length=200,
     )
 
-    def __init__(self, coin_id: str, currency: str) -> None:
+    def __init__(
+        self,
+        coin_id: str,
+        currency: str,
+        *,
+        response_ephemeral: bool,
+    ) -> None:
         super().__init__()
         self.ticker.default = coin_id.strip().lower()
         self.currency.default = currency.strip().lower() or "usd"
+        self._response_ephemeral = bool(response_ephemeral)
 
     async def _create_crypto_schedule(
         self,
@@ -289,11 +315,15 @@ class CryptoDailyJobModal(discord.ui.Modal, title="Schedule Daily Crypto Check")
                 timezone=timezone,
             )
         except CronConversionError as exc:
-            raise ValidationError(str(exc), ephemeral=True, cause=exc) from exc
+            raise ValidationError(
+                str(exc),
+                ephemeral=self._response_ephemeral,
+                cause=exc,
+            ) from exc
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while parsing that schedule.",
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
                 cause=exc,
             ) from exc
 
@@ -317,12 +347,12 @@ class CryptoDailyJobModal(discord.ui.Modal, title="Schedule Daily Crypto Check")
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while storing that job. Please try again.",
-                ephemeral=True,
+                ephemeral=self._response_ephemeral,
                 cause=exc,
             ) from exc
 
         await interaction.followup.send(
-            ephemeral=True,
+            ephemeral=self._response_ephemeral,
             **DailyTaskEmbeds.job_embed(
                 (
                     f"Scheduled `crypto` job for `{coin_id}` on `{raw_schedule}`. "
@@ -340,12 +370,19 @@ class CryptoDailyJobModal(discord.ui.Modal, title="Schedule Daily Crypto Check")
 
         try:
             if not coin_id:
-                raise ValidationError("Please provide a crypto ticker.", ephemeral=True)
+                raise ValidationError(
+                    "Please provide a crypto ticker.",
+                    ephemeral=self._response_ephemeral,
+                )
             if not currency:
-                raise ValidationError("Please provide a currency.", ephemeral=True)
+                raise ValidationError(
+                    "Please provide a currency.",
+                    ephemeral=self._response_ephemeral,
+                )
 
             timezone = None
             if not is_valid_cron_expression(raw_schedule):
+
                 async def _continue_with_timezone(
                     followup_interaction: discord.Interaction,
                     resolved_timezone: str,
@@ -363,18 +400,19 @@ class CryptoDailyJobModal(discord.ui.Modal, title="Schedule Daily Crypto Check")
                         await handle_interaction_error(
                             followup_interaction,
                             exc,
-                            ephemeral=True,
+                            ephemeral=self._response_ephemeral,
                         )
 
                 timezone = await ensure_user_timezone(
                     interaction,
                     _continue_with_timezone,
                     continue_message="Timezone saved as `{timezone}`. Continuing crypto schedule setup.",
+                    response_ephemeral=self._response_ephemeral,
                 )
                 if timezone is None:
                     return
 
-            await interaction.response.defer(ephemeral=True)
+            await interaction.response.defer(ephemeral=self._response_ephemeral)
             await self._create_crypto_schedule(
                 interaction=interaction,
                 coin_id=coin_id,
@@ -384,51 +422,87 @@ class CryptoDailyJobModal(discord.ui.Modal, title="Schedule Daily Crypto Check")
                 timezone=timezone,
             )
         except Exception as exc:
-            await handle_interaction_error(interaction, exc, ephemeral=True)
+            await handle_interaction_error(
+                interaction,
+                exc,
+                ephemeral=self._response_ephemeral,
+            )
 
 
 class CryptoActionView(discord.ui.View):
-    def __init__(self, coin_id: str, currency: str, *, timeout: float = 3600) -> None:
+    def __init__(
+        self,
+        coin_id: str,
+        currency: str,
+        *,
+        response_ephemeral: bool = False,
+        timeout: float | None = None,
+    ) -> None:
         super().__init__(timeout=timeout)
         self.coin_id = coin_id.strip().lower()
         self.currency = currency.strip().lower() or "usd"
+        self.response_ephemeral = bool(response_ephemeral)
+        self._build()
 
-    @discord.ui.button(label="Set Alert", style=discord.ButtonStyle.success)
-    async def set_alert(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
+    def _build(self) -> None:
+        self.clear_items()
+
+        from views.crypto_action_dynamic_items import (
+            CryptoScheduleDailyCheckButton,
+            CryptoSetAlertButton,
+        )
+
+        has_coin = bool(self.coin_id)
+        self.add_item(
+            CryptoSetAlertButton(
+                coin_id=self.coin_id,
+                currency=self.currency,
+                disabled=not has_coin,
+            )
+        )
+        self.add_item(
+            CryptoScheduleDailyCheckButton(
+                coin_id=self.coin_id,
+                currency=self.currency,
+                disabled=not has_coin,
+            )
+        )
+
+    async def open_set_alert_modal(self, interaction: discord.Interaction) -> None:
         if not self.coin_id:
             await handle_interaction_error(
                 interaction,
-                ValidationError("Missing coin id for this action.", ephemeral=True),
+                ValidationError(
+                    "Missing coin id for this action.",
+                    ephemeral=self.response_ephemeral,
+                ),
             )
             return
         await interaction.response.send_modal(
             CryptoAlertModal(
                 coin_id=self.coin_id,
                 currency=self.currency,
+                response_ephemeral=self.response_ephemeral,
             )
         )
 
-    @discord.ui.button(
-        label="Schedule Daily Check", style=discord.ButtonStyle.secondary
-    )
-    async def schedule_daily_check(
+    async def open_schedule_daily_check_modal(
         self,
         interaction: discord.Interaction,
-        _: discord.ui.Button,
     ) -> None:
         if not self.coin_id:
             await handle_interaction_error(
                 interaction,
-                ValidationError("Missing coin id for this action.", ephemeral=True),
+                ValidationError(
+                    "Missing coin id for this action.",
+                    ephemeral=self.response_ephemeral,
+                ),
             )
             return
         await interaction.response.send_modal(
             CryptoDailyJobModal(
                 coin_id=self.coin_id,
                 currency=self.currency,
+                response_ephemeral=self.response_ephemeral,
             )
         )

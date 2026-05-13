@@ -6,11 +6,13 @@ import discord
 
 from classes.TodoFunctions import TodoFunctions
 from embeds.TodoEmbeds import TodoEmbeds
+from services import todo_list_directory_sessions
 from services.error_reporting import (
     UserVisibleError,
     ValidationError,
     handle_interaction_error,
 )
+from services.visibility import inherit_ephemeral_from_interaction
 from views.TodoListDescriptionView import TodoListDescriptionView
 
 
@@ -33,11 +35,13 @@ class TodoListDirectoryCreateModal(discord.ui.Modal):
         ):
             await interaction.response.send_message(
                 "Only the user who opened this list directory can use these controls.",
-                ephemeral=True,
+                ephemeral=self.parent_view.response_ephemeral,
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(
+            ephemeral=self.parent_view.response_ephemeral
+        )
 
         try:
             todo_list = await asyncio.to_thread(
@@ -51,7 +55,11 @@ class TodoListDirectoryCreateModal(discord.ui.Modal):
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
-                ValidationError(str(exc), ephemeral=True, cause=exc),
+                ValidationError(
+                    str(exc),
+                    ephemeral=self.parent_view.response_ephemeral,
+                    cause=exc,
+                ),
             )
             return
         except Exception as exc:
@@ -59,7 +67,7 @@ class TodoListDirectoryCreateModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while creating that list.",
-                    ephemeral=True,
+                    ephemeral=self.parent_view.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -72,7 +80,7 @@ class TodoListDirectoryCreateModal(discord.ui.Modal):
                 interaction,
                 UserVisibleError(
                     "The list was created, but refreshing the directory failed.",
-                    ephemeral=True,
+                    ephemeral=self.parent_view.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -90,9 +98,10 @@ class TodoListDirectoryCreateModal(discord.ui.Modal):
             color=discord.Colour.green(),
             todo_list=todo_list,
             user_id=interaction.user.id,
+            response_ephemeral=self.parent_view.response_ephemeral,
         )
         await interaction.followup.send(
-            ephemeral=True,
+            ephemeral=self.parent_view.response_ephemeral,
             **result_view.response_payload(),
         )
 
@@ -111,7 +120,9 @@ class TodoListDirectoryView(discord.ui.View):
         page: int = 1,
         page_size: int = 5,
         sort_direction: str = "ascending",
-        timeout: float = 900,
+        response_ephemeral: bool = True,
+        session_id: Optional[str] = None,
+        timeout: float | None = None,
     ) -> None:
         super().__init__(timeout=timeout)
         self.current_scope = current_scope if current_scope == "personal" else "server"
@@ -119,10 +130,12 @@ class TodoListDirectoryView(discord.ui.View):
         self.channel_id = channel_id
         self.channel_name = channel_name
         self.user_id = user_id
+        self.response_ephemeral = bool(response_ephemeral)
         self.message: Optional[discord.Message] = None
         self.sort_direction = (
             "descending" if sort_direction == "descending" else "ascending"
         )
+        self.session_id = str(session_id or "").strip() or None
         self.entries = [
             *[self._normalize_entry("Server", entry) for entry in server_lists],
             *[self._normalize_entry("Personal", entry) for entry in personal_lists],
@@ -131,7 +144,73 @@ class TodoListDirectoryView(discord.ui.View):
         self._sort_entries()
         self.total_pages = max(1, math.ceil(len(self.entries) / self.page_size))
         self.page = max(1, min(page, self.total_pages))
-        self._sync_button_state()
+        if self.session_id is not None:
+            self._build()
+
+    @classmethod
+    async def from_session(
+        cls,
+        interaction: discord.Interaction,
+        session_id: str,
+    ) -> Optional["TodoListDirectoryView"]:
+        session = await asyncio.to_thread(
+            todo_list_directory_sessions.get_session,
+            session_id,
+        )
+        if session is None:
+            return None
+
+        view = cls(
+            server_lists=[],
+            personal_lists=[],
+            current_scope=str(session.get("current_scope") or "server"),
+            guild_id=session.get("guild_id"),
+            channel_id=session.get("channel_id"),
+            channel_name=session.get("channel_name"),
+            user_id=session.get("user_id"),
+            page=max(1, int(session.get("page") or 1)),
+            page_size=max(1, int(session.get("page_size") or 5)),
+            sort_direction=str(session.get("sort_direction") or "ascending"),
+            response_ephemeral=bool(session.get("response_ephemeral", True)),
+            session_id=str(session.get("session_id") or session_id).strip(),
+        )
+        view.message = interaction.message
+        await view.refresh_entries()
+        await view.ensure_session()
+        return view
+
+    def session_state(self) -> dict:
+        return {
+            "current_scope": self.current_scope,
+            "guild_id": self.guild_id,
+            "channel_id": self.channel_id,
+            "channel_name": self.channel_name,
+            "user_id": self.user_id,
+            "page": self.page,
+            "page_size": self.page_size,
+            "sort_direction": self.sort_direction,
+            "response_ephemeral": self.response_ephemeral,
+        }
+
+    async def ensure_session(self) -> str:
+        if self.session_id is None:
+            self.session_id = await asyncio.to_thread(
+                todo_list_directory_sessions.create_session,
+                self.session_state(),
+            )
+        else:
+            await self.save_session()
+        self._build()
+        return self.session_id
+
+    async def save_session(self) -> None:
+        if self.session_id is None:
+            return
+        await asyncio.to_thread(
+            todo_list_directory_sessions.save_session,
+            self.session_id,
+            self.session_state(),
+        )
 
     @staticmethod
     def _normalize_entry(scope: str, entry: Dict[str, Any]) -> Dict[str, Any]:
@@ -188,28 +267,6 @@ class TodoListDirectoryView(discord.ui.View):
             total_items=self.total_items,
             sort_direction=self.sort_direction,
         )
-
-    def _sync_button_state(self) -> None:
-        self.previous_page.disabled = self.page <= 1
-        self.next_page.disabled = self.page >= self.total_pages
-        self.sort_lists.label = None
-        self.sort_lists.emoji = (
-            "🔽" if self.sort_direction == "descending" else "🔼"
-        )
-        self.sort_lists.style = (
-            discord.ButtonStyle.primary
-            if self.sort_direction == "descending"
-            else discord.ButtonStyle.secondary
-        )
-        entry_buttons = [
-            self.open_entry_1,
-            self.open_entry_2,
-            self.open_entry_3,
-            self.open_entry_4,
-            self.open_entry_5,
-        ]
-        for slot_index, button in enumerate(entry_buttons):
-            button.disabled = self._page_entry(slot_index) is None
 
     async def refresh_entries(self) -> None:
         server_lists: List[Dict[str, Any]] = []
@@ -311,7 +368,6 @@ class TodoListDirectoryView(discord.ui.View):
         self._sort_entries()
         self.total_pages = max(1, math.ceil(len(self.entries) / self.page_size))
         self.page = max(1, min(self.page, self.total_pages))
-        self._sync_button_state()
 
     def focus_list(self, list_id: Any) -> None:
         target_id = str(list_id or "").strip()
@@ -322,10 +378,11 @@ class TodoListDirectoryView(discord.ui.View):
             if str(entry.get("_id") or "").strip() != target_id:
                 continue
             self.page = (index // self.page_size) + 1
-            self._sync_button_state()
             return
 
     async def refresh_message(self, interaction: discord.Interaction) -> None:
+        self._build()
+        await self.save_session()
         try:
             if self.message is not None:
                 await self.message.edit(view=self, **self.payload())
@@ -337,11 +394,10 @@ class TodoListDirectoryView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "The list directory was updated, but refreshing it failed.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
-            return
 
     async def _send_list_card(
         self,
@@ -361,13 +417,14 @@ class TodoListDirectoryView(discord.ui.View):
             color=discord.Colour.blurple(),
             todo_list=todo_list,
             user_id=interaction.user.id,
+            response_ephemeral=self.response_ephemeral,
         )
         await interaction.response.send_message(
-            ephemeral=True,
+            ephemeral=self.response_ephemeral,
             **result_view.response_payload(),
         )
 
-    async def _open_page_entry(
+    async def open_page_entry(
         self,
         interaction: discord.Interaction,
         slot_index: int,
@@ -375,7 +432,7 @@ class TodoListDirectoryView(discord.ui.View):
         self.message = interaction.message
         entry = self._page_entry(slot_index)
         if entry is None:
-            await interaction.response.defer()
+            await interaction.response.defer(ephemeral=self.response_ephemeral)
             return
         selected_value = str(entry.get("_id") or "").strip()
 
@@ -389,7 +446,7 @@ class TodoListDirectoryView(discord.ui.View):
                 interaction,
                 UserVisibleError(
                     "Something went wrong while opening that list.",
-                    ephemeral=True,
+                    ephemeral=self.response_ephemeral,
                     cause=exc,
                 ),
             )
@@ -400,7 +457,10 @@ class TodoListDirectoryView(discord.ui.View):
             await self.refresh_message(interaction)
             await handle_interaction_error(
                 interaction,
-                ValidationError("That list is no longer available.", ephemeral=True),
+                ValidationError(
+                    "That list is no longer available.",
+                    ephemeral=self.response_ephemeral,
+                ),
             )
             return
 
@@ -412,104 +472,51 @@ class TodoListDirectoryView(discord.ui.View):
 
         await interaction.response.send_message(
             "Only the user who opened this list directory can use these controls.",
-            ephemeral=True,
+            ephemeral=inherit_ephemeral_from_interaction(
+                interaction,
+                default=self.response_ephemeral,
+            ),
         )
         return False
 
-    @discord.ui.button(label="1", style=discord.ButtonStyle.secondary, row=0)
-    async def open_entry_1(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        await self._open_page_entry(interaction, 0)
-
-    @discord.ui.button(label="2", style=discord.ButtonStyle.secondary, row=0)
-    async def open_entry_2(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        await self._open_page_entry(interaction, 1)
-
-    @discord.ui.button(label="3", style=discord.ButtonStyle.secondary, row=0)
-    async def open_entry_3(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        await self._open_page_entry(interaction, 2)
-
-    @discord.ui.button(label="4", style=discord.ButtonStyle.secondary, row=0)
-    async def open_entry_4(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        await self._open_page_entry(interaction, 3)
-
-    @discord.ui.button(label="5", style=discord.ButtonStyle.secondary, row=0)
-    async def open_entry_5(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        await self._open_page_entry(interaction, 4)
-
-    @discord.ui.button(style=discord.ButtonStyle.secondary, emoji="◀️", row=1)
-    async def previous_page(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        if self.page <= 1:
-            await interaction.response.defer()
+    def _build(self) -> None:
+        self.clear_items()
+        if self.session_id is None:
             return
 
-        self.page -= 1
-        self._sync_button_state()
-        await interaction.response.edit_message(view=self, **self.payload())
-
-    @discord.ui.button(style=discord.ButtonStyle.secondary, emoji="▶️", row=1)
-    async def next_page(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        if self.page >= self.total_pages:
-            await interaction.response.defer()
-            return
-
-        self.page += 1
-        self._sync_button_state()
-        await interaction.response.edit_message(view=self, **self.payload())
-
-    @discord.ui.button(style=discord.ButtonStyle.secondary, emoji="🔼", row=1)
-    async def sort_lists(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        self.message = interaction.message
-        self.sort_direction = (
-            "descending"
-            if self.sort_direction == "ascending"
-            else "ascending"
+        from views.todo_list_directory_dynamic_items import (
+            TodoDirectoryCreateButton,
+            TodoDirectoryNextButton,
+            TodoDirectoryOpenButton,
+            TodoDirectoryPrevButton,
+            TodoDirectorySortButton,
         )
-        self._sort_entries()
-        self.page = 1
-        self._sync_button_state()
-        await interaction.response.edit_message(view=self, **self.payload())
 
-    @discord.ui.button(
-        style=discord.ButtonStyle.success,
-        emoji="➕",
-        row=1,
-    )
-    async def create_list(
-        self,
-        interaction: discord.Interaction,
-        _: discord.ui.Button,
-    ) -> None:
-        self.message = interaction.message
-        await interaction.response.send_modal(TodoListDirectoryCreateModal(self))
+        for slot_index in range(self.page_size):
+            self.add_item(
+                TodoDirectoryOpenButton(
+                    self.session_id,
+                    slot_index,
+                    disabled=self._page_entry(slot_index) is None,
+                )
+            )
+
+        self.add_item(
+            TodoDirectoryPrevButton(
+                self.session_id,
+                disabled=self.page <= 1,
+            )
+        )
+        self.add_item(
+            TodoDirectoryNextButton(
+                self.session_id,
+                disabled=self.page >= self.total_pages,
+            )
+        )
+        self.add_item(
+            TodoDirectorySortButton(
+                self.session_id,
+                descending=self.sort_direction == "descending",
+            )
+        )
+        self.add_item(TodoDirectoryCreateButton(self.session_id))

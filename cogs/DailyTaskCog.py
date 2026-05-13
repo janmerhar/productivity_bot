@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 import logging
 import json
 from typing import Any, Dict, Optional
@@ -10,16 +9,17 @@ from discord.ext import commands, tasks
 
 from classes.DailyJob import CronSchedule, DailyJob
 from classes.DailyJobManager import DailyJobManager
-from embeds.PomodoroEmbeds import PomodoroEmbeds
-from views.PomodoroStartView import PomodoroStartView
+from config.env import settings
 from classes.PomodoroFunctions import PomodoroFunctions
 from classes.ReminderFunctions import ReminderFunctions
 from classes.TodoFunctions import TodoFunctions
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from embeds.HabitEmbeds import HabitEmbeds
+from embeds.PomodoroEmbeds import PomodoroEmbeds
 from embeds.TodoEmbeds import TodoEmbeds
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from views.PomodoroRestartView import PomodoroRestartView
+from views.PomodoroStartView import PomodoroStartView
 from classes.HabitFunctions import HabitFunctions
 from services.discord_helpers import (
     resolve_messageable_channel,
@@ -33,93 +33,163 @@ from services.cron_schedule import (
 )
 from services.error_reporting import UserVisibleError, ValidationError
 from services.timezone_gate import ensure_user_timezone
-from services.visibility import VISIBILITY_CHOICES, VISIBILITY_DESC, resolve_visibility
+from services.visibility import (
+    VISIBILITY_CHOICES,
+    VISIBILITY_DESC,
+    resolve_visibility_for_context,
+)
 from views.ReminderOutputView import ReminderOutputView
 
 
 class DailyTaskCog(commands.Cog):
-    jobs = app_commands.Group(name="jobs", description="Manage scheduled jobs")
+    if not settings.jobs_commands_disabled:
+        jobs = app_commands.Group(name="jobs", description="Manage scheduled jobs")
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._runner.start()
 
+    @staticmethod
+    def _resolve_response_visibility(
+        interaction: discord.Interaction,
+        visibility: Optional[app_commands.Choice[str]],
+    ) -> bool:
+        return resolve_visibility_for_context(
+            interaction.guild_id,
+            visibility,
+            guild_default="private",
+        )
+
+    async def _send_reminder_ping_dms(
+        self,
+        job: DailyJob,
+        *,
+        message_payload: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if not ReminderFunctions.notify_ping_users_in_dm(job):
+            return
+
+        user_ids = ReminderFunctions.ping_user_ids(job)
+        if not user_ids:
+            return
+
+        destination_user_id = (
+            ReminderFunctions.destination_user_id(job)
+            if ReminderFunctions.is_private_destination(job)
+            else None
+        )
+        guild = self.bot.get_guild(job.guild_id) if job.guild_id is not None else None
+
+        for user_id in user_ids:
+            if destination_user_id is not None and user_id == destination_user_id:
+                continue
+
+            user = self.bot.get_user(user_id)
+            if user is None:
+                try:
+                    user = await self.bot.fetch_user(user_id)
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                    continue
+
+            try:
+                if job.type == "message":
+                    reminder_view = ReminderOutputView(
+                        job=job,
+                        guild=guild,
+                        result_message="Reminder triggered.",
+                        ok=True,
+                        user_id=user_id,
+                        response_ephemeral=False,
+                    )
+                    dm_payload = reminder_view.response_payload()
+                    posted_message = await user.send(**dm_payload)
+                    reminder_view.message = posted_message
+                    continue
+
+                dm_payload = dict(message_payload or {})
+                content = str(dm_payload.get("content") or "").strip()
+                if content:
+                    _, body_text = ReminderFunctions._split_message_content(content)
+                    if body_text:
+                        dm_payload["content"] = body_text
+                    else:
+                        dm_payload.pop("content", None)
+
+                if not dm_payload:
+                    continue
+
+                await user.send(**dm_payload)
+            except discord.HTTPException:
+                logging.getLogger(__name__).exception(
+                    "Failed to DM reminder recipient",
+                    extra={"user_id": user_id, "job_id": str(job.id)},
+                )
+
     @commands.Cog.listener()
     async def on_ready(self):
         print("DailyTaskCog cog loaded")
-
-    @commands.Cog.listener()
-    async def on_voice_state_update(
-        self,
-        member: discord.Member,
-        before: discord.VoiceState,
-        after: discord.VoiceState,
-    ) -> None:
-        if self.bot.user is None or member.id != self.bot.user.id:
-            return
-        if before.channel is not None and after.channel is None:
-            await PomodoroVoiceManager.stop_for_guild(member.guild.id, force=True)
 
     def cog_unload(self) -> None:
         if self._runner.is_running():
             self._runner.cancel()
 
-    @jobs.command(name="create", description="Create a recurring job")
-    @app_commands.describe(
-        schedule="Cron expression or natural language schedule",
-        type="Type of the job to create",
-        data="Payload for the job; plain text for message jobs and ticker/coin id for crypto jobs",
-        visibility=VISIBILITY_DESC,
-    )
-    @app_commands.choices(
-        type=[
-            app_commands.Choice(name="Crypto", value="crypto"),
-            app_commands.Choice(name="Message", value="message"),
-        ],
-        visibility=VISIBILITY_CHOICES,
-    )
-    async def job(
-        self,
-        interaction: discord.Interaction,
-        schedule: str,
-        type: app_commands.Choice[str],
-        data: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
-        timezone = None
-        if not is_valid_cron_expression(schedule):
-
-            async def _continue_with_timezone(
-                followup_interaction: discord.Interaction,
-                resolved_timezone: str,
-            ) -> None:
-                await self._create_job(
-                    interaction=followup_interaction,
-                    schedule=schedule,
-                    job_type=type.value,
-                    data=data,
-                    ephemeral=ephemeral,
-                    timezone=resolved_timezone,
-                )
-
-            timezone = await ensure_user_timezone(
-                interaction,
-                _continue_with_timezone,
-                continue_message="Timezone saved as `{timezone}`. Continuing `/jobs create`.",
-            )
-            if timezone is None:
-                return
-
-        await interaction.response.defer(ephemeral=ephemeral)
-        await self._create_job(
-            interaction=interaction,
-            schedule=schedule,
-            job_type=type.value,
-            data=data,
-            ephemeral=ephemeral,
-            timezone=timezone,
+    if not settings.jobs_commands_disabled:
+        @jobs.command(name="create", description="Create a recurring job")
+        @app_commands.describe(
+            schedule="Cron expression or natural language schedule",
+            type="Type of the job to create",
+            data="Payload for the job; plain text for message jobs and ticker/coin id for crypto jobs",
+            visibility=VISIBILITY_DESC,
         )
+        @app_commands.choices(
+            type=[
+                app_commands.Choice(name="Crypto", value="crypto"),
+                app_commands.Choice(name="Message", value="message"),
+            ],
+            visibility=VISIBILITY_CHOICES,
+        )
+        async def job(
+            self,
+            interaction: discord.Interaction,
+            schedule: str,
+            type: app_commands.Choice[str],
+            data: str,
+            visibility: Optional[app_commands.Choice[str]] = None,
+        ) -> None:
+            ephemeral = self._resolve_response_visibility(interaction, visibility)
+            timezone = None
+            if not is_valid_cron_expression(schedule):
+                async def _continue_with_timezone(
+                    followup_interaction: discord.Interaction,
+                    resolved_timezone: str,
+                ) -> None:
+                    await self._create_job(
+                        interaction=followup_interaction,
+                        schedule=schedule,
+                        job_type=type.value,
+                        data=data,
+                        ephemeral=ephemeral,
+                        timezone=resolved_timezone,
+                    )
+
+                timezone = await ensure_user_timezone(
+                    interaction,
+                    _continue_with_timezone,
+                    continue_message="Timezone saved as `{timezone}`. Continuing `/jobs create`.",
+                    response_ephemeral=ephemeral,
+                )
+                if timezone is None:
+                    return
+
+            await interaction.response.defer(ephemeral=ephemeral)
+            await self._create_job(
+                interaction=interaction,
+                schedule=schedule,
+                job_type=type.value,
+                data=data,
+                ephemeral=ephemeral,
+                timezone=timezone,
+            )
 
     async def _create_job(
         self,
@@ -182,12 +252,14 @@ class DailyTaskCog(commands.Cog):
                 job_id=str(created_job.id),
                 channel_id=interaction.channel_id,
                 guild_id=interaction.guild_id,
+                response_ephemeral=ephemeral,
             ),
         )
 
-    @tasks.loop(seconds=5)
+    @tasks.loop(minutes=1)
     async def _runner(self) -> None:
         manager = DailyJobManager()
+        manager.get_due_jobs()
         runs = await asyncio.to_thread(manager.run_due_jobs)
 
         if not runs:
@@ -198,7 +270,6 @@ class DailyTaskCog(commands.Cog):
                 channel = await resolve_messageable_channel(self.bot, job.channel_id)
                 if channel is None:
                     continue
-
                 data = job.data or {}
                 mode = str(data.get("mode", "focus")).strip().lower()
                 if mode not in ("focus", "break"):
@@ -212,29 +283,26 @@ class DailyTaskCog(commands.Cog):
                 owner_id = int(user_raw) if user_raw.isdigit() else 0
                 guild = getattr(channel, "guild", None)
 
+                raw_focus_dur = str(data.get("focus_duration") or "").strip()
+                raw_break_dur = str(data.get("break_duration") or "").strip()
+                stored_focus_dur = int(raw_focus_dur) if raw_focus_dur.isdigit() else None
+                stored_break_dur = int(raw_break_dur) if raw_break_dur.isdigit() else None
+                current_streak = PomodoroFunctions._safe_int(
+                    data.get("streak"), default=0
+                )
+                next_streak = PomodoroFunctions._next_streak(mode, current_streak)
+                if mode == "focus" and owner_id:
+                    await asyncio.to_thread(
+                        PomodoroFunctions.update_best_pomodoro_streak,
+                        owner_id,
+                        next_streak,
+                    )
+
                 if auto_cycle_enabled:
                     next_mode = "break" if mode == "focus" else "focus"
-                    raw_break = str(data.get("break_duration") or "").strip()
-                    stored_break_dur: Optional[int] = (
-                        int(raw_break) if raw_break.isdigit() else None
-                    )
-                    raw_focus = str(data.get("focus_duration") or "").strip()
-                    stored_focus_dur: Optional[int] = (
-                        int(raw_focus) if raw_focus.isdigit() else None
-                    )
                     next_duration_min = (
                         stored_break_dur if next_mode == "break" else stored_focus_dur
                     )
-                    current_streak = PomodoroFunctions._safe_int(
-                        data.get("streak"), default=0
-                    )
-                    next_streak = PomodoroFunctions._next_streak(mode, current_streak)
-                    if mode == "focus" and owner_id:
-                        await asyncio.to_thread(
-                            PomodoroFunctions.update_best_pomodoro_streak,
-                            owner_id,
-                            next_streak,
-                        )
                     next_end_time, next_duration, next_data, next_schedule = (
                         PomodoroFunctions.insert_pomodoro_timer(
                             channel_id=job.channel_id or channel.id,
@@ -295,12 +363,12 @@ class DailyTaskCog(commands.Cog):
                     )
                     next_payload["content"] = voice_error or None
 
-                    if owner_id:
-                        notify_text = (
-                            f"<@{owner_id}> Focus session finished."
-                            if mode == "focus"
-                            else f"<@{owner_id}> Break finished."
-                        )
+                    notify_text = (
+                        f"<@{owner_id}> Focus session finished."
+                        if mode == "focus"
+                        else f"<@{owner_id}> Break finished."
+                    ) if owner_id else None
+                    if notify_text:
                         await channel.send(content=notify_text)
 
                     posted_message: Optional[discord.Message] = None
@@ -332,18 +400,6 @@ class DailyTaskCog(commands.Cog):
                         )
                     continue
 
-                raw_focus_dur = str(data.get("focus_duration") or "").strip()
-                raw_break_dur = str(data.get("break_duration") or "").strip()
-                current_streak = PomodoroFunctions._safe_int(
-                    data.get("streak"), default=0
-                )
-                next_streak = PomodoroFunctions._next_streak(mode, current_streak)
-                if mode == "focus" and owner_id:
-                    await asyncio.to_thread(
-                        PomodoroFunctions.update_best_pomodoro_streak,
-                        owner_id,
-                        next_streak,
-                    )
                 pomodoro_payload = PomodoroFunctions.pomodoro_payload(
                     job, streak=next_streak
                 )
@@ -352,18 +408,13 @@ class DailyTaskCog(commands.Cog):
                 )
                 pomodoro_payload["view"] = PomodoroRestartView(
                     user_id=owner_id,
-                    focus_duration=(
-                        int(raw_focus_dur) if raw_focus_dur.isdigit() else None
-                    ),
-                    break_duration=(
-                        int(raw_break_dur) if raw_break_dur.isdigit() else None
-                    ),
+                    focus_duration=stored_focus_dur,
+                    break_duration=stored_break_dur,
                     streak=next_streak,
                     chain_expires_at=chain_expires_at,
                 )
 
                 notify_text = pomodoro_payload.pop("content", None)
-
                 end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
                 if guild is not None:
                     await PomodoroVoiceManager.stop_for_guild(guild.id, end_time)
@@ -388,7 +439,7 @@ class DailyTaskCog(commands.Cog):
             if job.type == "todo":
                 task_id = job.data.get("task_id")
                 todo = TodoFunctions.fetch_todo(task_id, job.guild_id)
-                if not todo or todo.get("state") != "todo":
+                if not todo or TodoFunctions.item_status(todo) == "done":
                     continue
                 todo_list = None
                 list_id = todo.get("list_id")
@@ -438,6 +489,23 @@ class DailyTaskCog(commands.Cog):
                 if not HabitFunctions.needs_completion_today(habit):
                     continue
 
+                if HabitFunctions._normalize_scope(str(habit.get("scope"))) == "personal":
+                    user_id = habit.get("user_id")
+                    if not user_id:
+                        continue
+                    user = self.bot.get_user(user_id)
+                    if user is None:
+                        user = await self.bot.fetch_user(user_id)
+                    habit_payload = HabitEmbeds.habit_reminder_payload(habit)
+                    try:
+                        await user.send(**habit_payload)
+                    except discord.HTTPException:
+                        logging.getLogger(__name__).exception(
+                            "Failed to DM habit reminder",
+                            extra={"user_id": user_id, "habit_id": habit_id},
+                        )
+                    continue
+
                 channel = await resolve_messageable_channel(self.bot, job.channel_id)
                 if channel is None:
                     continue
@@ -455,26 +523,42 @@ class DailyTaskCog(commands.Cog):
                     continue
 
                 if job.type == "message":
+                    reminder_guild = (
+                        getattr(channel, "guild", None)
+                        or (
+                            self.bot.get_guild(job.guild_id)
+                            if job.guild_id is not None
+                            else None
+                        )
+                    )
                     reminder_view = ReminderOutputView(
                         job=job,
-                        guild=getattr(channel, "guild", None),
+                        guild=reminder_guild,
                         result_message="Reminder triggered.",
                         ok=True,
+                        user_id=(
+                            ReminderFunctions.destination_user_id(job)
+                            if ReminderFunctions.is_private_destination(job)
+                            else None
+                        ),
                         response_ephemeral=False,
                     )
                     reminder_payload = reminder_view.response_payload()
-                    ping_text = ReminderFunctions.reminder_edit_values(job).get(
-                        "ping_text"
-                    )
+                    ping_text = ReminderFunctions.reminder_edit_values(job).get("ping_text")
                     if ping_text:
                         reminder_payload["content"] = ping_text
 
                     posted_message = await channel.send(**reminder_payload)
                     reminder_view.message = posted_message
+                    await self._send_reminder_ping_dms(job)
                     continue
 
                 if payload:
                     await channel.send(**payload)
+                    await self._send_reminder_ping_dms(
+                        job,
+                        message_payload=payload,
+                    )
                 continue
             if not payload:
                 continue
@@ -525,71 +609,72 @@ class DailyTaskCog(commands.Cog):
 
         return f"- `{job.id}` {data_label} ({schedule_label})"
 
-    @jobs.command(name="list", description="List scheduled jobs for this channel")
-    @app_commands.describe(visibility=VISIBILITY_DESC)
-    @app_commands.choices(visibility=VISIBILITY_CHOICES)
-    async def jobs_list(
-        self,
-        interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
-        await interaction.response.defer(ephemeral=ephemeral)
-        manager = DailyJobManager()
-        jobs = await asyncio.to_thread(
-            manager.list_jobs,
-            interaction.channel_id,
-            interaction.guild_id,
-        )
-
-        lines = [self._format_job(job) for job in jobs]
-        await interaction.followup.send(
-            ephemeral=ephemeral, **DailyTaskEmbeds.jobs_list_embed(lines)
-        )
-
-    @jobs.command(name="delete", description="Delete a scheduled job")
-    @app_commands.describe(
-        job_id="Job id from /jobs list",
-        visibility=VISIBILITY_DESC,
-    )
-    @app_commands.choices(visibility=VISIBILITY_CHOICES)
-    async def jobs_cancel(
-        self,
-        interaction: discord.Interaction,
-        job_id: str,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ) -> None:
-        ephemeral = resolve_visibility(visibility, default="private")
-        await interaction.response.defer(ephemeral=ephemeral)
-        manager = DailyJobManager()
-
-        try:
-            deleted = await asyncio.to_thread(
-                manager.delete_job,
-                job_id.strip(),
+    if not settings.jobs_commands_disabled:
+        @jobs.command(name="list", description="List scheduled jobs for this channel")
+        @app_commands.describe(visibility=VISIBILITY_DESC)
+        @app_commands.choices(visibility=VISIBILITY_CHOICES)
+        async def jobs_list(
+            self,
+            interaction: discord.Interaction,
+            visibility: Optional[app_commands.Choice[str]] = None,
+        ) -> None:
+            ephemeral = self._resolve_response_visibility(interaction, visibility)
+            await interaction.response.defer(ephemeral=ephemeral)
+            manager = DailyJobManager()
+            jobs = await asyncio.to_thread(
+                manager.list_jobs,
                 interaction.channel_id,
                 interaction.guild_id,
             )
-        except ValueError as exc:
-            raise ValidationError(
-                "That job id is invalid.",
-                ephemeral=ephemeral,
-                cause=exc,
-            )
 
-        if deleted:
+            lines = [self._format_job(job) for job in jobs]
             await interaction.followup.send(
-                ephemeral=ephemeral,
-                **DailyTaskEmbeds.jobs_cancel_embed(
-                    f"Deleted job `{job_id}`.", ok=True
-                ),
+                ephemeral=ephemeral, **DailyTaskEmbeds.jobs_list_embed(lines)
             )
-            return
 
-        raise ValidationError(
-            "No job found with that id in this channel.",
-            ephemeral=ephemeral,
+        @jobs.command(name="delete", description="Delete a scheduled job")
+        @app_commands.describe(
+            job_id="Job id from /jobs list",
+            visibility=VISIBILITY_DESC,
         )
+        @app_commands.choices(visibility=VISIBILITY_CHOICES)
+        async def jobs_cancel(
+            self,
+            interaction: discord.Interaction,
+            job_id: str,
+            visibility: Optional[app_commands.Choice[str]] = None,
+        ) -> None:
+            ephemeral = self._resolve_response_visibility(interaction, visibility)
+            await interaction.response.defer(ephemeral=ephemeral)
+            manager = DailyJobManager()
+
+            try:
+                deleted = await asyncio.to_thread(
+                    manager.delete_job,
+                    job_id.strip(),
+                    interaction.channel_id,
+                    interaction.guild_id,
+                )
+            except ValueError as exc:
+                raise ValidationError(
+                    "That job id is invalid.",
+                    ephemeral=ephemeral,
+                    cause=exc,
+                )
+
+            if deleted:
+                await interaction.followup.send(
+                    ephemeral=ephemeral,
+                    **DailyTaskEmbeds.jobs_cancel_embed(
+                        f"Deleted job `{job_id}`.", ok=True
+                    ),
+                )
+                return
+
+            raise ValidationError(
+                "No job found with that id in this channel.",
+                ephemeral=ephemeral,
+            )
 
 
 async def setup(client: commands.Bot) -> None:

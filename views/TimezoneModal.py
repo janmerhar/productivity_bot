@@ -22,12 +22,15 @@ class TimezoneModal(discord.ui.Modal, title="Set Timezone"):
         *,
         continue_message: Optional[str] = None,
         response_ephemeral: bool = True,
+        default_timezone: Optional[str] = None,
     ):
         super().__init__()
         self._user_id = int(user_id)
         self._on_timezone_resolved = on_timezone_resolved
         self._continue_message = continue_message
         self._response_ephemeral = bool(response_ephemeral)
+        if default_timezone:
+            self.timezone.default = default_timezone[:100]
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         if interaction.user.id != self._user_id:
