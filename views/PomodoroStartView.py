@@ -5,6 +5,7 @@ import discord
 
 from services.visibility import inherit_ephemeral_from_interaction
 from views.pomodoro_dynamic_items import (
+    PomodoroStartAutoCycleButton,
     PomodoroStartExtendButton,
     PomodoroStartPlayPauseButton,
     PomodoroStartSelectVoiceButton,
@@ -275,7 +276,11 @@ class PomodoroStartView(discord.ui.View):
         mode: str = "focus",
         end_time: Optional[datetime.datetime] = None,
         is_paused: bool = False,
+        auto_cycle_enabled: bool = False,
         voice_channel_select_enabled: bool = True,
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
+        streak: int = 0,
         *,
         timeout: Optional[float] = None,
     ) -> None:
@@ -289,6 +294,7 @@ class PomodoroStartView(discord.ui.View):
         )
         self.add_item(PomodoroStartPlayPauseButton(user_id, paused=is_paused))
         self.add_item(PomodoroStartExtendButton(user_id, disabled=is_paused))
+        self.add_item(PomodoroStartAutoCycleButton(user_id, enabled=auto_cycle_enabled))
         self.add_item(PomodoroStartStopButton(user_id))
 
         if join_url:
@@ -303,26 +309,21 @@ class PomodoroStartView(discord.ui.View):
         embed: Optional[discord.Embed],
         end_time: datetime.datetime,
         duration_minutes: int,
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
+        streak: int = 0,
     ) -> Optional[discord.Embed]:
         if embed is None:
             return None
         updated = embed.copy()
-        for idx, field in enumerate(updated.fields):
-            field_name = (field.name or "").strip().lower()
-            if field_name == "ends":
-                updated.set_field_at(
-                    idx,
-                    name=field.name,
-                    value=PomodoroStartView._relative_timestamp(end_time),
-                    inline=field.inline,
-                )
-            elif field_name == "duration":
-                updated.set_field_at(
-                    idx,
-                    name=field.name,
-                    value=f"{duration_minutes} minutes",
-                    inline=field.inline,
-                )
+        from embeds.PomodoroEmbeds import PomodoroEmbeds
+
+        updated.description = PomodoroEmbeds.running_description(end_time)
+        updated.set_footer(
+            text=PomodoroEmbeds._duration_footer(
+                focus_duration, break_duration, streak
+            )
+        )
         return updated
 
     @staticmethod
@@ -330,31 +331,28 @@ class PomodoroStartView(discord.ui.View):
         embed: Optional[discord.Embed],
         mode: str,
         remaining_minutes: int,
+        remaining_seconds: Optional[int] = None,
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
+        streak: int = 0,
     ) -> Optional[discord.Embed]:
         if embed is None:
             return None
 
         updated = embed.copy()
-        updated.title = "Pomodoro Paused"
-        updated.description = f"{mode.capitalize()} timer is paused."
-        updated.color = discord.Colour.orange()
+        from embeds.PomodoroEmbeds import PomodoroEmbeds
 
-        for idx, field in enumerate(updated.fields):
-            field_name = (field.name or "").strip().lower()
-            if field_name == "ends":
-                updated.set_field_at(
-                    idx,
-                    name=field.name,
-                    value="Paused",
-                    inline=field.inline,
-                )
-            elif field_name == "duration":
-                updated.set_field_at(
-                    idx,
-                    name=field.name,
-                    value=f"{remaining_minutes} minutes",
-                    inline=field.inline,
-                )
+        updated.title = f"{mode.capitalize()} Session - Paused"
+        updated.description = PomodoroEmbeds.paused_description(
+            remaining_seconds=remaining_seconds,
+            remaining_minutes=remaining_minutes,
+        )
+        updated.color = discord.Colour.orange()
+        updated.set_footer(
+            text=PomodoroEmbeds._duration_footer(
+                focus_duration, break_duration, streak
+            )
+        )
         return updated
 
     @staticmethod
@@ -363,16 +361,21 @@ class PomodoroStartView(discord.ui.View):
         mode: str,
         end_time: datetime.datetime,
         duration_minutes: int,
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
+        streak: int = 0,
     ) -> Optional[discord.Embed]:
         updated = PomodoroStartView._with_updated_timer_fields(
             embed,
             end_time,
             duration_minutes,
+            focus_duration,
+            break_duration,
+            streak,
         )
         if updated is None:
             return None
 
-        updated.title = "Pomodoro Resumed"
-        updated.description = f"{mode.capitalize()} timer resumed."
+        updated.title = f"{mode.capitalize()} Session"
         updated.color = discord.Colour.green()
         return updated

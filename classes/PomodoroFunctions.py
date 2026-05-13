@@ -1,3 +1,5 @@
+# PomodoroFunctions.py
+
 import asyncio
 import datetime
 import math
@@ -5,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 from embeds.PomodoroEmbeds import PomodoroEmbeds
-from classes.DailyJob import DailyJob, OneTimeSchedule2
+from classes.DailyJob import DailyJob, OneTimeSchedule2, ScheduleConfig
 from classes.DailyJobManager import DailyJobManager
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from config.db import mongo_db
@@ -16,6 +18,9 @@ import discord
 class PomodoroStopResult:
     ok: bool
     message: str
+    streak: int = 0
+    focus_duration: Optional[int] = None
+    break_duration: Optional[int] = None
 
 
 @dataclass
@@ -32,7 +37,9 @@ class PomodoroPauseResult:
     ok: bool
     message: str
     mode: Optional[str] = None
+    duration_minutes: Optional[int] = None
     remaining_minutes: Optional[int] = None
+    remaining_seconds: Optional[int] = None
 
 
 @dataclass
@@ -51,6 +58,10 @@ class PomodoroState:
     end_time: Optional[datetime.datetime] = None
     duration_minutes: Optional[int] = None
     is_paused: bool = False
+    auto_cycle_enabled: bool = False
+    focus_duration: Optional[int] = None
+    break_duration: Optional[int] = None
+    streak: int = 0
 
 
 class PomodoroFunctions:
@@ -62,7 +73,7 @@ class PomodoroFunctions:
             return None
         if value.tzinfo is not None and value.utcoffset() is not None:
             value = value.astimezone().replace(tzinfo=None)
-        return value.replace(second=0, microsecond=0)
+        return value.replace(microsecond=0)
 
     @staticmethod
     def _is_truthy(value: Any) -> bool:
@@ -80,6 +91,19 @@ class PomodoroFunctions:
             return int(str(value).strip())
         except (TypeError, ValueError):
             return default
+
+    @staticmethod
+    def _resolve_total_duration_minutes(
+        data: Optional[Mapping[str, Any]],
+        *,
+        fallback: int = 0,
+    ) -> int:
+        payload = data or {}
+        for key in ("total_duration_minutes", "duration"):
+            value = PomodoroFunctions._safe_int(payload.get(key), default=0)
+            if value > 0:
+                return value
+        return max(0, fallback)
 
     @staticmethod
     async def _list_scope_jobs(
@@ -130,19 +154,31 @@ class PomodoroFunctions:
         return selected_job, selected_end_time
 
     @staticmethod
+    def _next_streak(mode: str, streak: int) -> int:
+        if mode == "focus":
+            return streak + 1
+        return streak
+
+    @staticmethod
     def create_timer(
         guild_id: Optional[int],
         channel_id: int,
         mode: str,
         duration_minutes: Optional[int],
         user_id: Union[int, str],
-    ) -> Tuple[datetime.datetime, int]:
+        break_duration: Optional[int] = None,
+        focus_duration: Optional[int] = None,
+        streak: int = 0,
+    ) -> Tuple[datetime.datetime, int, DailyJob]:
         end_time, resolved_duration, data, schedule = (
             PomodoroFunctions.insert_pomodoro_timer(
                 channel_id=channel_id,
                 mode=mode,
                 duration_minutes=duration_minutes,
                 user_id=user_id,
+                break_duration=break_duration,
+                focus_duration=focus_duration,
+                streak=streak,
             )
         )
         manager = DailyJobManager()
@@ -153,27 +189,16 @@ class PomodoroFunctions:
                     "Only one pomodoro timer can be active per server. "
                     "Stop the current timer first."
                 )
-        manager.insert_job(guild_id, channel_id, "pomodoro", data, schedule)
 
-        return end_time, resolved_duration
-
-    @staticmethod
-    def insert_timer(
-        channel_id: int,
-        mode: str,
-        duration: Optional[int],
-        user_id: Union[int, str],
-    ) -> Tuple[datetime.datetime, int, Dict[str, str], OneTimeSchedule2]:
-        end_time, duration_minutes, data, schedule = (
-            PomodoroFunctions.insert_pomodoro_timer(
-                channel_id=channel_id,
-                mode=mode,
-                duration_minutes=duration,
-                user_id=user_id,
-            )
+        created_job = manager.insert_job(
+            guild_id,
+            channel_id,
+            "pomodoro",
+            data,
+            schedule,
         )
 
-        return end_time, duration_minutes, data, schedule
+        return end_time, resolved_duration, created_job
 
     @staticmethod
     def insert_pomodoro_timer(
@@ -181,7 +206,10 @@ class PomodoroFunctions:
         mode: str,
         duration_minutes: Optional[int],
         user_id: Union[int, str],
-    ) -> Tuple[datetime.datetime, int, Dict[str, str], OneTimeSchedule2]:
+        break_duration: Optional[int] = None,
+        focus_duration: Optional[int] = None,
+        streak: int = 0,
+    ) -> Tuple[datetime.datetime, int, Dict[str, Any], OneTimeSchedule2]:
         normalized_mode = mode.lower()
         if normalized_mode not in ("focus", "break"):
             raise ValueError("Invalid pomodoro mode.")
@@ -195,24 +223,34 @@ class PomodoroFunctions:
 
         end_time = (
             datetime.datetime.now() + datetime.timedelta(minutes=resolved_duration)
-        ).replace(second=0, microsecond=0)
+        ).replace(microsecond=0)
 
         schedule = OneTimeSchedule2(datetime=end_time.isoformat())
-        data = {
+        data: Dict[str, Any] = {
             "mode": normalized_mode,
             "duration": str(resolved_duration),
+            "total_duration_minutes": str(resolved_duration),
             "user": str(user_id),
+            "auto_cycle": False,
+            "streak": streak,
         }
+        if focus_duration is not None:
+            data["focus_duration"] = str(focus_duration)
+        if break_duration is not None:
+            data["break_duration"] = str(break_duration)
 
         return end_time, resolved_duration, data, schedule
 
     @staticmethod
     def parse_schedule_datetime(
-        schedule: Optional[Mapping[str, Any]],
+        schedule: Optional[Union[ScheduleConfig, Mapping[str, Any]]],
     ) -> Optional[datetime.datetime]:
         if not schedule:
             return None
-        raw_value = schedule.get("datetime")
+        if isinstance(schedule, Mapping):
+            raw_value = schedule.get("datetime")
+        else:
+            raw_value = getattr(schedule, "datetime", None)
         if not raw_value:
             return None
         try:
@@ -221,19 +259,210 @@ class PomodoroFunctions:
             return None
 
     @staticmethod
-    def pomodoro_payload(job: DailyJob) -> Dict[str, Any]:
-        data = job.data or {}
-        mode = str(data.get("mode", "focus")).lower()
-        duration = data.get("duration", "")
-        user_id = data.get("user")
-        end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
+    async def bind_timer_message(
+        *,
+        job_id: str,
+        channel_id: Optional[int],
+        guild_id: Optional[int],
+        message_id: int,
+    ) -> None:
+        manager = DailyJobManager()
 
-        return PomodoroEmbeds.timer_complete_embed(
+        try:
+            job = await asyncio.to_thread(
+                manager.get_job,
+                job_id,
+                channel_id if guild_id is None else None,
+                guild_id,
+            )
+        except Exception:
+            return
+
+        if job is None:
+            return
+
+        data = dict(job.data or {})
+        data["message_id"] = str(message_id)
+
+        try:
+            await asyncio.to_thread(
+                manager.update_job,
+                job_id,
+                data,
+                None,
+                None,
+                channel_id if guild_id is None else None,
+                guild_id,
+            )
+        except Exception:
+            return
+
+    @staticmethod
+    async def toggle_auto_cycle(
+        interaction: discord.Interaction,
+        *,
+        expected_end_time: Optional[datetime.datetime] = None,
+        is_paused: Optional[bool] = None,
+    ) -> Tuple[bool, Optional[bool], str]:
+        manager = DailyJobManager()
+
+        try:
+            jobs = await PomodoroFunctions._list_scope_jobs(manager, interaction)
+        except Exception:
+            return False, None, "Something went wrong while updating auto-cycle."
+
+        user_id = str(interaction.user.id)
+        user_jobs = [
+            job
+            for job in jobs
+            if job.type == "pomodoro" and str((job.data or {}).get("user")) == user_id
+        ]
+        if not user_jobs:
+            return (
+                False,
+                None,
+                "You don't have an active pomodoro "
+                f"{PomodoroFunctions._scope_message(interaction)}.",
+            )
+
+        normalized_expected = PomodoroFunctions._normalize_datetime(expected_end_time)
+        selected_job: Optional[DailyJob] = None
+        best_distance_seconds: Optional[float] = None
+
+        for job in user_jobs:
+            paused = PomodoroFunctions._is_truthy((job.data or {}).get("paused"))
+            if is_paused is not None and paused != is_paused:
+                continue
+
+            scheduled_end_time = PomodoroFunctions._normalize_datetime(
+                PomodoroFunctions.parse_schedule_datetime(job.schedule)
+            )
+
+            if normalized_expected is None or scheduled_end_time is None:
+                if selected_job is None:
+                    selected_job = job
+                continue
+
+            distance_seconds = abs(
+                (scheduled_end_time - normalized_expected).total_seconds()
+            )
+            if (
+                best_distance_seconds is None
+                or distance_seconds < best_distance_seconds
+            ):
+                best_distance_seconds = distance_seconds
+                selected_job = job
+
+        if selected_job is None:
+            return False, None, "I couldn't find that pomodoro."
+
+        data = dict(selected_job.data or {})
+        enabled = not PomodoroFunctions._is_truthy(data.get("auto_cycle"))
+        data["auto_cycle"] = enabled
+
+        try:
+            updated = await asyncio.to_thread(
+                manager.update_job,
+                str(selected_job.id),
+                data=data,
+                channel_id=(
+                    interaction.channel_id if interaction.guild_id is None else None
+                ),
+                guild_id=interaction.guild_id,
+            )
+        except Exception:
+            return False, None, "Something went wrong while updating auto-cycle."
+
+        if not updated:
+            return False, None, "I couldn't update auto-cycle. Please try again."
+
+        return (
+            True,
+            enabled,
+            ("Auto-cycle enabled." if enabled else "Auto-cycle disabled."),
+        )
+
+    @staticmethod
+    def pomodoro_payload(job: DailyJob, streak: int = 0) -> Dict[str, Any]:
+        data = job.data or {}
+        mode = str(data.get("mode", "focus")).strip().lower()
+        if mode not in ("focus", "break"):
+            mode = "focus"
+
+        duration = data.get("duration", "")
+        user_id = str(data.get("user", "")).strip()
+        end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
+        raw_focus = str(data.get("focus_duration") or "").strip()
+        raw_break = str(data.get("break_duration") or "").strip()
+
+        payload = PomodoroEmbeds.timer_complete_embed(
             mode=mode,
             duration_minutes=duration,
             end_time=end_time,
-            user_id=user_id,
+            user_id=user_id or None,
+            focus_duration=int(raw_focus) if raw_focus.isdigit() else None,
+            break_duration=int(raw_break) if raw_break.isdigit() else None,
+            streak=streak,
         )
+
+        if user_id.isdigit():
+            if mode == "break":
+                payload["content"] = f"<@{user_id}> Break finished."
+            else:
+                payload["content"] = f"<@{user_id}> Focus session finished."
+
+        return payload
+
+    @staticmethod
+    def update_best_pomodoro_streak(user_id: int, streak: int) -> None:
+        mongo_db["user_stats"].update_one(
+            {"user_id": str(user_id)},
+            {"$max": {"pomodoro.best_streak": streak}},
+            upsert=True,
+        )
+
+    @staticmethod
+    def fetch_best_pomodoro_streak(user_id: int) -> int:
+        doc = mongo_db["user_stats"].find_one({"user_id": str(user_id)})
+        if doc is None:
+            return 0
+        return PomodoroFunctions._safe_int(
+            (doc.get("pomodoro") or {}).get("best_streak"), default=0
+        )
+
+    @staticmethod
+    def fetch_pomodoro_streak_info(
+        user_id: int,
+        guild_id: Optional[int],
+        channel_id: int,
+    ) -> Tuple[int, int]:
+        last = PomodoroFunctions.fetch_last_pomodoro_streak(user_id, guild_id, channel_id)
+        best = PomodoroFunctions.fetch_best_pomodoro_streak(user_id)
+        return last, best
+
+    @staticmethod
+    def fetch_last_pomodoro_streak(
+        user_id: int,
+        guild_id: Optional[int],
+        channel_id: int,
+    ) -> int:
+        query: Dict[str, Any] = {
+            "type": "pomodoro",
+            "data.user": str(user_id),
+            "last_run": {"$ne": None},
+        }
+        if guild_id is not None:
+            query["guild_id"] = guild_id
+        else:
+            query["channel_id"] = channel_id
+
+        doc = mongo_db["tasks"].find_one(query, sort=[("last_run", -1)])
+        if doc is None:
+            return 0
+        data = doc.get("data") or {}
+        streak = PomodoroFunctions._safe_int(data.get("streak"), default=0)
+        mode = str(data.get("mode", "")).strip().lower()
+        return PomodoroFunctions._next_streak(mode, streak)
 
     @staticmethod
     async def stop_user_pomodoro(
@@ -253,7 +482,7 @@ class PomodoroFunctions:
         user_jobs = [
             job
             for job in jobs
-            if job.type == "pomodoro" and str(job.data.get("user")) == user_id
+            if job.type == "pomodoro" and str((job.data or {}).get("user")) == user_id
         ]
 
         if not user_jobs:
@@ -265,13 +494,24 @@ class PomodoroFunctions:
                 ),
             )
 
+        first_job_data = user_jobs[0].data or {}
+        last_streak = PomodoroFunctions._safe_int(first_job_data.get("streak"), default=0)
+        raw_focus = str(first_job_data.get("focus_duration") or "").strip()
+        raw_break = str(first_job_data.get("break_duration") or "").strip()
+        stop_focus_duration = int(raw_focus) if raw_focus.isdigit() else None
+        stop_break_duration = int(raw_break) if raw_break.isdigit() else None
+
         deleted_count = 0
         for job in user_jobs:
             try:
                 deleted = await asyncio.to_thread(
                     manager.delete_job,
                     str(job.id),
-                    None if interaction.guild_id is not None else interaction.channel_id,
+                    (
+                        None
+                        if interaction.guild_id is not None
+                        else interaction.channel_id
+                    ),
                     interaction.guild_id,
                 )
             except Exception:
@@ -302,7 +542,13 @@ class PomodoroFunctions:
         elif interaction.guild is not None:
             message += " Voice stays connected while other pomodoros run."
 
-        return PomodoroStopResult(ok=True, message=message)
+        return PomodoroStopResult(
+            ok=True,
+            message=message,
+            streak=last_streak,
+            focus_duration=stop_focus_duration,
+            break_duration=stop_break_duration,
+        )
 
     @staticmethod
     async def pause_user_pomodoro(
@@ -323,7 +569,7 @@ class PomodoroFunctions:
         user_jobs = [
             job
             for job in jobs
-            if job.type == "pomodoro" and str(job.data.get("user")) == user_id
+            if job.type == "pomodoro" and str((job.data or {}).get("user")) == user_id
         ]
         if not user_jobs:
             return PomodoroPauseResult(
@@ -334,9 +580,11 @@ class PomodoroFunctions:
                 ),
             )
 
-        selected_job, selected_end_time = PomodoroFunctions._select_user_job_by_pause_state(
-            user_jobs,
-            paused=False,
+        selected_job, selected_end_time = (
+            PomodoroFunctions._select_user_job_by_pause_state(
+                user_jobs,
+                paused=False,
+            )
         )
         if selected_job is None or selected_end_time is None:
             return PomodoroPauseResult(
@@ -345,7 +593,10 @@ class PomodoroFunctions:
             )
 
         now = datetime.datetime.now()
-        remaining_seconds = int((selected_end_time - now).total_seconds())
+        remaining_seconds = max(
+            0,
+            math.ceil((selected_end_time - now).total_seconds()),
+        )
         if remaining_seconds <= 0:
             return PomodoroPauseResult(
                 ok=False,
@@ -353,6 +604,10 @@ class PomodoroFunctions:
             )
 
         remaining_minutes = max(1, math.ceil(remaining_seconds / 60))
+        total_duration_minutes = PomodoroFunctions._resolve_total_duration_minutes(
+            selected_job.data,
+            fallback=remaining_minutes,
+        )
         mode = str((selected_job.data or {}).get("mode", "focus")).strip().lower()
         if mode not in ("focus", "break"):
             mode = "focus"
@@ -366,7 +621,7 @@ class PomodoroFunctions:
                         "data.paused": True,
                         "data.paused_remaining_seconds": remaining_seconds,
                         "data.paused_at": now.isoformat(),
-                        "data.duration": str(remaining_minutes),
+                        "data.total_duration_minutes": str(total_duration_minutes),
                     }
                 },
             )
@@ -391,7 +646,9 @@ class PomodoroFunctions:
             ok=True,
             message=f"Paused with {remaining_minutes} minute(s) remaining.",
             mode=mode,
+            duration_minutes=total_duration_minutes,
             remaining_minutes=remaining_minutes,
+            remaining_seconds=remaining_seconds,
         )
 
     @staticmethod
@@ -413,7 +670,7 @@ class PomodoroFunctions:
         user_jobs = [
             job
             for job in jobs
-            if job.type == "pomodoro" and str(job.data.get("user")) == user_id
+            if job.type == "pomodoro" and str((job.data or {}).get("user")) == user_id
         ]
         if not user_jobs:
             return PomodoroResumeResult(
@@ -440,7 +697,9 @@ class PomodoroFunctions:
             default=0,
         )
         if remaining_seconds <= 0:
-            fallback_minutes = PomodoroFunctions._safe_int(data.get("duration"), default=0)
+            fallback_minutes = PomodoroFunctions._safe_int(
+                data.get("duration"), default=0
+            )
             remaining_seconds = max(0, fallback_minutes * 60)
 
         if remaining_seconds <= 0:
@@ -449,10 +708,13 @@ class PomodoroFunctions:
                 message="I couldn't resume that pomodoro because remaining time is missing.",
             )
 
-        remaining_minutes = max(1, math.ceil(remaining_seconds / 60))
+        total_duration_minutes = PomodoroFunctions._resolve_total_duration_minutes(
+            data,
+            fallback=max(1, math.ceil(remaining_seconds / 60)),
+        )
         new_end_time = (
             datetime.datetime.now() + datetime.timedelta(seconds=remaining_seconds)
-        ).replace(second=0, microsecond=0)
+        ).replace(microsecond=0)
 
         mode = str(data.get("mode", "focus")).strip().lower()
         if mode not in ("focus", "break"):
@@ -466,7 +728,8 @@ class PomodoroFunctions:
                     "$set": {
                         "schedule.datetime": new_end_time.isoformat(),
                         "data.paused": False,
-                        "data.duration": str(remaining_minutes),
+                        "data.duration": str(total_duration_minutes),
+                        "data.total_duration_minutes": str(total_duration_minutes),
                     },
                     "$unset": {
                         "data.paused_remaining_seconds": "",
@@ -497,7 +760,7 @@ class PomodoroFunctions:
             message="Pomodoro resumed.",
             mode=mode,
             end_time=new_end_time,
-            duration_minutes=remaining_minutes,
+            duration_minutes=total_duration_minutes,
         )
 
     @staticmethod
@@ -528,7 +791,7 @@ class PomodoroFunctions:
         user_jobs = [
             job
             for job in jobs
-            if job.type == "pomodoro" and str(job.data.get("user")) == user_id
+            if job.type == "pomodoro" and str((job.data or {}).get("user")) == user_id
         ]
         if not user_jobs:
             return PomodoroExtendResult(
@@ -550,14 +813,7 @@ class PomodoroFunctions:
                 message="Resume the pomodoro before extending it.",
             )
 
-        def _normalized(dt: Optional[datetime.datetime]) -> Optional[datetime.datetime]:
-            if dt is None:
-                return None
-            if dt.tzinfo is not None and dt.utcoffset() is not None:
-                dt = dt.astimezone().replace(tzinfo=None)
-            return dt.replace(second=0, microsecond=0)
-
-        normalized_expected = _normalized(expected_end_time)
+        normalized_expected = PomodoroFunctions._normalize_datetime(expected_end_time)
         selected_job = None
         selected_job_end_time = None
         best_distance_seconds: Optional[float] = None
@@ -566,11 +822,14 @@ class PomodoroFunctions:
             scheduled = PomodoroFunctions.parse_schedule_datetime(job.schedule)
             if scheduled is None:
                 continue
-            normalized_scheduled = _normalized(scheduled)
+            normalized_scheduled = PomodoroFunctions._normalize_datetime(scheduled)
             if normalized_scheduled is None:
                 continue
             if normalized_expected is None:
-                if selected_job_end_time is None or normalized_scheduled > selected_job_end_time:
+                if (
+                    selected_job_end_time is None
+                    or normalized_scheduled > selected_job_end_time
+                ):
                     selected_job = job
                     selected_job_end_time = normalized_scheduled
                 continue
@@ -596,18 +855,16 @@ class PomodoroFunctions:
                 message="I couldn't find an active pomodoro to extend.",
             )
 
-        current_duration_raw = str((selected_job.data or {}).get("duration") or "").strip()
-        try:
-            current_duration = int(current_duration_raw)
-        except ValueError:
-            current_duration = 0
+        current_duration = PomodoroFunctions._resolve_total_duration_minutes(
+            selected_job.data
+        )
         mode = str((selected_job.data or {}).get("mode", "focus")).strip().lower()
         if mode not in ("focus", "break"):
             mode = "focus"
 
         new_duration = max(0, current_duration) + minutes
         new_end_time = selected_job_end_time + datetime.timedelta(minutes=minutes)
-        new_end_time = new_end_time.replace(second=0, microsecond=0)
+        new_end_time = new_end_time.replace(microsecond=0)
 
         try:
             update_result = await asyncio.to_thread(
@@ -617,6 +874,7 @@ class PomodoroFunctions:
                     "$set": {
                         "schedule.datetime": new_end_time.isoformat(),
                         "data.duration": str(new_duration),
+                        "data.total_duration_minutes": str(new_duration),
                     }
                 },
             )
@@ -678,12 +936,18 @@ class PomodoroFunctions:
                 data.get("duration"),
                 default=0,
             )
+            raw_focus = str(data.get("focus_duration") or "").strip()
+            raw_break = str(data.get("break_duration") or "").strip()
             return PomodoroState(
                 exists=True,
                 mode=mode,
                 end_time=running_end_time,
                 duration_minutes=duration_minutes or None,
                 is_paused=False,
+                auto_cycle_enabled=PomodoroFunctions._is_truthy(data.get("auto_cycle")),
+                focus_duration=int(raw_focus) if raw_focus.isdigit() else None,
+                break_duration=int(raw_break) if raw_break.isdigit() else None,
+                streak=PomodoroFunctions._safe_int(data.get("streak"), default=0),
             )
 
         paused_job, _ = PomodoroFunctions._select_user_job_by_pause_state(
@@ -710,10 +974,16 @@ class PomodoroFunctions:
             remaining_seconds = max(0, fallback_minutes * 60)
 
         duration_minutes = max(1, math.ceil(remaining_seconds / 60)) if remaining_seconds > 0 else None
+        raw_focus = str(paused_data.get("focus_duration") or "").strip()
+        raw_break = str(paused_data.get("break_duration") or "").strip()
         return PomodoroState(
             exists=True,
             mode=paused_mode,
             end_time=None,
             duration_minutes=duration_minutes,
             is_paused=True,
+            auto_cycle_enabled=PomodoroFunctions._is_truthy(paused_data.get("auto_cycle")),
+            focus_duration=int(raw_focus) if raw_focus.isdigit() else None,
+            break_duration=int(raw_break) if raw_break.isdigit() else None,
+            streak=PomodoroFunctions._safe_int(paused_data.get("streak"), default=0),
         )

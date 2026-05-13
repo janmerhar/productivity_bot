@@ -15,9 +15,11 @@ from classes.ReminderFunctions import ReminderFunctions
 from classes.TodoFunctions import TodoFunctions
 from embeds.DailyTaskEmbeds import DailyTaskEmbeds
 from embeds.HabitEmbeds import HabitEmbeds
+from embeds.PomodoroEmbeds import PomodoroEmbeds
 from embeds.TodoEmbeds import TodoEmbeds
 from classes.PomodoroVoiceManager import PomodoroVoiceManager
 from views.PomodoroRestartView import PomodoroRestartView
+from views.PomodoroStartView import PomodoroStartView
 from classes.HabitFunctions import HabitFunctions
 from services.discord_helpers import (
     resolve_messageable_channel,
@@ -268,13 +270,171 @@ class DailyTaskCog(commands.Cog):
                 channel = await resolve_messageable_channel(self.bot, job.channel_id)
                 if channel is None:
                     continue
-                pomodoro_payload = PomodoroFunctions.pomodoro_payload(job)
-                pomodoro_payload["view"] = PomodoroRestartView()
-                await channel.send(**pomodoro_payload)
+                data = job.data or {}
+                mode = str(data.get("mode", "focus")).strip().lower()
+                if mode not in ("focus", "break"):
+                    mode = "focus"
 
-                end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
+                auto_cycle_enabled = PomodoroFunctions._is_truthy(
+                    data.get("auto_cycle")
+                )
+                message_id_raw = str(data.get("message_id") or "").strip()
+                user_raw = str(data.get("user") or "").strip()
+                owner_id = int(user_raw) if user_raw.isdigit() else 0
                 guild = getattr(channel, "guild", None)
-                await PomodoroVoiceManager.stop_for_guild(guild.id, end_time)
+
+                raw_focus_dur = str(data.get("focus_duration") or "").strip()
+                raw_break_dur = str(data.get("break_duration") or "").strip()
+                stored_focus_dur = int(raw_focus_dur) if raw_focus_dur.isdigit() else None
+                stored_break_dur = int(raw_break_dur) if raw_break_dur.isdigit() else None
+                current_streak = PomodoroFunctions._safe_int(
+                    data.get("streak"), default=0
+                )
+                next_streak = PomodoroFunctions._next_streak(mode, current_streak)
+                if mode == "focus" and owner_id:
+                    await asyncio.to_thread(
+                        PomodoroFunctions.update_best_pomodoro_streak,
+                        owner_id,
+                        next_streak,
+                    )
+
+                if auto_cycle_enabled:
+                    next_mode = "break" if mode == "focus" else "focus"
+                    next_duration_min = (
+                        stored_break_dur if next_mode == "break" else stored_focus_dur
+                    )
+                    next_end_time, next_duration, next_data, next_schedule = (
+                        PomodoroFunctions.insert_pomodoro_timer(
+                            channel_id=job.channel_id or channel.id,
+                            mode=next_mode,
+                            duration_minutes=next_duration_min,
+                            user_id=user_raw or owner_id,
+                            break_duration=stored_break_dur,
+                            focus_duration=stored_focus_dur,
+                            streak=next_streak,
+                        )
+                    )
+                    next_data["auto_cycle"] = True
+                    if message_id_raw.isdigit():
+                        next_data["message_id"] = message_id_raw
+
+                    created_job = await asyncio.to_thread(
+                        manager.insert_job,
+                        job.guild_id,
+                        job.channel_id,
+                        "pomodoro",
+                        next_data,
+                        next_schedule,
+                    )
+
+                    join_url: Optional[str] = None
+                    voice_error: Optional[str] = None
+                    if guild is not None:
+                        session = PomodoroVoiceManager.sessions.get(guild.id)
+                        if session is not None:
+                            voice_channel = guild.get_channel(session.voice_channel_id)
+                            if isinstance(voice_channel, discord.VoiceChannel):
+                                join_url = voice_channel.jump_url
+                                voice_error = await PomodoroVoiceManager.start_session(
+                                    guild,
+                                    voice_channel,
+                                    next_end_time,
+                                    next_mode,
+                                )
+
+                    next_payload = PomodoroEmbeds.insert_timer_embed(
+                        next_mode,
+                        next_duration,
+                        next_end_time,
+                        focus_duration=stored_focus_dur,
+                        break_duration=stored_break_dur,
+                        streak=next_streak,
+                    )
+                    next_payload["view"] = PomodoroStartView(
+                        owner_id,
+                        join_url=join_url if voice_error is None else None,
+                        mode=next_mode,
+                        end_time=next_end_time,
+                        auto_cycle_enabled=True,
+                        voice_channel_select_enabled=guild is not None,
+                        focus_duration=stored_focus_dur,
+                        break_duration=stored_break_dur,
+                        streak=next_streak,
+                    )
+                    next_payload["content"] = voice_error or None
+
+                    notify_text = (
+                        f"<@{owner_id}> Focus session finished."
+                        if mode == "focus"
+                        else f"<@{owner_id}> Break finished."
+                    ) if owner_id else None
+                    if notify_text:
+                        await channel.send(content=notify_text)
+
+                    posted_message: Optional[discord.Message] = None
+                    if message_id_raw.isdigit():
+                        try:
+                            original_message = await channel.fetch_message(
+                                int(message_id_raw)
+                            )
+                            await original_message.edit(**next_payload)
+                            posted_message = original_message
+                        except (
+                            discord.NotFound,
+                            discord.Forbidden,
+                            discord.HTTPException,
+                        ):
+                            posted_message = await channel.send(**next_payload)
+                    else:
+                        posted_message = await channel.send(**next_payload)
+
+                    if posted_message is not None and (
+                        not message_id_raw.isdigit()
+                        or posted_message.id != int(message_id_raw)
+                    ):
+                        await PomodoroFunctions.bind_timer_message(
+                            job_id=str(created_job.id),
+                            channel_id=job.channel_id,
+                            guild_id=job.guild_id,
+                            message_id=posted_message.id,
+                        )
+                    continue
+
+                pomodoro_payload = PomodoroFunctions.pomodoro_payload(
+                    job, streak=next_streak
+                )
+                chain_expires_at = datetime.datetime.now() + datetime.timedelta(
+                    minutes=20
+                )
+                pomodoro_payload["view"] = PomodoroRestartView(
+                    user_id=owner_id,
+                    focus_duration=stored_focus_dur,
+                    break_duration=stored_break_dur,
+                    streak=next_streak,
+                    chain_expires_at=chain_expires_at,
+                )
+
+                notify_text = pomodoro_payload.pop("content", None)
+                end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
+                if guild is not None:
+                    await PomodoroVoiceManager.stop_for_guild(guild.id, end_time)
+
+                if notify_text:
+                    await channel.send(content=notify_text)
+
+                if not message_id_raw.isdigit():
+                    await channel.send(**pomodoro_payload)
+                    continue
+
+                try:
+                    original_message = await channel.fetch_message(int(message_id_raw))
+                    await original_message.edit(**pomodoro_payload)
+                except (
+                    discord.NotFound,
+                    discord.Forbidden,
+                    discord.HTTPException,
+                ):
+                    await channel.send(**pomodoro_payload)
                 continue
             if job.type == "todo":
                 task_id = job.data.get("task_id")

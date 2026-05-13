@@ -56,12 +56,16 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
         user_id: int,
         source_message: Optional[discord.Message],
         voice_options: list[discord.SelectOption],
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
         response_ephemeral: bool,
     ) -> None:
         super().__init__(title="Start Custom Pomodoro")
         self._user_id = user_id
         self._source_message = source_message
         self._response_ephemeral = bool(response_ephemeral)
+        self._focus_duration = focus_duration
+        self._break_duration = break_duration
         self.mode_select = discord.ui.Select(
             placeholder="Mode",
             min_values=1,
@@ -77,12 +81,19 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
         )
         self.add_item(self.mode_select_label)
         self.duration_input = discord.ui.TextInput(
-            label="Duration (minutes, optional)",
-            placeholder="Defaults: 30 focus / 5 break",
+            label="Focus duration (minutes, optional)",
+            placeholder=str(focus_duration or 30),
             required=False,
             max_length=4,
         )
         self.add_item(self.duration_input)
+        self.break_duration_input = discord.ui.TextInput(
+            label="Break duration (minutes, optional)",
+            placeholder=str(break_duration or 5),
+            required=False,
+            max_length=4,
+        )
+        self.add_item(self.break_duration_input)
 
         self.voice_select = discord.ui.Select(
             placeholder="Voice channel",
@@ -123,12 +134,37 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
                     content="Duration must be a whole number of minutes.",
                 )
                 return
-            if duration_value <= 0:
+        if duration_value <= 0:
                 await interaction.response.send_message(
                     ephemeral=self._response_ephemeral,
                     content="Duration must be greater than zero.",
                 )
                 return
+
+        break_duration_value = self._break_duration
+        raw_break_duration = (self.break_duration_input.value or "").strip()
+        if raw_break_duration:
+            try:
+                break_duration_value = int(raw_break_duration)
+            except ValueError:
+                await interaction.response.send_message(
+                    ephemeral=self._response_ephemeral,
+                    content="Break duration must be a whole number of minutes.",
+                )
+                return
+            if break_duration_value <= 0:
+                await interaction.response.send_message(
+                    ephemeral=self._response_ephemeral,
+                    content="Break duration must be greater than zero.",
+                )
+                return
+
+        focus_duration_value = (
+            duration_value if duration_value is not None else self._focus_duration
+        )
+        start_duration = (
+            break_duration_value if mode == "break" else focus_duration_value
+        )
 
         voice_selection = (
             self.voice_select.values[0] if self.voice_select.values else "__auto__"
@@ -166,12 +202,19 @@ class PomodoroCustomTimerModal(discord.ui.Modal):
         await _send_started_pomodoro(
             interaction,
             mode=mode,
-            duration=duration_value,
+            duration=start_duration,
+            focus_duration=focus_duration_value,
+            break_duration=break_duration_value,
             target_channel=target_channel,
             use_member_voice=use_member_voice,
             skip_voice=skip_voice,
             source_message=self._source_message,
-            source_disabled_view=PomodoroStoppedView(self._user_id, disabled=True),
+            source_disabled_view=PomodoroStoppedView(
+                self._user_id,
+                focus_duration=focus_duration_value,
+                break_duration=break_duration_value,
+                disabled=True,
+            ),
             response_ephemeral=self._response_ephemeral,
         )
 
@@ -181,10 +224,33 @@ class PomodoroStoppedView(discord.ui.View):
         self,
         user_id: int,
         *,
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
         disabled: bool = False,
         timeout: Optional[float] = None,
     ) -> None:
         super().__init__(timeout=timeout)
-        self.add_item(PomodoroStoppedFocusButton(user_id, disabled=disabled))
-        self.add_item(PomodoroStoppedBreakButton(user_id, disabled=disabled))
-        self.add_item(PomodoroStoppedCustomTimerButton(user_id, disabled=disabled))
+        self.add_item(
+            PomodoroStoppedFocusButton(
+                user_id,
+                focus_duration=focus_duration,
+                break_duration=break_duration,
+                disabled=disabled,
+            )
+        )
+        self.add_item(
+            PomodoroStoppedBreakButton(
+                user_id,
+                focus_duration=focus_duration,
+                break_duration=break_duration,
+                disabled=disabled,
+            )
+        )
+        self.add_item(
+            PomodoroStoppedCustomTimerButton(
+                user_id,
+                focus_duration=focus_duration,
+                break_duration=break_duration,
+                disabled=disabled,
+            )
+        )

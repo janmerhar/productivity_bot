@@ -1,6 +1,39 @@
-# https://www.youtube.com/watch?v=-D2CvmHTqbE
+# https://www.youtube.com/watch?v=-D2CvmHTqbEs
+
 import importlib
 import logging
+import os
+import platform
+import sys
+
+
+def _seed_windows_uname_cache() -> None:
+    # TODO: perhaps find another fix
+    # Work around a very slow stdlib WMI lookup inside platform.win32_ver(),
+    # which aiohttp triggers during import via platform.system().
+    if os.name != "nt" or getattr(platform, "_uname_cache", None) is not None:
+        return
+
+    try:
+        winver = sys.getwindowsversion()
+        version_tuple = getattr(winver, "platform_version", None) or tuple(winver[:3])
+        version = ".".join(str(part) for part in version_tuple)
+        release = str(
+            getattr(winver, "major", version_tuple[0] if version_tuple else "")
+        )
+        node = os.environ.get("COMPUTERNAME", "")
+        machine = os.environ.get("PROCESSOR_ARCHITEW6432") or os.environ.get(
+            "PROCESSOR_ARCHITECTURE", ""
+        )
+        platform._uname_cache = platform.uname_result(
+            "Windows", node, release, version, machine
+        )
+    except Exception:
+        pass
+
+
+_seed_windows_uname_cache()
+
 import discord
 import asyncio
 import os
@@ -42,6 +75,7 @@ def should_sync_commands_on_start() -> bool:
     if _runtime_sync_commands_on_start is not None:
         return _runtime_sync_commands_on_start
     return settings.sync_commands_on_start
+
 
 setup_logging()
 

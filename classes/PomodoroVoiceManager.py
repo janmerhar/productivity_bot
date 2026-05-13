@@ -1,3 +1,5 @@
+# PomodoroVoiceManager.py
+import asyncio
 import datetime
 import logging
 from dataclasses import dataclass
@@ -23,7 +25,7 @@ class PomodoroVoiceManager:
     sessions: Dict[int, PomodoroVoiceSession] = {}
 
     @staticmethod
-    def _resolve_audio_path(mode: str) -> Optional[Path]:
+    def _resolve_audio_path(mode: str) -> Path:
         normalized_mode = mode.lower().strip()
         default_path = Path("assets/focus.mp3")
         raw_path = settings.pomodoro_audio_path
@@ -44,7 +46,9 @@ class PomodoroVoiceManager:
 
     @classmethod
     def _build_audio_source(cls, audio_path: Path) -> discord.AudioSource:
-        before_options = "-stream_loop -1"
+        # -re caps ffmpeg to realtime output rate, preventing unbounded pipe
+        # accumulation and disk thrashing when the player is stopped.
+        before_options = "-re -stream_loop -1"
         source = discord.FFmpegPCMAudio(
             str(audio_path),
             before_options=before_options,
@@ -65,33 +69,75 @@ class PomodoroVoiceManager:
     ) -> Optional[str]:
         normalized_mode = mode.lower().strip()
         audio_path = cls._resolve_audio_path(normalized_mode)
-        if audio_path is None:
-            return "Pomodoro audio path could not be resolved."
         if not audio_path.exists() or not audio_path.is_file():
             return f"Audio file not found at `{audio_path}`."
 
         voice_client = guild.voice_client
         try:
             if voice_client is None or not voice_client.is_connected():
-                voice_client = await voice_channel.connect()
-            elif voice_client.channel.id != voice_channel.id:
+                voice_client = await voice_channel.connect(reconnect=False)
+            elif (
+                not isinstance(voice_client.channel, discord.VoiceChannel)
+                or voice_client.channel.id != voice_channel.id
+            ):
                 await voice_client.move_to(voice_channel)
         except (discord.Forbidden, discord.HTTPException, discord.ClientException):
             logger.exception("Failed to connect to voice channel %s", voice_channel.id)
             return "I couldn't join that voice channel. Check my permissions."
 
-        if voice_client.is_playing() or voice_client.is_paused():
-            voice_client.stop()
+        for _ in range(20):
+            current_voice_client = guild.voice_client or voice_client
+            if current_voice_client is not None and current_voice_client.is_connected():
+                voice_client = current_voice_client
+                break
+            await asyncio.sleep(0.25)
+        else:
+            return "I couldn't keep the voice connection alive. Please try again."
 
-        source = cls._build_audio_source(audio_path)
-        voice_client.play(source)
+        if not isinstance(voice_client, discord.VoiceClient):
+            return "Unexpected voice client type."
+
+        try:
+            if voice_client.is_playing() or voice_client.is_paused():
+                # Grab the process reference before stop() so we can force-kill
+                # it regardless of whether the AudioPlayer cleanup thread runs
+                # promptly. Without this, zombied ffmpeg processes accumulate.
+                old_source = voice_client.source
+                underlying = getattr(old_source, "original", old_source)
+                old_proc = getattr(underlying, "_process", None)
+                voice_client.stop()
+                if old_proc is not None and old_proc.poll() is None:
+                    try:
+                        old_proc.kill()
+                    except Exception:
+                        pass
+
+            source = cls._build_audio_source(audio_path)
+            try:
+                voice_client.play(source)
+            except Exception:
+                # play() failed after the subprocess was already started — clean
+                # it up immediately so the process doesn't run until GC.
+                source.cleanup()
+                raise
+        except Exception:
+            logger.exception("Failed to start audio playback for guild %s", guild.id)
+            cls.sessions.pop(guild.id, None)
+            try:
+                if voice_client.is_connected():
+                    await voice_client.disconnect(force=True)
+            except Exception:
+                logger.exception(
+                    "Failed to disconnect voice client after playback error for guild %s",
+                    guild.id,
+                )
+            return "I joined the voice channel, but audio playback could not start."
 
         existing = cls.sessions.get(guild.id)
-        session_end_time = end_time
-        if existing and existing.end_time and end_time:
-            session_end_time = max(existing.end_time, end_time)
-        elif existing and existing.end_time and end_time is None:
-            session_end_time = existing.end_time
+        if existing and existing.end_time:
+            session_end_time = max(existing.end_time, end_time) if end_time else existing.end_time
+        else:
+            session_end_time = end_time
 
         cls.sessions[guild.id] = PomodoroVoiceSession(
             guild_id=guild.id,
@@ -118,11 +164,27 @@ class PomodoroVoiceManager:
 
         voice_client = session.voice_client
         try:
+            if not isinstance(voice_client, discord.VoiceClient):
+                return
+            # Kill the process unconditionally — is_playing() can be False when
+            # called from on_voice_state_update (AudioPlayer already signalled to
+            # stop) while the subprocess is still alive for a brief moment.
+            try:
+                old_source = voice_client.source
+            except Exception:
+                old_source = None
+            if old_source is not None:
+                underlying = getattr(old_source, "original", old_source)
+                old_proc = getattr(underlying, "_process", None)
+                if old_proc is not None and old_proc.poll() is None:
+                    try:
+                        old_proc.kill()
+                    except Exception:
+                        pass
             if voice_client.is_playing() or voice_client.is_paused():
                 voice_client.stop()
-            if voice_client.is_connected():
-                await voice_client.disconnect(force=True)
-        except (discord.Forbidden, discord.HTTPException, discord.ClientException):
+            await voice_client.disconnect(force=True)
+        except Exception:
             logger.exception("Failed to disconnect voice client for guild %s", guild_id)
         finally:
             cls.sessions.pop(guild_id, None)

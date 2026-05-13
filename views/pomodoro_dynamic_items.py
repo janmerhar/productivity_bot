@@ -23,6 +23,7 @@ async def register_pomodoro_dynamic_items(bot: commands.Bot) -> None:
         PomodoroStartSelectVoiceButton,
         PomodoroStartPlayPauseButton,
         PomodoroStartExtendButton,
+        PomodoroStartAutoCycleButton,
         PomodoroStartStopButton,
         PomodoroStoppedFocusButton,
         PomodoroStoppedBreakButton,
@@ -42,6 +43,16 @@ def _current_join_url(interaction: discord.Interaction) -> Optional[str]:
     if not isinstance(channel, discord.VoiceChannel):
         return None
     return channel.jump_url
+
+
+def _optional_int(value: Optional[str]) -> Optional[int]:
+    if value is None or value == "x":
+        return None
+    return int(value)
+
+
+def _encode_optional_int(value: Optional[int]) -> str:
+    return "x" if value is None else str(value)
 
 
 async def _ensure_owner(
@@ -93,6 +104,9 @@ async def _send_started_pomodoro(
     *,
     mode: str,
     duration: Optional[int],
+    focus_duration: Optional[int] = None,
+    break_duration: Optional[int] = None,
+    streak: int = 0,
     target_channel: Optional[discord.VoiceChannel],
     use_member_voice: bool,
     skip_voice: bool,
@@ -103,13 +117,16 @@ async def _send_started_pomodoro(
     from views.PomodoroStartView import PomodoroStartView
 
     try:
-        end_time, resolved_duration = await asyncio.to_thread(
+        end_time, resolved_duration, created_job = await asyncio.to_thread(
             PomodoroFunctions.create_timer,
             interaction.guild_id,
             interaction.channel_id,
             mode,
             duration,
             interaction.user.id,
+            break_duration,
+            focus_duration,
+            streak,
         )
     except ValueError as exc:
         await handle_interaction_error(
@@ -159,6 +176,11 @@ async def _send_started_pomodoro(
         mode,
         resolved_duration,
         end_time,
+        focus_duration=focus_duration,
+        break_duration=break_duration,
+        streak=PomodoroFunctions._safe_int(
+            (created_job.data or {}).get("streak"), default=streak
+        ),
     )
     join_url = resolved_target_channel.jump_url if resolved_target_channel else None
     payload["view"] = PomodoroStartView(
@@ -167,33 +189,85 @@ async def _send_started_pomodoro(
         mode=mode,
         end_time=end_time,
         voice_channel_select_enabled=interaction.guild is not None,
+        focus_duration=focus_duration,
+        break_duration=break_duration,
+        streak=PomodoroFunctions._safe_int(
+            (created_job.data or {}).get("streak"), default=streak
+        ),
     )
+    payload["content"] = voice_error or None
 
-    await interaction.followup.send(ephemeral=response_ephemeral, **payload)
-
-    if voice_error:
-        await interaction.followup.send(
+    posted_message: Optional[discord.Message] = None
+    try:
+        if source_message is not None and not response_ephemeral:
+            await source_message.edit(**payload)
+            posted_message = source_message
+        else:
+            posted_message = await interaction.followup.send(
+                ephemeral=response_ephemeral,
+                wait=True,
+                **payload,
+            )
+    except discord.HTTPException:
+        posted_message = await interaction.followup.send(
             ephemeral=response_ephemeral,
-            content=voice_error,
+            wait=True,
+            **payload,
         )
 
-    if source_disabled_view is not None:
+    if posted_message is not None and not response_ephemeral:
+        await PomodoroFunctions.bind_timer_message(
+            job_id=str(created_job.id),
+            channel_id=interaction.channel_id,
+            guild_id=interaction.guild_id,
+            message_id=posted_message.id,
+        )
+
+    if source_disabled_view is not None and (
+        posted_message is None or posted_message.id != getattr(source_message, "id", 0)
+    ):
         await _disable_source_message(source_message, source_disabled_view)
 
 
 class PomodoroRestartFocusButton(
     discord.ui.DynamicItem[discord.ui.Button],
-    template=r"pomodoro:restart:focus",
+    template=(
+        r"pomodoro:restart:focus"
+        r"(?::(?P<user_id>\d+):(?P<focus>x|\d+):(?P<break_duration>x|\d+):"
+        r"(?P<streak>\d+):(?P<expires>\d+))?"
+    ),
 ):
-    def __init__(self, *, disabled: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        user_id: int = 0,
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
+        streak: int = 0,
+        chain_expires_at: Optional[datetime.datetime] = None,
+        disabled: bool = False,
+    ) -> None:
+        custom_id = "pomodoro:restart:focus"
+        if user_id or focus_duration is not None or break_duration is not None or streak:
+            expires = int(chain_expires_at.timestamp()) if chain_expires_at else 0
+            custom_id = (
+                "pomodoro:restart:focus:"
+                f"{user_id}:{_encode_optional_int(focus_duration)}:"
+                f"{_encode_optional_int(break_duration)}:{streak}:{expires}"
+            )
         super().__init__(
             discord.ui.Button(
                 label="Start Focus",
                 style=discord.ButtonStyle.success,
-                custom_id="pomodoro:restart:focus",
+                custom_id=custom_id,
                 disabled=disabled,
             )
         )
+        self.user_id = user_id
+        self.focus_duration = focus_duration
+        self.break_duration = break_duration
+        self.streak = streak
+        self.chain_expires_at = chain_expires_at
 
     @classmethod
     async def from_custom_id(
@@ -203,40 +277,98 @@ class PomodoroRestartFocusButton(
         match,
         /,
     ) -> "PomodoroRestartFocusButton":
-        del interaction, match
-        return cls(disabled=getattr(item, "disabled", False))
+        del interaction
+        expires_raw = match.groupdict().get("expires")
+        expires = (
+            datetime.datetime.fromtimestamp(int(expires_raw))
+            if expires_raw and expires_raw != "0"
+            else None
+        )
+        return cls(
+            user_id=int(match.groupdict().get("user_id") or 0),
+            focus_duration=_optional_int(match.groupdict().get("focus")),
+            break_duration=_optional_int(match.groupdict().get("break_duration")),
+            streak=int(match.groupdict().get("streak") or 0),
+            chain_expires_at=expires,
+            disabled=getattr(item, "disabled", False),
+        )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         from views.PomodoroRestartView import PomodoroRestartView
 
         response_ephemeral = inherit_ephemeral_from_interaction(interaction)
+        if self.user_id and interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                ephemeral=response_ephemeral,
+                content="Only the user who completed this pomodoro can do this.",
+            )
+            return
         await interaction.response.defer(ephemeral=response_ephemeral)
+        streak = self.streak
+        if self.chain_expires_at is not None and datetime.datetime.now() > self.chain_expires_at:
+            streak = 0
         await _send_started_pomodoro(
             interaction,
             mode="focus",
-            duration=None,
+            duration=self.focus_duration,
+            focus_duration=self.focus_duration,
+            break_duration=self.break_duration,
+            streak=streak,
             target_channel=None,
             use_member_voice=True,
             skip_voice=False,
             source_message=interaction.message,
-            source_disabled_view=PomodoroRestartView(disabled=True),
+            source_disabled_view=PomodoroRestartView(
+                user_id=self.user_id,
+                focus_duration=self.focus_duration,
+                break_duration=self.break_duration,
+                streak=streak,
+                chain_expires_at=self.chain_expires_at,
+                disabled=True,
+            ),
             response_ephemeral=response_ephemeral,
         )
 
 
 class PomodoroRestartBreakButton(
     discord.ui.DynamicItem[discord.ui.Button],
-    template=r"pomodoro:restart:break",
+    template=(
+        r"pomodoro:restart:break"
+        r"(?::(?P<user_id>\d+):(?P<focus>x|\d+):(?P<break_duration>x|\d+):"
+        r"(?P<streak>\d+):(?P<expires>\d+))?"
+    ),
 ):
-    def __init__(self, *, disabled: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        user_id: int = 0,
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
+        streak: int = 0,
+        chain_expires_at: Optional[datetime.datetime] = None,
+        disabled: bool = False,
+    ) -> None:
+        custom_id = "pomodoro:restart:break"
+        if user_id or focus_duration is not None or break_duration is not None or streak:
+            expires = int(chain_expires_at.timestamp()) if chain_expires_at else 0
+            custom_id = (
+                "pomodoro:restart:break:"
+                f"{user_id}:{_encode_optional_int(focus_duration)}:"
+                f"{_encode_optional_int(break_duration)}:{streak}:{expires}"
+            )
         super().__init__(
             discord.ui.Button(
                 label="Start Relax",
                 style=discord.ButtonStyle.secondary,
-                custom_id="pomodoro:restart:break",
+                custom_id=custom_id,
                 disabled=disabled,
             )
         )
+        self.user_id = user_id
+        self.focus_duration = focus_duration
+        self.break_duration = break_duration
+        self.streak = streak
+        self.chain_expires_at = chain_expires_at
 
     @classmethod
     async def from_custom_id(
@@ -246,23 +378,55 @@ class PomodoroRestartBreakButton(
         match,
         /,
     ) -> "PomodoroRestartBreakButton":
-        del interaction, match
-        return cls(disabled=getattr(item, "disabled", False))
+        del interaction
+        expires_raw = match.groupdict().get("expires")
+        expires = (
+            datetime.datetime.fromtimestamp(int(expires_raw))
+            if expires_raw and expires_raw != "0"
+            else None
+        )
+        return cls(
+            user_id=int(match.groupdict().get("user_id") or 0),
+            focus_duration=_optional_int(match.groupdict().get("focus")),
+            break_duration=_optional_int(match.groupdict().get("break_duration")),
+            streak=int(match.groupdict().get("streak") or 0),
+            chain_expires_at=expires,
+            disabled=getattr(item, "disabled", False),
+        )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         from views.PomodoroRestartView import PomodoroRestartView
 
         response_ephemeral = inherit_ephemeral_from_interaction(interaction)
+        if self.user_id and interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                ephemeral=response_ephemeral,
+                content="Only the user who completed this pomodoro can do this.",
+            )
+            return
         await interaction.response.defer(ephemeral=response_ephemeral)
+        streak = self.streak
+        if self.chain_expires_at is not None and datetime.datetime.now() > self.chain_expires_at:
+            streak = 0
         await _send_started_pomodoro(
             interaction,
             mode="break",
-            duration=None,
+            duration=self.break_duration,
+            focus_duration=self.focus_duration,
+            break_duration=self.break_duration,
+            streak=streak,
             target_channel=None,
             use_member_voice=True,
             skip_voice=False,
             source_message=interaction.message,
-            source_disabled_view=PomodoroRestartView(disabled=True),
+            source_disabled_view=PomodoroRestartView(
+                user_id=self.user_id,
+                focus_duration=self.focus_duration,
+                break_duration=self.break_duration,
+                streak=streak,
+                chain_expires_at=self.chain_expires_at,
+                disabled=True,
+            ),
             response_ephemeral=response_ephemeral,
         )
 
@@ -464,6 +628,9 @@ class PomodoroStartPlayPauseButton(
                 mode,
                 result.end_time,
                 result.duration_minutes,
+                state.focus_duration,
+                state.break_duration,
+                state.streak,
             )
             if updated_embed is None:
                 await interaction.response.send_message(
@@ -483,7 +650,11 @@ class PomodoroStartPlayPauseButton(
                     mode=mode,
                     end_time=result.end_time,
                     is_paused=False,
+                    auto_cycle_enabled=state.auto_cycle_enabled,
                     voice_channel_select_enabled=interaction.guild is not None,
+                    focus_duration=state.focus_duration,
+                    break_duration=state.break_duration,
+                    streak=state.streak,
                 ),
             )
             return
@@ -506,6 +677,10 @@ class PomodoroStartPlayPauseButton(
             ),
             mode,
             remaining_minutes,
+            result.remaining_seconds,
+            state.focus_duration,
+            state.break_duration,
+            state.streak,
         )
         if updated_embed is None:
             await interaction.response.send_message(
@@ -522,7 +697,11 @@ class PomodoroStartPlayPauseButton(
                 mode=mode,
                 end_time=None,
                 is_paused=True,
+                auto_cycle_enabled=state.auto_cycle_enabled,
                 voice_channel_select_enabled=interaction.guild is not None,
+                focus_duration=state.focus_duration,
+                break_duration=state.break_duration,
+                streak=state.streak,
             ),
         )
 
@@ -605,6 +784,9 @@ class PomodoroStartExtendButton(
             ),
             result.end_time,
             result.duration_minutes,
+            state.focus_duration,
+            state.break_duration,
+            state.streak,
         )
         if updated_embed is None:
             await interaction.response.send_message(
@@ -625,7 +807,11 @@ class PomodoroStartExtendButton(
                     mode=result.mode or state.mode,
                     end_time=result.end_time,
                     is_paused=False,
+                    auto_cycle_enabled=state.auto_cycle_enabled,
                     voice_channel_select_enabled=interaction.guild is not None,
+                    focus_duration=state.focus_duration,
+                    break_duration=state.break_duration,
+                    streak=state.streak,
                 ),
             )
         except discord.HTTPException:
@@ -643,6 +829,88 @@ class PomodoroStartExtendButton(
                     ephemeral=response_ephemeral,
                     content=fallback_message,
                 )
+
+
+class PomodoroStartAutoCycleButton(
+    discord.ui.DynamicItem[discord.ui.Button],
+    template=r"pomodoro:start:auto:(?P<user_id>\d+)",
+):
+    def __init__(self, user_id: int, *, enabled: bool = False, disabled: bool = False) -> None:
+        super().__init__(
+            discord.ui.Button(
+                label="Auto On" if enabled else "Auto Off",
+                style=discord.ButtonStyle.success if enabled else discord.ButtonStyle.secondary,
+                custom_id=f"pomodoro:start:auto:{user_id}",
+                disabled=disabled,
+            )
+        )
+        self.user_id = user_id
+        self.enabled = enabled
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Item,
+        match,
+        /,
+    ) -> "PomodoroStartAutoCycleButton":
+        del interaction
+        label = getattr(item, "label", "") or ""
+        return cls(
+            int(match.group("user_id")),
+            enabled=label.lower() == "auto on",
+            disabled=getattr(item, "disabled", False),
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        from views.PomodoroStartView import PomodoroStartView
+        response_ephemeral = inherit_ephemeral_from_interaction(interaction)
+
+        if not await _ensure_owner(
+            interaction,
+            self.user_id,
+            response_ephemeral=response_ephemeral,
+        ):
+            return
+
+        state = await PomodoroFunctions.get_user_pomodoro_state(interaction)
+        if not state.exists:
+            await interaction.response.send_message(
+                ephemeral=response_ephemeral,
+                content=(
+                    "You don't have an active pomodoro "
+                    f"{PomodoroFunctions._scope_message(interaction)}."
+                ),
+            )
+            return
+
+        ok, enabled, message = await PomodoroFunctions.toggle_auto_cycle(
+            interaction,
+            expected_end_time=state.end_time,
+            is_paused=state.is_paused,
+        )
+        if not ok or enabled is None:
+            await interaction.response.send_message(
+                ephemeral=response_ephemeral,
+                content=message,
+            )
+            return
+
+        await interaction.response.edit_message(
+            view=PomodoroStartView(
+                self.user_id,
+                join_url=_current_join_url(interaction),
+                mode=state.mode,
+                end_time=state.end_time,
+                is_paused=state.is_paused,
+                auto_cycle_enabled=enabled,
+                voice_channel_select_enabled=interaction.guild is not None,
+                focus_duration=state.focus_duration,
+                break_duration=state.break_duration,
+                streak=state.streak,
+            ),
+        )
 
 
 class PomodoroStartStopButton(
@@ -694,8 +962,22 @@ class PomodoroStartStopButton(
             )
             return
 
-        payload = PomodoroEmbeds.timer_stopped_embed(result.message)
-        replacement_view = PomodoroStoppedView(interaction.user.id)
+        best_streak = await asyncio.to_thread(
+            PomodoroFunctions.fetch_best_pomodoro_streak,
+            interaction.user.id,
+        )
+        payload = PomodoroEmbeds.timer_stopped_embed(
+            streak=result.streak,
+            best_streak=best_streak,
+            focus_duration=result.focus_duration,
+            break_duration=result.break_duration,
+        )
+        payload["content"] = None
+        replacement_view = PomodoroStoppedView(
+            interaction.user.id,
+            focus_duration=result.focus_duration,
+            break_duration=result.break_duration,
+        )
         if interaction.message is not None:
             try:
                 await interaction.message.edit(**payload, view=replacement_view)
@@ -712,18 +994,30 @@ class PomodoroStartStopButton(
 
 class PomodoroStoppedFocusButton(
     discord.ui.DynamicItem[discord.ui.Button],
-    template=r"pomodoro:stopped:focus:(?P<user_id>\d+)",
+    template=r"pomodoro:stopped:focus:(?P<user_id>\d+)(?::(?P<focus>x|\d+):(?P<break_duration>x|\d+))?",
 ):
-    def __init__(self, user_id: int, *, disabled: bool = False) -> None:
+    def __init__(
+        self,
+        user_id: int,
+        *,
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
+        disabled: bool = False,
+    ) -> None:
+        suffix = ""
+        if focus_duration is not None or break_duration is not None:
+            suffix = f":{_encode_optional_int(focus_duration)}:{_encode_optional_int(break_duration)}"
         super().__init__(
             discord.ui.Button(
                 label="Start Focus",
                 style=discord.ButtonStyle.success,
-                custom_id=f"pomodoro:stopped:focus:{user_id}",
+                custom_id=f"pomodoro:stopped:focus:{user_id}{suffix}",
                 disabled=disabled,
             )
         )
         self.user_id = user_id
+        self.focus_duration = focus_duration
+        self.break_duration = break_duration
 
     @classmethod
     async def from_custom_id(
@@ -736,6 +1030,8 @@ class PomodoroStoppedFocusButton(
         del interaction
         return cls(
             int(match.group("user_id")),
+            focus_duration=_optional_int(match.groupdict().get("focus")),
+            break_duration=_optional_int(match.groupdict().get("break_duration")),
             disabled=getattr(item, "disabled", False),
         )
 
@@ -754,30 +1050,49 @@ class PomodoroStoppedFocusButton(
         await _send_started_pomodoro(
             interaction,
             mode="focus",
-            duration=None,
+            duration=self.focus_duration,
+            focus_duration=self.focus_duration,
+            break_duration=self.break_duration,
             target_channel=None,
             use_member_voice=True,
             skip_voice=False,
             source_message=interaction.message,
-            source_disabled_view=PomodoroStoppedView(self.user_id, disabled=True),
+            source_disabled_view=PomodoroStoppedView(
+                self.user_id,
+                focus_duration=self.focus_duration,
+                break_duration=self.break_duration,
+                disabled=True,
+            ),
             response_ephemeral=response_ephemeral,
         )
 
 
 class PomodoroStoppedBreakButton(
     discord.ui.DynamicItem[discord.ui.Button],
-    template=r"pomodoro:stopped:break:(?P<user_id>\d+)",
+    template=r"pomodoro:stopped:break:(?P<user_id>\d+)(?::(?P<focus>x|\d+):(?P<break_duration>x|\d+))?",
 ):
-    def __init__(self, user_id: int, *, disabled: bool = False) -> None:
+    def __init__(
+        self,
+        user_id: int,
+        *,
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
+        disabled: bool = False,
+    ) -> None:
+        suffix = ""
+        if focus_duration is not None or break_duration is not None:
+            suffix = f":{_encode_optional_int(focus_duration)}:{_encode_optional_int(break_duration)}"
         super().__init__(
             discord.ui.Button(
                 label="Start Break",
                 style=discord.ButtonStyle.primary,
-                custom_id=f"pomodoro:stopped:break:{user_id}",
+                custom_id=f"pomodoro:stopped:break:{user_id}{suffix}",
                 disabled=disabled,
             )
         )
         self.user_id = user_id
+        self.focus_duration = focus_duration
+        self.break_duration = break_duration
 
     @classmethod
     async def from_custom_id(
@@ -790,6 +1105,8 @@ class PomodoroStoppedBreakButton(
         del interaction
         return cls(
             int(match.group("user_id")),
+            focus_duration=_optional_int(match.groupdict().get("focus")),
+            break_duration=_optional_int(match.groupdict().get("break_duration")),
             disabled=getattr(item, "disabled", False),
         )
 
@@ -808,30 +1125,49 @@ class PomodoroStoppedBreakButton(
         await _send_started_pomodoro(
             interaction,
             mode="break",
-            duration=None,
+            duration=self.break_duration,
+            focus_duration=self.focus_duration,
+            break_duration=self.break_duration,
             target_channel=None,
             use_member_voice=True,
             skip_voice=False,
             source_message=interaction.message,
-            source_disabled_view=PomodoroStoppedView(self.user_id, disabled=True),
+            source_disabled_view=PomodoroStoppedView(
+                self.user_id,
+                focus_duration=self.focus_duration,
+                break_duration=self.break_duration,
+                disabled=True,
+            ),
             response_ephemeral=response_ephemeral,
         )
 
 
 class PomodoroStoppedCustomTimerButton(
     discord.ui.DynamicItem[discord.ui.Button],
-    template=r"pomodoro:stopped:custom:(?P<user_id>\d+)",
+    template=r"pomodoro:stopped:custom:(?P<user_id>\d+)(?::(?P<focus>x|\d+):(?P<break_duration>x|\d+))?",
 ):
-    def __init__(self, user_id: int, *, disabled: bool = False) -> None:
+    def __init__(
+        self,
+        user_id: int,
+        *,
+        focus_duration: Optional[int] = None,
+        break_duration: Optional[int] = None,
+        disabled: bool = False,
+    ) -> None:
+        suffix = ""
+        if focus_duration is not None or break_duration is not None:
+            suffix = f":{_encode_optional_int(focus_duration)}:{_encode_optional_int(break_duration)}"
         super().__init__(
             discord.ui.Button(
                 label="Custom Timer",
                 style=discord.ButtonStyle.secondary,
-                custom_id=f"pomodoro:stopped:custom:{user_id}",
+                custom_id=f"pomodoro:stopped:custom:{user_id}{suffix}",
                 disabled=disabled,
             )
         )
         self.user_id = user_id
+        self.focus_duration = focus_duration
+        self.break_duration = break_duration
 
     @classmethod
     async def from_custom_id(
@@ -844,6 +1180,8 @@ class PomodoroStoppedCustomTimerButton(
         del interaction
         return cls(
             int(match.group("user_id")),
+            focus_duration=_optional_int(match.groupdict().get("focus")),
+            break_duration=_optional_int(match.groupdict().get("break_duration")),
             disabled=getattr(item, "disabled", False),
         )
 
@@ -870,6 +1208,8 @@ class PomodoroStoppedCustomTimerButton(
                         user_id=self.user_id,
                         source_message=interaction.message,
                         voice_options=voice_options,
+                        focus_duration=self.focus_duration,
+                        break_duration=self.break_duration,
                         response_ephemeral=response_ephemeral,
                     )
                 )
