@@ -20,6 +20,40 @@ _MODAL_SELECTS_SUPPORTED = True
 _DEFAULT_TODO_REMINDER_MENTION = object()
 
 
+def _yes_no_select_options(default_yes: bool) -> List[discord.SelectOption]:
+    return [
+        discord.SelectOption(label="Yes", value="yes", default=default_yes),
+        discord.SelectOption(label="No", value="no", default=not default_yes),
+    ]
+
+
+def _todo_reminder_select_options(
+    current_delivery: str,
+    *,
+    include_channel: bool,
+    include_assignee_dm: bool,
+) -> List[discord.SelectOption]:
+    current = TodoFunctions.normalize_todo_reminder_delivery(current_delivery)
+    choices = [
+        ("Auto", "auto"),
+        ("DM me", "dm_me"),
+        ("Off", "off"),
+    ]
+    if include_channel:
+        choices.insert(1, ("Channel", "channel"))
+    if include_assignee_dm:
+        insert_at = 2 if include_channel else 1
+        choices.insert(insert_at, ("DM assignee", "dm_assignee"))
+
+    if current not in {value for _, value in choices}:
+        current = "auto"
+
+    return [
+        discord.SelectOption(label=label, value=value, default=value == current)
+        for label, value in choices
+    ]
+
+
 class TodoListView(discord.ui.View):
     def __init__(
         self,
@@ -2138,6 +2172,8 @@ class TodoAssignSelectModal(discord.ui.Modal):
         item: Dict[str, Any],
         source_message: Optional[discord.Message],
         assignee_options: List[discord.SelectOption],
+        current_reminder_delivery: str = "auto",
+        allow_assignment: bool = True,
         response_ephemeral: bool = True,
     ) -> None:
         modal_title = (
@@ -2151,18 +2187,59 @@ class TodoAssignSelectModal(discord.ui.Modal):
         self.item_name = TodoFunctions.task_name_from_item(item)
         self.source_message = source_message
         self.response_ephemeral = bool(response_ephemeral)
+        self.allow_assignment = bool(allow_assignment)
+        self.current_assignee_id = TodoFunctions.item_assignee_id(item)
+        self.assignee_select: Optional[discord.ui.Select] = None
 
-        self.assignee_select = discord.ui.Select(
-            placeholder="Assignee",
+        if self.allow_assignment:
+            self.assignee_select = discord.ui.Select(
+                placeholder="Assignee",
+                min_values=1,
+                max_values=1,
+                options=assignee_options[:25],
+            )
+            self.assignee_select_label = discord.ui.Label(
+                text="Assignee",
+                component=self.assignee_select,
+            )
+            self.add_item(self.assignee_select_label)
+            self.notify_assignee_select = discord.ui.Select(
+                placeholder="Notify assignee now",
+                min_values=1,
+                max_values=1,
+                options=_yes_no_select_options(default_yes=True),
+            )
+            self.notify_assignee_label = discord.ui.Label(
+                text="Notify assignee now",
+                component=self.notify_assignee_select,
+            )
+            self.add_item(self.notify_assignee_label)
+        else:
+            self.add_item(
+                discord.ui.TextDisplay(
+                    "Assignment can only be changed in a server. "
+                    "You can still update the due reminder."
+                )
+            )
+
+        scope_value = TodoFunctions._normalize_scope(str(item.get("scope") or ""))
+        include_channel = scope_value == "channel" and item.get("guild_id") is not None
+        include_assignee_dm = self.allow_assignment or self.current_assignee_id is not None
+        self.reminder_select = discord.ui.Select(
+            placeholder="Due reminder",
             min_values=1,
             max_values=1,
-            options=assignee_options[:25],
+            options=_todo_reminder_select_options(
+                current_reminder_delivery,
+                include_channel=include_channel,
+                include_assignee_dm=include_assignee_dm,
+            ),
         )
-        self.assignee_select_label = discord.ui.Label(
-            text="Assignee",
-            component=self.assignee_select,
+        self.reminder_label = discord.ui.Label(
+            text="Due reminder",
+            component=self.reminder_select,
         )
-        self.add_item(self.assignee_select_label)
+        self.add_item(self.reminder_label)
 
     async def _resolve_list_for_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
         list_id = item.get("list_id")
@@ -2223,20 +2300,46 @@ class TodoAssignSelectModal(discord.ui.Modal):
 
         selected_token = (
             self.assignee_select.values[0]
-            if self.assignee_select.values
+            if self.assignee_select is not None and self.assignee_select.values
             else "__none__"
+        )
+        reminder_delivery = (
+            self.reminder_select.values[0]
+            if self.reminder_select.values
+            else "auto"
+        )
+        notify_assignee = (
+            self.allow_assignment
+            and self.notify_assignee_select.values
+            and self.notify_assignee_select.values[0] == "yes"
         )
 
         try:
-            assignee_id = TodoFunctions.parse_assignee_token(
-                selected_token,
-                interaction.user.id,
-            )
-            updated_item = await asyncio.to_thread(
-                TodoFunctions.set_item_assignee,
+            assignee_id = self.current_assignee_id
+            updated_item = None
+            if self.allow_assignment:
+                assignee_id = TodoFunctions.parse_assignee_token(
+                    selected_token,
+                    interaction.user.id,
+                )
+                updated_item = await asyncio.to_thread(
+                    TodoFunctions.set_item_assignee,
+                    self.item_id,
+                    assignee_id,
+                )
+            if reminder_delivery == "dm_assignee" and assignee_id is None:
+                raise ValidationError("`DM assignee` reminders need an assignee.")
+            reminder_result = await asyncio.to_thread(
+                TodoFunctions.update_todo_reminder_settings,
                 self.item_id,
-                assignee_id,
+                reminder_delivery,
+                interaction.channel_id,
             )
+            if updated_item is None:
+                updated_item = await asyncio.to_thread(
+                    TodoFunctions.fetch_todo,
+                    self.item_id,
+                )
         except ValueError as exc:
             await handle_interaction_error(
                 interaction,
@@ -2246,6 +2349,10 @@ class TodoAssignSelectModal(discord.ui.Modal):
                     cause=exc,
                 ),
             )
+            return
+        except UserVisibleError as exc:
+            exc.ephemeral = self.response_ephemeral
+            await handle_interaction_error(interaction, exc)
             return
         except Exception as exc:
             await handle_interaction_error(
@@ -2262,7 +2369,7 @@ class TodoAssignSelectModal(discord.ui.Modal):
             await handle_interaction_error(
                 interaction,
                 UserVisibleError(
-                    "That item could not be assigned.",
+                    "That item could not be updated.",
                     ephemeral=self.response_ephemeral,
                 ),
             )
@@ -2270,6 +2377,39 @@ class TodoAssignSelectModal(discord.ui.Modal):
 
         updated_list = await self._resolve_list_for_item(updated_item)
         await self._refresh_source_card(interaction, updated_list, updated_item)
+
+        notify_failed = False
+        if (
+            notify_assignee
+            and assignee_id is not None
+            and interaction.guild_id is not None
+        ):
+            try:
+                notify_payload = TodoEmbeds.item_details_embed(
+                    updated_list,
+                    updated_item,
+                    response_ephemeral=self.response_ephemeral,
+                )
+                if interaction.channel is not None:
+                    await interaction.channel.send(
+                        content=f"<@{assignee_id}>",
+                        **notify_payload,
+                    )
+                else:
+                    notify_failed = True
+            except Exception:
+                notify_failed = True
+
+        if notify_failed:
+            await interaction.followup.send(
+                ephemeral=self.response_ephemeral,
+                content="Assignee notification failed.",
+            )
+        elif reminder_result == "no_due":
+            await interaction.followup.send(
+                ephemeral=self.response_ephemeral,
+                content="Assignment updated. No due reminder was scheduled because this todo has no due date.",
+            )
 
 
 class TodoAssignPickerView(discord.ui.View):
@@ -2601,7 +2741,7 @@ class TodoItemActionsView(discord.ui.View):
         self.edit_todo.disabled = not self.item_id
         self.delete_todo.disabled = not self.item_id
         self.duplicate_todo.disabled = not self.item_id
-        self.assign_to_user.disabled = (not self.item_id) or self.guild_id is None
+        self.assign_to_user.disabled = not self.item_id
 
     @staticmethod
     def _next_progress_status(current_status: str) -> Optional[str]:
@@ -2976,6 +3116,14 @@ class TodoItemActionsView(discord.ui.View):
             interaction,
             current_item,
         )
+        try:
+            current_reminder_delivery = await asyncio.to_thread(
+                TodoFunctions.todo_reminder_delivery_for_item,
+                current_item.get("_id"),
+            )
+        except Exception:
+            current_reminder_delivery = "auto"
+        allow_assignment = interaction.guild_id is not None
 
         if _MODAL_SELECTS_SUPPORTED:
             try:
@@ -2985,6 +3133,8 @@ class TodoItemActionsView(discord.ui.View):
                         item=current_item,
                         source_message=interaction.message,
                         assignee_options=assignee_options,
+                        current_reminder_delivery=current_reminder_delivery,
+                        allow_assignment=allow_assignment,
                         response_ephemeral=self.response_ephemeral,
                     )
                 )
@@ -2994,6 +3144,13 @@ class TodoItemActionsView(discord.ui.View):
                     _MODAL_SELECTS_SUPPORTED = False
                 else:
                     raise
+
+        if not allow_assignment:
+            await interaction.response.send_message(
+                ephemeral=self.response_ephemeral,
+                content="Reminder settings require the newer Discord modal controls.",
+            )
+            return
 
         assign_view = TodoAssignPickerView(
             todo_list=current_list,

@@ -799,6 +799,28 @@ class TodoFunctions:
             return
 
         schedule = OneTimeSchedule2(datetime=due_dt.isoformat())
+        guild_id, channel_id, data = TodoFunctions._todo_reminder_job_values(
+            todo,
+            delivery,
+            reminder_channel_id,
+        )
+
+        manager = DailyJobManager()
+        manager.insert_job(
+            guild_id=guild_id,
+            channel_id=channel_id,
+            type="todo",
+            data=data,
+            schedule=schedule,
+        )
+
+    @staticmethod
+    def _todo_reminder_job_values(
+        todo: Dict[str, Any],
+        reminder_delivery: str,
+        reminder_channel_id: Optional[int],
+    ) -> Tuple[Optional[int], Optional[int], Dict[str, Any]]:
+        delivery = TodoFunctions.normalize_todo_reminder_delivery(reminder_delivery)
         task_id = str(todo.get("_id"))
         todo_list = TodoFunctions.fetch_todo_list_by_id(todo.get("list_id"))
         guild_id = None if todo_list is None else todo_list.get("guild_id")
@@ -824,7 +846,87 @@ class TodoFunctions:
         if reminder_channel_id is not None:
             data["source_channel_id"] = reminder_channel_id
 
+        return guild_id, channel_id, data
+
+    @staticmethod
+    def todo_reminder_delivery_for_item(item_id: Any) -> str:
+        object_id = TodoFunctions._coerce_object_id(item_id)
+        if object_id is None:
+            return "auto"
+
+        job = mongo_db["tasks"].find_one(
+            {
+                "type": "todo",
+                "data.task_id": str(object_id),
+                "last_run": None,
+            },
+            {"data.reminder_delivery": 1},
+            sort=[("_id", -1)],
+        )
+        if not job:
+            return "auto"
+        return TodoFunctions.normalize_todo_reminder_delivery(
+            ((job.get("data") or {}).get("reminder_delivery"))
+        )
+
+    @staticmethod
+    def update_todo_reminder_settings(
+        item_id: Any,
+        reminder_delivery: str,
+        reminder_channel_id: Optional[int] = None,
+    ) -> str:
+        from classes.DailyJobManager import DailyJobManager
+
+        object_id = TodoFunctions._coerce_object_id(item_id)
+        if object_id is None:
+            return "missing"
+
+        item = mongo_db["todos"].find_one({"_id": object_id})
+        if item is None:
+            return "missing"
+
+        todo_list = TodoFunctions.fetch_todo_list_by_id(item.get("list_id"))
+        enriched_item = TodoFunctions._item_with_list_context(item, todo_list) or item
+        delivery = TodoFunctions.normalize_todo_reminder_delivery(reminder_delivery)
+        query = {
+            "type": "todo",
+            "data.task_id": str(object_id),
+            "last_run": None,
+        }
+
+        if delivery == "off":
+            deleted = mongo_db["tasks"].delete_many(query).deleted_count
+            if deleted:
+                DailyJobManager().fetch_jobs()
+            return "deleted" if deleted else "off"
+
+        due_dt = TodoFunctions._storage_datetime(enriched_item.get("due_at"))
+        if due_dt is None:
+            return "no_due"
+
+        schedule = OneTimeSchedule2(datetime=due_dt.isoformat())
+        guild_id, channel_id, data = TodoFunctions._todo_reminder_job_values(
+            enriched_item,
+            delivery,
+            reminder_channel_id,
+        )
+        update = {
+            "$set": {
+                "guild_id": guild_id,
+                "channel_id": channel_id,
+                "data": data,
+                "schedule": {
+                    "datetime": schedule.datetime,
+                    "mode": schedule.mode,
+                },
+            }
+        }
+        result = mongo_db["tasks"].update_one(query, update)
         manager = DailyJobManager()
+        if result.matched_count:
+            manager.fetch_jobs()
+            return "updated"
+
         manager.insert_job(
             guild_id=guild_id,
             channel_id=channel_id,
@@ -832,6 +934,7 @@ class TodoFunctions:
             data=data,
             schedule=schedule,
         )
+        return "created"
 
     @staticmethod
     def insert_todo(
