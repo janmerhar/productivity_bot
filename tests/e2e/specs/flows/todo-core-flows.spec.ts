@@ -173,7 +173,7 @@ test.describe('todo flows', () => {
     const createdCard = await expectLatestChannelMessageContaining(page, env.channelId, title);
     await expect(createdCard).toContainText(listName);
 
-    await runSlashCommand(page, '/todo list directory');
+    await runSlashCommand(page, '/todo list browse');
     await expectNoDiscordInteractionFailure(page);
 
     const directoryMessage = latestChannelMessage(page, env.channelId);
@@ -188,7 +188,7 @@ test.describe('todo flows', () => {
     const title = runMarker('e2e flow directory item');
     const description = runMarker('e2e flow directory description');
 
-    await runSlashCommand(page, '/todo list directory');
+    await runSlashCommand(page, '/todo list browse');
     await expectNoDiscordInteractionFailure(page);
 
     const directoryMessage = channelMessageContaining(

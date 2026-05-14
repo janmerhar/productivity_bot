@@ -22,17 +22,17 @@ test.beforeEach(async ({ page }) => {
   await openDiscordTestChannel(page, readE2EEnv());
 });
 
-test.describe('/todo list directory', () => {
+test.describe('/todo list browse', () => {
   test('shows the default server list directory with no input arguments', async ({ page }) => {
     const env = readE2EEnv();
     const logCursor = getLogCursor(env);
 
-    await runSlashCommand(page, '/todo list directory');
+    await runSlashCommand(page, '/todo list browse');
     await expectNoDiscordInteractionFailure(page);
 
     const directoryMessage = latestChannelMessage(page, env.channelId);
     await expect(directoryMessage).toBeVisible({ timeout: 20_000 });
-    await expectExecutedSlashCommand(directoryMessage, /todo\s+list\s+directory/i);
+    await expectExecutedSlashCommand(directoryMessage, /todo\s+list\s+browse/i);
     await expect(directoryMessage).toContainText(/Todo List Directory/i);
     await expect(directoryMessage).toContainText(/Page\s+1\/\d+/);
     await expect(directoryMessage).toContainText(/Lists:\s*\d+/i);
@@ -42,6 +42,6 @@ test.describe('/todo list directory', () => {
     await expect(directoryMessage.getByRole('button', { name: '1', exact: true })).toBeVisible({
       timeout: 10_000
     });
-    await expectInteractionLog('todo list directory', logCursor);
+    await expectInteractionLog('todo list browse', logCursor);
   });
 });

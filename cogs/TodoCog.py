@@ -720,7 +720,7 @@ class TodoCog(commands.Cog):
     ) -> List[app_commands.Choice[str]]:
         return await self._build_list_target_autocomplete_options(interaction, current)
 
-    @list_group.command(name="directory", description="Browse available todo lists")
+    @list_group.command(name="browse", description="Browse available todo lists")
     @app_commands.describe(
         scope="Which lists to include",
         visibility=VISIBILITY_DESC,
@@ -729,7 +729,7 @@ class TodoCog(commands.Cog):
         scope=_LIST_DIRECTORY_SCOPE_CHOICES,
         visibility=VISIBILITY_CHOICES,
     )
-    async def list_directory(
+    async def list_browse(
         self,
         interaction: discord.Interaction,
         scope: Optional[app_commands.Choice[str]] = None,
