@@ -900,9 +900,15 @@ class TodoFunctions:
                 DailyJobManager().fetch_jobs()
             return "deleted" if deleted else "off"
 
-        due_dt = TodoFunctions._storage_datetime(enriched_item.get("due_at"))
+        due_value = enriched_item.get("due_at")
+        due_dt = DueDateService.coerce_due_datetime(due_value)
         if due_dt is None:
+            deleted = mongo_db["tasks"].delete_many(query).deleted_count
+            if deleted:
+                DailyJobManager().fetch_jobs()
             return "no_due"
+        if due_dt.tzinfo is not None and due_dt.utcoffset() is not None:
+            due_dt = due_dt.astimezone().replace(tzinfo=None)
 
         schedule = OneTimeSchedule2(datetime=due_dt.isoformat())
         guild_id, channel_id, data = TodoFunctions._todo_reminder_job_values(

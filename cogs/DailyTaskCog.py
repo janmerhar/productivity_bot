@@ -486,10 +486,25 @@ class DailyTaskCog(commands.Cog):
                 if dm_user_id is not None:
                     user_id = dm_user_id
                     if not user_id:
+                        logging.getLogger(__name__).warning(
+                            "Skipping todo DM reminder without recipient",
+                            extra={"job_id": str(job.id), "task_id": task_id},
+                        )
                         continue
                     user = self.bot.get_user(user_id)
                     if user is None:
-                        user = await self.bot.fetch_user(user_id)
+                        try:
+                            user = await self.bot.fetch_user(user_id)
+                        except (
+                            discord.NotFound,
+                            discord.Forbidden,
+                            discord.HTTPException,
+                        ):
+                            logging.getLogger(__name__).exception(
+                                "Failed to resolve todo reminder DM recipient",
+                                extra={"user_id": user_id, "task_id": task_id},
+                            )
+                            continue
                     todo_payload = TodoEmbeds.todo_reminder_payload(
                         todo,
                         todo_list=todo_list,

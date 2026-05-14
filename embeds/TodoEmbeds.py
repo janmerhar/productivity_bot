@@ -524,6 +524,28 @@ class TodoItemEditModal(discord.ui.Modal):
             )
             return
 
+        try:
+            reminder_delivery = await asyncio.to_thread(
+                TodoFunctions.todo_reminder_delivery_for_item,
+                self.item_id,
+            )
+            await asyncio.to_thread(
+                TodoFunctions.update_todo_reminder_settings,
+                self.item_id,
+                reminder_delivery,
+                interaction.channel_id,
+            )
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                UserVisibleError(
+                    "Item updated, but syncing the due reminder failed.",
+                    ephemeral=self.response_ephemeral,
+                    cause=exc,
+                ),
+            )
+            return
+
         final_list = self.parent_view.todo_list
         final_list_id = final_item.get("list_id")
         if final_list_id:
