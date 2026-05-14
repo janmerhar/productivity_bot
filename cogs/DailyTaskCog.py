@@ -60,6 +60,15 @@ class DailyTaskCog(commands.Cog):
             guild_default="private",
         )
 
+    @staticmethod
+    def _coerce_int_id(value: Any) -> Optional[int]:
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
     async def _send_reminder_ping_dms(
         self,
         job: DailyJob,
@@ -437,7 +446,8 @@ class DailyTaskCog(commands.Cog):
                     await channel.send(**pomodoro_payload)
                 continue
             if job.type == "todo":
-                task_id = job.data.get("task_id")
+                data = job.data or {}
+                task_id = data.get("task_id")
                 todo = TodoFunctions.fetch_todo(task_id, job.guild_id)
                 if not todo or TodoFunctions.item_status(todo) == "done":
                     continue
@@ -451,8 +461,30 @@ class DailyTaskCog(commands.Cog):
                         )
                     except Exception:
                         todo_list = None
-                if todo.get("scope") == "personal":
-                    user_id = todo.get("user_id")
+
+                delivery = TodoFunctions.normalize_todo_reminder_delivery(
+                    data.get("reminder_delivery")
+                )
+                created_by_user_id = self._coerce_int_id(
+                    data.get("created_by_user_id")
+                    or todo.get("created_by_user_id")
+                    or todo.get("user_id")
+                )
+                assignee_id = TodoFunctions.item_assignee_id(todo)
+                todo_scope = TodoFunctions._normalize_scope(str(todo.get("scope") or ""))
+
+                dm_user_id: Optional[int] = None
+                if delivery == "dm_assignee":
+                    dm_user_id = assignee_id
+                elif delivery == "dm_me" or (
+                    delivery == "auto" and todo_scope == "personal"
+                ):
+                    dm_user_id = created_by_user_id or self._coerce_int_id(
+                        todo.get("user_id")
+                    )
+
+                if dm_user_id is not None:
+                    user_id = dm_user_id
                     if not user_id:
                         continue
                     user = self.bot.get_user(user_id)
@@ -461,6 +493,7 @@ class DailyTaskCog(commands.Cog):
                     todo_payload = TodoEmbeds.todo_reminder_payload(
                         todo,
                         todo_list=todo_list,
+                        mention_user_id=None,
                     )
                     try:
                         await user.send(**todo_payload)
@@ -471,13 +504,24 @@ class DailyTaskCog(commands.Cog):
                         )
                     continue
 
-                channel = await resolve_messageable_channel(self.bot, job.channel_id)
+                channel_id = job.channel_id or self._coerce_int_id(
+                    data.get("source_channel_id")
+                )
+                channel = await resolve_messageable_channel(self.bot, channel_id)
                 if channel is None:
                     continue
 
+                mention_user_id = created_by_user_id
+                if (
+                    delivery == "auto"
+                    and "reminder_delivery" in data
+                    and assignee_id is not None
+                ):
+                    mention_user_id = assignee_id
                 todo_payload = TodoEmbeds.todo_reminder_payload(
                     todo,
                     todo_list=todo_list,
+                    mention_user_id=mention_user_id,
                 )
                 await channel.send(**todo_payload)
                 continue

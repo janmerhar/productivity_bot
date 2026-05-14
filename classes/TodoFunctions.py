@@ -57,6 +57,14 @@ class TodoFunctions:
     _CUSTOM_LIST_TYPE = "custom"
     _SERVER_INBOX_DISPLAY_NAME = "Server Todos"
     _SERVER_INBOX_LEGACY_NAME = "Inbox"
+    _TODO_REMINDER_DELIVERIES = {"auto", "channel", "dm_me", "dm_assignee", "off"}
+
+    @staticmethod
+    def normalize_todo_reminder_delivery(value: Any) -> str:
+        normalized = str(value or "auto").strip().lower()
+        if normalized not in TodoFunctions._TODO_REMINDER_DELIVERIES:
+            return "auto"
+        return normalized
 
     @staticmethod
     def _normalize_scope(scope: str) -> str:
@@ -781,20 +789,47 @@ class TodoFunctions:
     def insert_todo_task(
         todo: Dict[str, Any],
         due_dt: datetime.datetime,
+        reminder_delivery: str = "auto",
+        reminder_channel_id: Optional[int] = None,
     ) -> None:
         from classes.DailyJobManager import DailyJobManager
+
+        delivery = TodoFunctions.normalize_todo_reminder_delivery(reminder_delivery)
+        if delivery == "off":
+            return
 
         schedule = OneTimeSchedule2(datetime=due_dt.isoformat())
         task_id = str(todo.get("_id"))
         todo_list = TodoFunctions.fetch_todo_list_by_id(todo.get("list_id"))
         guild_id = None if todo_list is None else todo_list.get("guild_id")
-        channel_id = None if todo_list is None else todo_list.get("channel_id")
+        channel_id = None
+        if delivery == "channel" or (
+            delivery == "auto"
+            and TodoFunctions._normalize_scope(str(todo.get("scope") or "")) == "channel"
+        ):
+            channel_id = reminder_channel_id
+            if channel_id is None and todo_list is not None:
+                channel_id = todo_list.get("channel_id")
+
+        data: Dict[str, Any] = {
+            "task_id": task_id,
+            "reminder_delivery": delivery,
+        }
+        created_by_user_id = todo.get("created_by_user_id") or todo.get("user_id")
+        assignee_id = TodoFunctions.item_assignee_id(todo)
+        if created_by_user_id is not None:
+            data["created_by_user_id"] = created_by_user_id
+        if assignee_id is not None:
+            data["assignee_id"] = assignee_id
+        if reminder_channel_id is not None:
+            data["source_channel_id"] = reminder_channel_id
+
         manager = DailyJobManager()
         manager.insert_job(
             guild_id=guild_id,
             channel_id=channel_id,
             type="todo",
-            data={"task_id": task_id},
+            data=data,
             schedule=schedule,
         )
 

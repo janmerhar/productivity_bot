@@ -17,6 +17,7 @@ from services.error_reporting import (
 from services.visibility import inherit_ephemeral_from_interaction
 
 _MODAL_SELECTS_SUPPORTED = True
+_DEFAULT_TODO_REMINDER_MENTION = object()
 
 
 class TodoListView(discord.ui.View):
@@ -3291,14 +3292,16 @@ class TodoEmbeds:
     def todo_reminder_payload(
         todo: Dict[str, Any],
         todo_list: Optional[Dict[str, Any]] = None,
+        mention_user_id: Any = _DEFAULT_TODO_REMINDER_MENTION,
     ) -> dict:
-        user_id = todo.get("created_by_user_id") or todo.get("user_id")
+        if mention_user_id is _DEFAULT_TODO_REMINDER_MENTION:
+            mention_user_id = todo.get("created_by_user_id") or todo.get("user_id")
         payload = TodoEmbeds.item_details_embed(
             todo_list or {"name": str(todo.get("list_name") or "List")},
             todo,
         )
-        if user_id:
-            payload["content"] = f"<@{user_id}>"
+        if mention_user_id:
+            payload["content"] = f"<@{mention_user_id}>"
         return payload
 
     @staticmethod

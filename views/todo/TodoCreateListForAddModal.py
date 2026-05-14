@@ -21,6 +21,7 @@ class TodoCreateListForAddModal(discord.ui.Modal, title="Create New List"):
         status_value: str,
         assignee: Optional[str],
         notify_enabled: bool,
+        reminder_delivery: str,
         visibility: Optional[app_commands.Choice[str]],
         locale_code: Optional[str],
         scope_value: str,
@@ -35,6 +36,7 @@ class TodoCreateListForAddModal(discord.ui.Modal, title="Create New List"):
         self._status_value = status_value
         self._assignee = assignee
         self._notify_enabled = notify_enabled
+        self._reminder_delivery = reminder_delivery
         self._visibility = visibility
         self._locale_code = locale_code
         self._scope_value = scope_value
@@ -84,6 +86,7 @@ class TodoCreateListForAddModal(discord.ui.Modal, title="Create New List"):
                 status_value=self._status_value,
                 assignee=self._assignee,
                 notify_enabled=self._notify_enabled,
+                reminder_delivery=self._reminder_delivery,
                 ephemeral=ephemeral,
                 locale_code=self._locale_code,
             )

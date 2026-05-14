@@ -48,6 +48,13 @@ _YES_NO_CHOICES = [
     app_commands.Choice(name="Yes", value="yes"),
     app_commands.Choice(name="No", value="no"),
 ]
+_TODO_REMINDER_CHOICES = [
+    app_commands.Choice(name="Auto", value="auto"),
+    app_commands.Choice(name="Channel", value="channel"),
+    app_commands.Choice(name="DM me", value="dm_me"),
+    app_commands.Choice(name="DM assignee", value="dm_assignee"),
+    app_commands.Choice(name="Off", value="off"),
+]
 _LIST_STATUS_FILTER_CHOICES = [
     app_commands.Choice(name="All", value="all"),
     app_commands.Choice(name="To Do", value="todo"),
@@ -1120,11 +1127,13 @@ class TodoCog(commands.Cog):
         status="Initial progress status",
         assignee="Who should be assigned",
         notify_assignee="Ping the assignee",
+        reminder="Where to send the due reminder",
         visibility=VISIBILITY_DESC,
     )
     @app_commands.choices(
         status=_ITEM_STATUS_CHOICES,
         notify_assignee=_YES_NO_CHOICES,
+        reminder=_TODO_REMINDER_CHOICES,
         visibility=VISIBILITY_CHOICES,
     )
     async def item_add(
@@ -1137,10 +1146,12 @@ class TodoCog(commands.Cog):
         status: Optional[app_commands.Choice[str]] = None,
         assignee: Optional[str] = None,
         notify_assignee: Optional[app_commands.Choice[str]] = None,
+        reminder: Optional[app_commands.Choice[str]] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         status_value = status.value if status else "todo"
         notify_enabled = (notify_assignee.value if notify_assignee else "yes") == "yes"
+        reminder_delivery = reminder.value if reminder else "auto"
         locale_code = str(getattr(interaction, "locale", "") or "").strip() or None
 
         if list == _CREATE_NEW_LIST_VALUE:
@@ -1155,6 +1166,7 @@ class TodoCog(commands.Cog):
                     status_value=status_value,
                     assignee=assignee,
                     notify_enabled=notify_enabled,
+                    reminder_delivery=reminder_delivery,
                     visibility=visibility,
                     locale_code=locale_code,
                     scope_value=scope_value,
@@ -1179,6 +1191,7 @@ class TodoCog(commands.Cog):
             status_value=status_value,
             assignee=assignee,
             notify_enabled=notify_enabled,
+            reminder_delivery=reminder_delivery,
             ephemeral=ephemeral,
             locale_code=locale_code,
         )
@@ -1193,6 +1206,7 @@ class TodoCog(commands.Cog):
         status_value: str,
         assignee: Optional[str],
         notify_enabled: bool,
+        reminder_delivery: str,
         ephemeral: bool,
         locale_code: Optional[str],
     ) -> None:
@@ -1212,6 +1226,7 @@ class TodoCog(commands.Cog):
                     status_value=status_value,
                     assignee=assignee,
                     notify_enabled=notify_enabled,
+                    reminder_delivery=reminder_delivery,
                     ephemeral=ephemeral,
                     timezone=resolved_timezone,
                     locale_code=locale_code,
@@ -1236,6 +1251,7 @@ class TodoCog(commands.Cog):
             status_value=status_value,
             assignee=assignee,
             notify_enabled=notify_enabled,
+            reminder_delivery=reminder_delivery,
             ephemeral=ephemeral,
             timezone=timezone,
             locale_code=locale_code,
@@ -1251,6 +1267,7 @@ class TodoCog(commands.Cog):
         status_value: str,
         assignee: Optional[str],
         notify_enabled: bool,
+        reminder_delivery: str,
         ephemeral: bool,
         timezone: Optional[str],
         locale_code: Optional[str],
@@ -1267,6 +1284,24 @@ class TodoCog(commands.Cog):
         item_text = todo
         if description_value:
             item_text = f"{todo}\n{description_value}"
+
+        reminder_delivery = TodoFunctions.normalize_todo_reminder_delivery(
+            reminder_delivery
+        )
+        if (due or "").strip():
+            target_scope = TodoFunctions._normalize_scope(
+                str(todo_list.get("scope") or "")
+            )
+            if reminder_delivery == "channel" and target_scope != "channel":
+                raise ValidationError(
+                    "Channel reminders are only available for server todo lists.",
+                    ephemeral=ephemeral,
+                )
+            if reminder_delivery == "dm_assignee" and assignee_id is None:
+                raise ValidationError(
+                    "`DM assignee` reminders need an assignee.",
+                    ephemeral=ephemeral,
+                )
 
         try:
             current_list = await asyncio.to_thread(
@@ -1297,12 +1332,14 @@ class TodoCog(commands.Cog):
             )
 
         reminder_failed = False
-        if due_dt:
+        if due_dt and reminder_delivery != "off":
             try:
                 await asyncio.to_thread(
                     TodoFunctions.insert_todo_task,
                     item,
                     due_dt,
+                    reminder_delivery,
+                    interaction.channel_id,
                 )
             except Exception:
                 reminder_failed = True
