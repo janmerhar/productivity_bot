@@ -38,12 +38,12 @@ The todo commands cover both personal and shared task management. You can create
 - **`/todo assign`**: `todo`, `assignee`, `visibility?`
 - **`/todo complete`**: `todo`, `visibility?`
 - **`/todo delete`**: `todo`, `visibility?`
-- **`/list show`**: `sort?`, `status?`, `list?`, `assignee?`, `visibility?`
-- **`/list directory`**: `scope?`, `visibility?`
-- **`/list create`**: `name`, `scope?`, `visibility?`
-- **`/list edit`**: `list`, `name`, `visibility?`
-- **`/list clear`**: `list?`, `visibility?`
-- **`/list delete`**: `list`, `visibility?`
+- **`/todo list show`**: `sort?`, `status?`, `list?`, `assignee?`, `visibility?`
+- **`/todo list browse`**: `scope?`, `visibility?`
+- **`/todo list create`**: `name`, `scope?`, `visibility?`
+- **`/todo list edit`**: `list`, `name`, `visibility?`
+- **`/todo list clear`**: `list?`, `visibility?`
+- **`/todo list delete`**: `list`, `visibility?`
 
 ### Reminders
 
