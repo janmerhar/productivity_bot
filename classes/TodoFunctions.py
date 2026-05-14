@@ -55,7 +55,8 @@ class TodoFunctions:
     _ALLOWED_ITEM_STATUSES = {"todo", "in_progress", "done"}
     _DEFAULT_LIST_TYPE = "default"
     _CUSTOM_LIST_TYPE = "custom"
-    _SERVER_INBOX_DISPLAY_NAME = "Inbox"
+    _SERVER_INBOX_DISPLAY_NAME = "Server Todos"
+    _SERVER_INBOX_LEGACY_NAME = "Inbox"
 
     @staticmethod
     def _normalize_scope(scope: str) -> str:
@@ -342,6 +343,22 @@ class TodoFunctions:
         return enriched
 
     @staticmethod
+    def _listless_item_with_context(
+        item: Optional[Dict[str, Any]],
+        *,
+        list_name: str = _SERVER_INBOX_DISPLAY_NAME,
+    ) -> Optional[Dict[str, Any]]:
+        if item is None:
+            return None
+
+        enriched = dict(item)
+        enriched["scope"] = TodoFunctions._normalize_scope(
+            str(enriched.get("scope") or "channel")
+        )
+        enriched["list_name"] = list_name
+        return enriched
+
+    @staticmethod
     def _list_map_by_id(
         list_docs: List[Dict[str, Any]],
     ) -> Dict[ObjectId, Dict[str, Any]]:
@@ -350,6 +367,34 @@ class TodoFunctions:
             for doc in list_docs
             if isinstance(doc.get("_id"), ObjectId)
         }
+
+    @staticmethod
+    def _items_scope_query(
+        guild_id: Optional[int],
+        user_id: int,
+        list_ids: List[ObjectId],
+    ) -> Dict[str, Any]:
+        list_clauses: List[Dict[str, Any]] = []
+        if list_ids:
+            list_clauses.append({"list_id": {"$in": list_ids}})
+
+        if guild_id is not None:
+            list_clauses.append({"guild_id": guild_id, "list_id": None})
+        else:
+            list_clauses.append(
+                {
+                    "list_id": None,
+                    "$or": [
+                        {"scope": "personal", "user_id": user_id},
+                        {"guild_id": None, "user_id": user_id},
+                        {"guild_id": None, "created_by_user_id": user_id},
+                    ],
+                }
+            )
+
+        if len(list_clauses) == 1:
+            return list_clauses[0]
+        return {"$or": list_clauses}
 
     @staticmethod
     def _scope_context_from_item(
@@ -579,7 +624,12 @@ class TodoFunctions:
                     "scope": "channel",
                     "guild_id": guild_id,
                     "channel_id": None,
-                    "name_key": list_name.lower(),
+                    "name_key": {
+                        "$in": [
+                            list_name.lower(),
+                            TodoFunctions._SERVER_INBOX_LEGACY_NAME.lower(),
+                        ]
+                    },
                     "list_type": {"$ne": TodoFunctions._CUSTOM_LIST_TYPE},
                 }
             )
@@ -822,7 +872,9 @@ class TodoFunctions:
         todo_list = TodoFunctions.fetch_todo_list_by_id(todo.get("list_id"))
         if guild_id is not None:
             if todo_list is None:
-                return None
+                if todo.get("guild_id") != guild_id:
+                    return None
+                return TodoFunctions._listless_item_with_context(todo)
             if TodoFunctions._normalize_scope(str(todo_list.get("scope") or "")) != "channel":
                 return None
             if todo_list.get("guild_id") != guild_id:
@@ -847,7 +899,18 @@ class TodoFunctions:
 
         todo_list = TodoFunctions.fetch_todo_list_by_id(todo.get("list_id"))
         if todo_list is None:
-            return None
+            if guild_id is None:
+                owner_id = int(todo.get("user_id") or todo.get("created_by_user_id") or 0)
+                if owner_id != user_id:
+                    return None
+                return TodoFunctions._listless_item_with_context(
+                    todo,
+                    list_name="Personal",
+                )
+
+            if todo.get("guild_id") != guild_id:
+                return None
+            return TodoFunctions._listless_item_with_context(todo)
 
         scope_value = TodoFunctions._normalize_scope(str(todo_list.get("scope") or "channel"))
         if guild_id is None:
@@ -1391,19 +1454,24 @@ class TodoFunctions:
             )
         )
         list_map = TodoFunctions._list_map_by_id(list_docs)
-        if not list_map:
-            return []
+        list_ids = list(list_map)
+        item_query = TodoFunctions._items_scope_query(guild_id, 0, list_ids)
 
         cursor = (
             mongo_db["todos"]
-            .find({"list_id": {"$in": list(list_map)}})
+            .find(item_query)
             .sort("created_at", sort_direction)
         )
         items = []
         for item in cursor:
             list_id = item.get("list_id")
             todo_list = list_map.get(list_id) if isinstance(list_id, ObjectId) else None
-            items.append(TodoFunctions._item_with_list_context(item, todo_list))
+            if todo_list is None:
+                enriched = TodoFunctions._listless_item_with_context(item)
+            else:
+                enriched = TodoFunctions._item_with_list_context(item, todo_list)
+            if enriched is not None:
+                items.append(enriched)
         return items
 
     @staticmethod
@@ -1470,8 +1538,7 @@ class TodoFunctions:
             )
 
         list_map = TodoFunctions._list_map_by_id(list_docs)
-        if not list_map:
-            return []
+        list_ids = list(list_map)
 
         projection = {
             "list_id": 1,
@@ -1480,6 +1547,11 @@ class TodoFunctions:
             "status": 1,
             "due_at": 1,
             "created_at": 1,
+            "guild_id": 1,
+            "channel_id": 1,
+            "user_id": 1,
+            "scope": 1,
+            "created_by_user_id": 1,
         }
         matches: List[Dict[str, Any]] = []
         seen_ids: set[ObjectId] = set()
@@ -1494,7 +1566,17 @@ class TodoFunctions:
 
                 list_id = item.get("list_id")
                 todo_list = list_map.get(list_id) if isinstance(list_id, ObjectId) else None
-                enriched = TodoFunctions._item_with_list_context(item, todo_list)
+                if todo_list is None:
+                    enriched = TodoFunctions._listless_item_with_context(
+                        item,
+                        list_name=(
+                            "Personal"
+                            if guild_id is None
+                            else TodoFunctions._SERVER_INBOX_DISPLAY_NAME
+                        ),
+                    )
+                else:
+                    enriched = TodoFunctions._item_with_list_context(item, todo_list)
                 if enriched is None:
                     continue
 
@@ -1514,7 +1596,7 @@ class TodoFunctions:
                 mongo_db["todos"]
                 .find(
                     {
-                        "list_id": {"$in": list(list_map)},
+                        **TodoFunctions._items_scope_query(guild_id, user_id, list_ids),
                         "title_key": {"$regex": f"^{re.escape(normalized_query)}"},
                     },
                     projection,
@@ -1528,7 +1610,7 @@ class TodoFunctions:
 
         append_matches(
             mongo_db["todos"]
-            .find({"list_id": {"$in": list(list_map)}}, projection)
+            .find(TodoFunctions._items_scope_query(guild_id, user_id, list_ids), projection)
             .sort("created_at", -1)
             .limit(resolved_candidate_limit)
         )

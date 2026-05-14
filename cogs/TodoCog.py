@@ -250,7 +250,7 @@ class TodoCog(commands.Cog):
         if target_value == "__server_inbox__":
             if interaction.guild_id is None:
                 raise ValidationError(
-                    "Inbox is only available in servers.",
+                    f"{TodoFunctions._SERVER_INBOX_DISPLAY_NAME} is only available in servers.",
                     ephemeral=True,
                 )
             todo_list = await asyncio.to_thread(
@@ -583,10 +583,25 @@ class TodoCog(commands.Cog):
         assignee: Optional[str] = None,
         visibility: Optional[app_commands.Choice[str]] = None,
     ) -> None:
-        todo_list, scope_value = await self._resolve_list_target(
-            interaction,
-            list_target,
-        )
+        list_target_value = (list_target or "").strip()
+        is_server_inbox_view = list_target_value == "__server_inbox__"
+        if is_server_inbox_view:
+            if interaction.guild_id is None:
+                raise ValidationError(
+                    f"{TodoFunctions._SERVER_INBOX_DISPLAY_NAME} is only available in servers.",
+                    ephemeral=True,
+                )
+            todo_list = {
+                "name": TodoFunctions._SERVER_INBOX_DISPLAY_NAME,
+                "scope": "channel",
+                "guild_id": interaction.guild_id,
+            }
+            scope_value = "channel"
+        else:
+            todo_list, scope_value = await self._resolve_list_target(
+                interaction,
+                list_target,
+            )
 
         ephemeral = resolve_todo_ephemeral(
             interaction.guild_id,
@@ -612,11 +627,18 @@ class TodoCog(commands.Cog):
         await interaction.response.defer(ephemeral=ephemeral)
 
         try:
-            items = await asyncio.to_thread(
-                TodoFunctions.list_items_on_list,
-                todo_list["_id"],
-                sort_value,
-            )
+            if is_server_inbox_view:
+                items = await asyncio.to_thread(
+                    TodoFunctions.list_items_on_guild,
+                    interaction.guild_id,
+                    sort_value,
+                )
+            else:
+                items = await asyncio.to_thread(
+                    TodoFunctions.list_items_on_list,
+                    todo_list["_id"],
+                    sort_value,
+                )
         except Exception as exc:
             raise UserVisibleError(
                 "Something went wrong while loading that list.",
@@ -632,7 +654,7 @@ class TodoCog(commands.Cog):
             assignee_filter_id=assignee_filter_user_id,
             assignee_filter_unassigned=assignee_filter_unassigned,
             user_id=interaction.user.id,
-            view_scope="list",
+            view_scope="overview" if is_server_inbox_view else "list",
             guild_id=interaction.guild_id,
             response_ephemeral=ephemeral,
         )
@@ -763,7 +785,10 @@ class TodoCog(commands.Cog):
                     {
                         "_id": inbox_list.get("_id"),
                         "label": "Built-in",
-                        "name": TodoFunctions.display_list_name(inbox_list, "Inbox"),
+                        "name": TodoFunctions.display_list_name(
+                            inbox_list,
+                            TodoFunctions._SERVER_INBOX_DISPLAY_NAME,
+                        ),
                     }
                 )
 
@@ -873,100 +898,6 @@ class TodoCog(commands.Cog):
                 ephemeral=ephemeral,
                 cause=exc,
             ) from exc
-
-    @todo_group.command(name="overview", description="Show all todos across the server")
-    @app_commands.describe(
-        sort="Sort order for items",
-        status="Filter by item status",
-        assignee="Filter by assignee (None = unassigned, Me = yourself)",
-        visibility=VISIBILITY_DESC,
-    )
-    @app_commands.choices(
-        sort=_SORT_CHOICES,
-        status=_LIST_STATUS_FILTER_CHOICES,
-        visibility=VISIBILITY_CHOICES,
-    )
-    async def overview(
-        self,
-        interaction: discord.Interaction,
-        sort: Optional[app_commands.Choice[str]] = None,
-        status: Optional[app_commands.Choice[str]] = None,
-        assignee: Optional[str] = None,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ) -> None:
-        if interaction.guild_id is None:
-            raise ValidationError(
-                "Server overview is only available in servers.",
-                ephemeral=True,
-            )
-
-        ephemeral = resolve_todo_ephemeral(
-            interaction.guild_id,
-            "channel",
-            visibility,
-        )
-        sort_value = sort.value if sort else "ascending"
-        status_value = status.value if status else "all"
-        assignee_filter_user_id: Optional[int] = None
-        assignee_filter_unassigned = False
-        assignee_value = (assignee or "").strip()
-        if assignee_value:
-            if assignee_value == "__none__":
-                assignee_filter_unassigned = True
-            else:
-                try:
-                    assignee_filter_user_id = TodoFunctions.parse_assignee_token(
-                        assignee_value,
-                        interaction.user.id,
-                    )
-                except ValueError as exc:
-                    raise ValidationError(str(exc), ephemeral=ephemeral, cause=exc)
-
-        await interaction.response.defer(ephemeral=ephemeral)
-
-        try:
-            items = await asyncio.to_thread(
-                TodoFunctions.list_items_on_guild,
-                interaction.guild_id,
-                sort_value,
-            )
-        except Exception as exc:
-            raise UserVisibleError(
-                "Something went wrong while loading the server overview.",
-                ephemeral=ephemeral,
-                cause=exc,
-            )
-
-        view = TodoListItemsView(
-            todo_list={
-                "name": "Server Overview",
-                "scope": "channel",
-                "guild_id": interaction.guild_id,
-            },
-            items=items,
-            sort=sort_value,
-            status_filter=status_value,
-            assignee_filter_id=assignee_filter_user_id,
-            assignee_filter_unassigned=assignee_filter_unassigned,
-            user_id=interaction.user.id,
-            view_scope="overview",
-            guild_id=interaction.guild_id,
-            response_ephemeral=ephemeral,
-        )
-        await view.ensure_session()
-        await interaction.followup.send(
-            ephemeral=ephemeral,
-            view=view,
-            **view.payload(),
-        )
-
-    @overview.autocomplete("assignee")
-    async def overview_assignee_autocomplete(
-        self,
-        interaction: discord.Interaction,
-        current: str,
-    ) -> List[app_commands.Choice[str]]:
-        return await self.todo_assign_autocomplete(interaction, current)
 
     @list_group.command(name="create", description="Create a new custom todo list")
     @app_commands.describe(

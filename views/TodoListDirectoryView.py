@@ -282,7 +282,10 @@ class TodoListDirectoryView(discord.ui.View):
                 {
                     "_id": inbox_list.get("_id"),
                     "label": "Built-in",
-                    "name": TodoFunctions.display_list_name(inbox_list, "Inbox"),
+                    "name": TodoFunctions.display_list_name(
+                        inbox_list,
+                        TodoFunctions._SERVER_INBOX_DISPLAY_NAME,
+                    ),
                 }
             )
 
