@@ -130,8 +130,8 @@ class ReminderOutputView(discord.ui.View):
 
     def _rebuild_items(self) -> None:
         from views.reminder_dynamic_items import (
-            ReminderAddButton,
             ReminderDeleteButton,
+            ReminderDuplicateButton,
             ReminderEditButton,
             ReminderPingButton,
             ReminderToggleButton,
@@ -143,10 +143,11 @@ class ReminderOutputView(discord.ui.View):
         is_paused = has_job and ReminderFunctions.is_paused(self.job)
 
         self.add_item(
-            ReminderAddButton(
+            ReminderDuplicateButton(
                 self.job_id,
                 encoded_user_id,
                 self.response_ephemeral,
+                disabled=not has_job,
             )
         )
         self.add_item(

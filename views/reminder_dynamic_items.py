@@ -12,6 +12,7 @@ from services.reminder_destination import build_reminder_destination_select_opti
 async def register_reminder_dynamic_items(bot: commands.Bot) -> None:
     bot.add_dynamic_items(
         ReminderAddButton,
+        ReminderDuplicateButton,
         ReminderEditButton,
         ReminderPingButton,
         ReminderToggleButton,
@@ -120,6 +121,108 @@ async def _ensure_list_view(
     return view
 
 
+def _duplicate_button(custom_id: str, disabled: bool) -> discord.ui.Button:
+    return discord.ui.Button(
+        emoji="📄",
+        style=discord.ButtonStyle.primary,
+        row=0,
+        custom_id=custom_id,
+        disabled=disabled,
+    )
+
+
+async def _duplicate_reminder_entry(
+    interaction: discord.Interaction,
+    *,
+    job_id: str,
+    user_id: int,
+    response_ephemeral: bool,
+) -> None:
+    from views.ReminderOutputView import ReminderOutputView
+
+    if not await _ensure_allowed(
+        interaction,
+        user_id=user_id,
+        response_ephemeral=response_ephemeral,
+    ):
+        return
+
+    await interaction.response.defer(ephemeral=response_ephemeral)
+    try:
+        created_job = await asyncio.to_thread(
+            ReminderFunctions.duplicate_reminder,
+            job_id,
+            interaction.guild_id,
+        )
+    except Exception as exc:
+        await handle_interaction_error(
+            interaction,
+            exc,
+            ephemeral=response_ephemeral,
+        )
+        return
+
+    reminder_view = ReminderOutputView(
+        job=created_job,
+        guild=interaction.guild,
+        result_message=f"Duplicated reminder `{job_id}`.",
+        ok=True,
+        user_id=interaction.user.id,
+        response_ephemeral=response_ephemeral,
+    )
+    await interaction.followup.send(
+        ephemeral=response_ephemeral,
+        **reminder_view.response_payload(),
+    )
+
+
+class ReminderDuplicateButton(
+    discord.ui.DynamicItem[discord.ui.Button],
+    template=r"reminder:duplicate:(?P<job_id>[^:]+):(?P<user_id>\d+):(?P<ephemeral>[01])",
+):
+    def __init__(
+        self,
+        job_id: str,
+        user_id: int,
+        response_ephemeral: bool,
+        *,
+        disabled: bool = False,
+    ) -> None:
+        super().__init__(
+            _duplicate_button(
+                f"reminder:duplicate:{job_id}:{user_id}:{_bool_flag(response_ephemeral)}",
+                disabled,
+            )
+        )
+        self.job_id = job_id
+        self.user_id = user_id
+        self.response_ephemeral = response_ephemeral
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Item,
+        match,
+        /,
+    ) -> "ReminderDuplicateButton":
+        del interaction
+        return cls(
+            match.group("job_id"),
+            int(match.group("user_id")),
+            _parse_bool_flag(match.group("ephemeral")),
+            disabled=getattr(item, "disabled", False),
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await _duplicate_reminder_entry(
+            interaction,
+            job_id=self.job_id,
+            user_id=self.user_id,
+            response_ephemeral=self.response_ephemeral,
+        )
+
+
 class ReminderAddButton(
     discord.ui.DynamicItem[discord.ui.Button],
     template=r"reminder:add:(?P<job_id>[^:]+):(?P<user_id>\d+):(?P<ephemeral>[01])",
@@ -133,14 +236,9 @@ class ReminderAddButton(
         disabled: bool = False,
     ) -> None:
         super().__init__(
-            discord.ui.Button(
-                emoji="➕",
-                style=discord.ButtonStyle.success,
-                row=0,
-                custom_id=(
-                    f"reminder:add:{job_id}:{user_id}:{_bool_flag(response_ephemeral)}"
-                ),
-                disabled=disabled,
+            _duplicate_button(
+                f"reminder:add:{job_id}:{user_id}:{_bool_flag(response_ephemeral)}",
+                disabled,
             )
         )
         self.job_id = job_id
@@ -164,38 +262,11 @@ class ReminderAddButton(
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        from views.ReminderEditModal import ReminderCreateModal
-
-        if not await _ensure_allowed(
-            interaction,
-            user_id=self.user_id,
-            response_ephemeral=self.response_ephemeral,
-        ):
-            return
-
-        parent_view = await _build_output_view(
+        await _duplicate_reminder_entry(
             interaction,
             job_id=self.job_id,
             user_id=self.user_id,
             response_ephemeral=self.response_ephemeral,
-        )
-        default_channel_id = parent_view.channel_id or interaction.channel_id
-        default_destination_type = (
-            "private"
-            if parent_view.job is not None
-            and ReminderFunctions.is_private_destination(parent_view.job)
-            else "channel"
-        )
-        await interaction.response.send_modal(
-            ReminderCreateModal(
-                parent_view=parent_view,
-                default_channel_id=default_channel_id,
-                default_destination_type=default_destination_type,
-                guild=interaction.guild or parent_view.guild,
-                source_message=interaction.message,
-                response_ephemeral=self.response_ephemeral,
-                guild_id=interaction.guild_id,
-            )
         )
 
 
