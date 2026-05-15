@@ -2754,6 +2754,19 @@ class TodoItemActionsView(discord.ui.View):
         self.delete_todo.disabled = not self.item_id
         self.duplicate_todo.disabled = not self.item_id
         self.assign_to_user.disabled = not self.item_id
+        self._order_action_buttons()
+
+    def _order_action_buttons(self) -> None:
+        ordered_buttons = (
+            self.complete_todo,
+            self.edit_todo,
+            self.assign_to_user,
+            self.duplicate_todo,
+            self.delete_todo,
+        )
+        self.clear_items()
+        for button in ordered_buttons:
+            self.add_item(button)
 
     @staticmethod
     def _next_progress_status(current_status: str) -> Optional[str]:
