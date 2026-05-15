@@ -2427,12 +2427,6 @@ class TodoAssignSelectModal(discord.ui.Modal):
                 ephemeral=self.response_ephemeral,
                 content="Assignee notification failed.",
             )
-        elif reminder_result == "no_due":
-            await interaction.followup.send(
-                ephemeral=self.response_ephemeral,
-                content="Assignment updated. No due reminder was scheduled because this todo has no due date.",
-            )
-
 
 class TodoAssignPickerView(discord.ui.View):
     def __init__(
