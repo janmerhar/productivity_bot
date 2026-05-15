@@ -848,6 +848,7 @@ class TodoItemCreateModal(discord.ui.Modal):
             return
 
         target_list_id = str(target_list.get("_id") or "")
+        response_content: Optional[str] = None
         try:
             await self.parent_view._reload_items()
             if target_list_id == self.current_list_id:
@@ -862,28 +863,23 @@ class TodoItemCreateModal(discord.ui.Modal):
                     **self.parent_view.payload(),
                 )
         except discord.NotFound:
-            pass
-        except Exception as exc:
-            await handle_interaction_error(
-                interaction,
-                UserVisibleError(
-                    "Item created, but refreshing the list failed.",
-                    ephemeral=self.response_ephemeral,
-                    cause=exc,
-                ),
+            response_content = (
+                "Item created, but the original list message is no longer available."
             )
-            return
+        except Exception:
+            response_content = "Item created, but refreshing the list failed."
 
-        if self.source_message is None or target_list_id != self.current_list_id:
-            payload = TodoEmbeds.item_details_embed(
-                target_list,
-                created_item,
-                response_ephemeral=self.response_ephemeral,
-            )
-            await interaction.followup.send(
-                ephemeral=self.response_ephemeral,
-                **payload,
-            )
+        payload = TodoEmbeds.item_details_embed(
+            target_list,
+            created_item,
+            response_ephemeral=self.response_ephemeral,
+        )
+        if response_content:
+            payload["content"] = response_content
+        await interaction.followup.send(
+            ephemeral=self.response_ephemeral,
+            **payload,
+        )
 
 
 class TodoListOptionsModal(discord.ui.Modal):
