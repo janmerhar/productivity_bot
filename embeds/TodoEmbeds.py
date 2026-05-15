@@ -1618,7 +1618,7 @@ class TodoListItemsView(discord.ui.View):
     ) -> None:
         global _MODAL_SELECTS_SUPPORTED
 
-        if self.view_scope != "list" or self.todo_list.get("_id") is None:
+        if self.todo_list.get("_id") is None:
             await interaction.response.send_message(
                 ephemeral=self.response_ephemeral,
                 content="Open a specific list to create a task from this view.",
@@ -2108,7 +2108,7 @@ class TodoListItemsView(discord.ui.View):
         self.add_item(
             TodoListItemsAddButton(
                 self.session_id,
-                disabled=(self.view_scope != "list") or (self.todo_list.get("_id") is None),
+                disabled=self.todo_list.get("_id") is None,
             )
         )
         self.add_item(

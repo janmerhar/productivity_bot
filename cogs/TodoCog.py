@@ -635,9 +635,14 @@ class TodoCog(commands.Cog):
 
         try:
             if is_server_inbox_view:
-                items = await asyncio.to_thread(
-                    TodoFunctions.list_items_on_guild,
+                todo_list = await asyncio.to_thread(
+                    TodoFunctions.get_or_create_server_global_list,
                     interaction.guild_id,
+                    interaction.user.id,
+                )
+                items = await asyncio.to_thread(
+                    TodoFunctions.list_items_on_list,
+                    todo_list["_id"],
                     sort_value,
                 )
             else:
@@ -661,7 +666,7 @@ class TodoCog(commands.Cog):
             assignee_filter_id=assignee_filter_user_id,
             assignee_filter_unassigned=assignee_filter_unassigned,
             user_id=interaction.user.id,
-            view_scope="overview" if is_server_inbox_view else "list",
+            view_scope="list",
             guild_id=interaction.guild_id,
             response_ephemeral=ephemeral,
         )
