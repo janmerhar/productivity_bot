@@ -1,3 +1,4 @@
+import copy
 import datetime
 from typing import Optional, Tuple, Dict, Any, List, Mapping
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -6,7 +7,7 @@ import dateparser
 from bson.objectid import ObjectId
 
 from classes.DailyJobManager import DailyJobManager
-from classes.DailyJob import CronSchedule
+from classes.DailyJob import CronSchedule, OneTimeSchedule2, ScheduleConfig
 from classes.OpenAIFunctions import OpenAIFunctions
 from config.db import mongo_db
 from config.env import settings
@@ -212,6 +213,67 @@ class HabitFunctions:
             data={"habit_id": habit_id},
             schedule=schedule,
         )
+
+    @staticmethod
+    def _copy_job_schedule(schedule: Any) -> Optional[ScheduleConfig]:
+        if schedule is None:
+            return None
+        if isinstance(schedule, Mapping):
+            mode = str(schedule.get("mode") or "").strip().lower()
+            if mode == "cron":
+                return CronSchedule(
+                    expression=str(schedule.get("expression") or "").strip(),
+                    timezone=schedule.get("timezone"),
+                )
+            if mode == "one-time":
+                return OneTimeSchedule2(
+                    datetime=str(schedule.get("datetime") or "").strip()
+                )
+        if isinstance(schedule, CronSchedule):
+            return copy.deepcopy(schedule)
+        if isinstance(schedule, OneTimeSchedule2):
+            return copy.deepcopy(schedule)
+        return None
+
+    @staticmethod
+    def duplicate_habit(
+        habit_id: str,
+        guild_id: Optional[int],
+        user_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        habit = HabitFunctions.fetch_habit(
+            habit_id,
+            guild_id=guild_id,
+            user_id=user_id,
+        )
+        if habit is None:
+            return None
+
+        original_habit_id = str(habit.get("_id") or "")
+        document = copy.deepcopy(habit)
+        document.pop("_id", None)
+        document["created"] = datetime.datetime.now().isoformat()
+        document["completitions"] = []
+
+        result = mongo_db["habits"].insert_one(document)
+        document["_id"] = result.inserted_id
+
+        manager = DailyJobManager()
+        for job in HabitFunctions.list_habit_tasks(original_habit_id, habit.get("guild_id")):
+            copied_data = copy.deepcopy(job.data or {})
+            copied_data["habit_id"] = str(document["_id"])
+            copied_schedule = HabitFunctions._copy_job_schedule(job.schedule)
+            if copied_schedule is None:
+                continue
+            manager.insert_job(
+                guild_id=job.guild_id,
+                channel_id=job.channel_id,
+                type=job.type,
+                data=copied_data,
+                schedule=copied_schedule,
+            )
+
+        return document
 
     @staticmethod
     def _parse_habit_reminder_time(
