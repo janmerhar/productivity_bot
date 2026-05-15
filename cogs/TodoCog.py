@@ -641,8 +641,8 @@ class TodoCog(commands.Cog):
                     interaction.user.id,
                 )
                 items = await asyncio.to_thread(
-                    TodoFunctions.list_items_on_list,
-                    todo_list["_id"],
+                    TodoFunctions.list_items_on_guild,
+                    interaction.guild_id,
                     sort_value,
                 )
             else:
@@ -666,7 +666,7 @@ class TodoCog(commands.Cog):
             assignee_filter_id=assignee_filter_user_id,
             assignee_filter_unassigned=assignee_filter_unassigned,
             user_id=interaction.user.id,
-            view_scope="list",
+            view_scope="overview" if is_server_inbox_view else "list",
             guild_id=interaction.guild_id,
             response_ephemeral=ephemeral,
         )
