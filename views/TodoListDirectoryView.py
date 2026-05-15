@@ -175,7 +175,9 @@ class TodoListDirectoryView(discord.ui.View):
             session_id=str(session.get("session_id") or session_id).strip(),
         )
         view.message = interaction.message
+        session_page = max(1, int(session.get("page") or 1))
         await view.refresh_entries()
+        view.page = max(1, min(session_page, view.total_pages))
         await view.ensure_session()
         return view
 
