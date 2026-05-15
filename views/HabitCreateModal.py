@@ -411,14 +411,6 @@ class HabitCreatedActionView(HabitActionView):
             disabled=disabled,
             today_status=today_status,
         )
-        duplicate_button = discord.ui.Button(
-            emoji="📄",
-            style=discord.ButtonStyle.primary,
-            row=0,
-            disabled=disabled,
-        )
-        duplicate_button.callback = self._open_duplicate_modal
-        self.add_item(duplicate_button)
         edit_button = discord.ui.Button(
             emoji="✏️",
             style=discord.ButtonStyle.secondary,
@@ -427,6 +419,14 @@ class HabitCreatedActionView(HabitActionView):
         )
         edit_button.callback = self._open_edit_modal
         self.add_item(edit_button)
+        duplicate_button = discord.ui.Button(
+            emoji="📄",
+            style=discord.ButtonStyle.primary,
+            row=0,
+            disabled=disabled,
+        )
+        duplicate_button.callback = self._open_duplicate_modal
+        self.add_item(duplicate_button)
         delete_button = discord.ui.Button(
             emoji="🗑️",
             style=discord.ButtonStyle.danger,
