@@ -518,10 +518,10 @@ class TodoListDirectoryView(discord.ui.View):
                 disabled=self.page >= self.total_pages,
             )
         )
+        self.add_item(TodoDirectoryCreateButton(self.session_id))
         self.add_item(
             TodoDirectorySortButton(
                 self.session_id,
                 descending=self.sort_direction == "descending",
             )
         )
-        self.add_item(TodoDirectoryCreateButton(self.session_id))
