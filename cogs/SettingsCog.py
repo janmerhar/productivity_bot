@@ -1,5 +1,4 @@
 import asyncio
-from typing import Optional
 
 import discord
 from discord import app_commands
@@ -7,13 +6,7 @@ from discord.ext import commands
 
 from classes.UserSettingsFunctions import UserSettingsFunctions
 from embeds.SettingsEmbeds import SettingsEmbeds
-from services.visibility import (
-    VISIBILITY_CHOICES,
-    VISIBILITY_DESC,
-    resolve_visibility_for_context,
-)
 from views.HelpView import HelpView
-from views.InfoGuideView import InfoGuideView
 from views.TimezoneModal import TimezoneModal
 from views.TogglApiKeyModal import TogglApiKeyModal
 
@@ -44,32 +37,6 @@ class SettingsCog(commands.Cog):
         await interaction.response.send_message(
             embed=SettingsEmbeds.help_welcome_embed(),
             view=view,
-        )
-
-    @app_commands.command(
-        name="info2",
-        description="Open the interactive onboarding guide",
-    )
-    @app_commands.describe(visibility=VISIBILITY_DESC)
-    @app_commands.choices(visibility=VISIBILITY_CHOICES)
-    async def info2(
-        self,
-        interaction: discord.Interaction,
-        visibility: Optional[app_commands.Choice[str]] = None,
-    ) -> None:
-        ephemeral = resolve_visibility_for_context(
-            interaction.guild_id,
-            visibility,
-            guild_default="private",
-        )
-        view = InfoGuideView(
-            command_tree=self.client.tree,
-            user_id=interaction.user.id,
-            response_ephemeral=ephemeral,
-        )
-        await interaction.response.send_message(
-            ephemeral=ephemeral,
-            **view.payload(),
         )
 
     @set_group.command(
