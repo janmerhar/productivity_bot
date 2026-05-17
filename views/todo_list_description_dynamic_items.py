@@ -125,11 +125,19 @@ class TodoListShowButton(
             return
 
         try:
-            items = await asyncio.to_thread(
-                TodoFunctions.list_items_on_list,
-                todo_list.get("_id"),
-                "ascending",
-            )
+            is_server_inbox = TodoFunctions.is_server_inbox_list(todo_list)
+            if is_server_inbox:
+                items = await asyncio.to_thread(
+                    TodoFunctions.list_items_on_guild,
+                    todo_list.get("guild_id"),
+                    "ascending",
+                )
+            else:
+                items = await asyncio.to_thread(
+                    TodoFunctions.list_items_on_list,
+                    todo_list.get("_id"),
+                    "ascending",
+                )
         except Exception as exc:
             await handle_interaction_error(
                 interaction,
@@ -147,7 +155,7 @@ class TodoListShowButton(
             sort="ascending",
             status_filter="all",
             user_id=interaction.user.id,
-            view_scope="list",
+            view_scope="overview" if is_server_inbox else "list",
             guild_id=interaction.guild_id,
             response_ephemeral=view.response_ephemeral,
         )

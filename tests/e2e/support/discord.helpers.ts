@@ -19,7 +19,7 @@ const failureText = /application did not respond|interaction failed|something we
 const e2eRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(e2eRoot, '..', '..');
 const slashCommandPaths = [
-  '/todo list directory',
+  '/todo list browse',
   '/todo list create',
   '/todo list delete',
   '/todo list clear',

@@ -6,6 +6,7 @@ from discord.ext import commands
 
 from classes.UserSettingsFunctions import UserSettingsFunctions
 from embeds.SettingsEmbeds import SettingsEmbeds
+from views.HelpView import HelpView
 from views.TimezoneModal import TimezoneModal
 from views.TogglApiKeyModal import TogglApiKeyModal
 
@@ -32,8 +33,10 @@ class SettingsCog(commands.Cog):
 
     @app_commands.command(name="info", description="Show what this bot does and how to start")
     async def info(self, interaction: discord.Interaction) -> None:
+        view = HelpView()
         await interaction.response.send_message(
-            embed=SettingsEmbeds.info_embed(), ephemeral=True
+            embed=SettingsEmbeds.help_welcome_embed(),
+            view=view,
         )
 
     @set_group.command(

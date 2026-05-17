@@ -30,6 +30,12 @@ ScheduleConfig = Union[OneTimeSchedule2, CronSchedule]
 
 class DailyJob:
     @staticmethod
+    def _runtime_naive_datetime(value: datetime.datetime) -> datetime.datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value
+        return value.astimezone().replace(tzinfo=None)
+
+    @staticmethod
     def _parse_data_datetime(
         data: Optional[Mapping[str, Any]],
         key: str,
@@ -63,6 +69,7 @@ class DailyJob:
         if pause_until is None:
             return True
 
+        pause_until = DailyJob._runtime_naive_datetime(pause_until)
         pause_check = (check_datetime or datetime.datetime.now()).replace(
             second=0,
             microsecond=0,
@@ -204,6 +211,7 @@ class DailyJob:
         )
         expires_at = self._parse_expiration(self.data)
         if expires_at is not None:
+            expires_at = self._runtime_naive_datetime(expires_at)
             if check_minute > expires_at.replace(
                 second=0,
                 microsecond=0,
@@ -225,6 +233,7 @@ class DailyJob:
                 return False
 
             scheduled_dt = datetime.datetime.fromisoformat(schedule["datetime"])
+            scheduled_dt = self._runtime_naive_datetime(scheduled_dt)
             return scheduled_dt <= check_datetime
 
         if mode == "cron":

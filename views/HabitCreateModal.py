@@ -411,14 +411,6 @@ class HabitCreatedActionView(HabitActionView):
             disabled=disabled,
             today_status=today_status,
         )
-        add_button = discord.ui.Button(
-            emoji="➕",
-            style=discord.ButtonStyle.primary,
-            row=0,
-            disabled=disabled,
-        )
-        add_button.callback = self._open_create_modal
-        self.add_item(add_button)
         edit_button = discord.ui.Button(
             emoji="✏️",
             style=discord.ButtonStyle.secondary,
@@ -427,6 +419,14 @@ class HabitCreatedActionView(HabitActionView):
         )
         edit_button.callback = self._open_edit_modal
         self.add_item(edit_button)
+        duplicate_button = discord.ui.Button(
+            emoji="📄",
+            style=discord.ButtonStyle.primary,
+            row=0,
+            disabled=disabled,
+        )
+        duplicate_button.callback = self._open_duplicate_modal
+        self.add_item(duplicate_button)
         delete_button = discord.ui.Button(
             emoji="🗑️",
             style=discord.ButtonStyle.danger,
@@ -476,25 +476,48 @@ class HabitCreatedActionView(HabitActionView):
         )
         await interaction.response.send_modal(fallback_modal)
 
-    async def _open_create_modal(self, interaction: discord.Interaction) -> None:
+    async def _open_duplicate_modal(self, interaction: discord.Interaction) -> None:
         self.response_ephemeral = inherit_ephemeral_from_interaction(
             interaction,
             default=self.response_ephemeral,
         )
         self.message = interaction.message
+        await interaction.response.defer(ephemeral=self.response_ephemeral)
 
-        await self._open_modal(
+        try:
+            duplicated_habit = await asyncio.to_thread(
+                HabitFunctions.duplicate_habit,
+                self.habit_id,
+                interaction.guild_id,
+                self.user_id,
+            )
+        except Exception as exc:
+            await handle_interaction_error(
+                interaction,
+                exc,
+                ephemeral=self.response_ephemeral,
+            )
+            return
+
+        if duplicated_habit is None:
+            await interaction.followup.send(
+                "That habit is no longer available.",
+                ephemeral=self.response_ephemeral,
+            )
+            return
+
+        reminder_time = await asyncio.to_thread(
+            HabitFunctions.get_habit_reminder_time,
+            str(duplicated_habit.get("_id") or ""),
+            duplicated_habit.get("guild_id"),
+        )
+        await self._cog._send_habit_card_response(
             interaction,
-            modal=HabitCreateModal(
-                self._cog,
-                user_id=interaction.user.id,
-                scope_value=self.scope_value,
-                target_channel_id=self.target_channel_id,
-                response_ephemeral=self.response_ephemeral,
-                guild_id=interaction.guild_id,
-                channel_id=interaction.channel_id,
-                include_scope_select=True,
-            ),
+            document=duplicated_habit,
+            reminder_time=reminder_time,
+            reminder_failed=False,
+            ephemeral=self.response_ephemeral,
+            content="Duplicated habit.",
         )
 
     async def _open_edit_modal(self, interaction: discord.Interaction) -> None:

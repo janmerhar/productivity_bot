@@ -162,18 +162,18 @@ class TogglTimerView(discord.ui.View):
             )
         )
         self.add_item(
+            TogglListTimersButton(
+                guild_id=guild_id,
+                user_id=self.user_id,
+            )
+        )
+        self.add_item(
             TogglDeleteButton(
                 guild_id=guild_id,
                 user_id=self.user_id,
                 workspace_id=workspace_id,
                 time_entry_id=time_entry_id,
                 disabled=self.is_deleted,
-            )
-        )
-        self.add_item(
-            TogglListTimersButton(
-                guild_id=guild_id,
-                user_id=self.user_id,
             )
         )
 

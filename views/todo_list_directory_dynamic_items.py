@@ -23,7 +23,7 @@ async def _ensure_view(
     view = await TodoListDirectoryView.from_session(interaction, session_id)
     if view is None:
         await interaction.response.send_message(
-            "That todo list directory is no longer available. Run `/todo list directory` again.",
+            "That todo list directory is no longer available. Run `/todo list browse` again.",
             ephemeral=inherit_ephemeral_from_interaction(interaction, default=True),
         )
         return None

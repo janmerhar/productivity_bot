@@ -58,7 +58,7 @@ test.describe('/todo list delete', () => {
 
     await expectInteractionLog('todo list delete', deleteLogCursor);
 
-    await runSlashCommand(page, '/todo list directory');
+    await runSlashCommand(page, '/todo list browse');
     await expectNoDiscordInteractionFailure(page);
 
     const directoryMessage = await expectLatestChannelMessageContaining(

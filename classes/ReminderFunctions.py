@@ -1,3 +1,4 @@
+import copy
 import datetime
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -1180,3 +1181,41 @@ class ReminderFunctions:
             )
 
         return created_job, confirmation
+
+    @staticmethod
+    def _copy_schedule_config(schedule: Any) -> ScheduleConfig:
+        if isinstance(schedule, dict):
+            mode = str(schedule.get("mode") or "").strip().lower()
+            if mode == "cron":
+                return CronSchedule(
+                    expression=str(schedule.get("expression") or "").strip(),
+                    timezone=schedule.get("timezone"),
+                )
+            if mode == "one-time":
+                return OneTimeSchedule2(
+                    datetime=str(schedule.get("datetime") or "").strip()
+                )
+        if isinstance(schedule, CronSchedule):
+            return copy.deepcopy(schedule)
+        if isinstance(schedule, OneTimeSchedule2):
+            return copy.deepcopy(schedule)
+
+        raise UserVisibleError("That reminder schedule could not be duplicated.")
+
+    @staticmethod
+    def duplicate_reminder(
+        reminder_id: str,
+        guild_id: Optional[int],
+    ) -> DailyJob:
+        job = ReminderFunctions.get_reminder(reminder_id, guild_id)
+        if job is None:
+            raise ValidationError("That reminder is no longer available.")
+
+        manager = DailyJobManager()
+        return manager.insert_job(
+            job.guild_id,
+            job.channel_id,
+            job.type,
+            copy.deepcopy(job.data or {}),
+            ReminderFunctions._copy_schedule_config(job.schedule),
+        )

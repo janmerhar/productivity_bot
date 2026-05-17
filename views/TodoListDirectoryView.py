@@ -175,7 +175,9 @@ class TodoListDirectoryView(discord.ui.View):
             session_id=str(session.get("session_id") or session_id).strip(),
         )
         view.message = interaction.message
+        session_page = max(1, int(session.get("page") or 1))
         await view.refresh_entries()
+        view.page = max(1, min(session_page, view.total_pages))
         await view.ensure_session()
         return view
 
@@ -282,7 +284,10 @@ class TodoListDirectoryView(discord.ui.View):
                 {
                     "_id": inbox_list.get("_id"),
                     "label": "Built-in",
-                    "name": TodoFunctions.display_list_name(inbox_list, "Inbox"),
+                    "name": TodoFunctions.display_list_name(
+                        inbox_list,
+                        TodoFunctions._SERVER_INBOX_DISPLAY_NAME,
+                    ),
                 }
             )
 
@@ -513,10 +518,10 @@ class TodoListDirectoryView(discord.ui.View):
                 disabled=self.page >= self.total_pages,
             )
         )
+        self.add_item(TodoDirectoryCreateButton(self.session_id))
         self.add_item(
             TodoDirectorySortButton(
                 self.session_id,
                 descending=self.sort_direction == "descending",
             )
         )
-        self.add_item(TodoDirectoryCreateButton(self.session_id))
