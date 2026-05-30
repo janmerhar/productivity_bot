@@ -397,14 +397,16 @@ class DailyTaskCog(commands.Cog):
                     if message_id_raw.isdigit():
                         next_data["message_id"] = message_id_raw
 
-                    created_job = await asyncio.to_thread(
-                        manager.insert_job,
-                        job.guild_id,
-                        job.channel_id,
-                        "pomodoro",
+                    advanced = await asyncio.to_thread(
+                        PomodoroFunctions.advance_auto_cycle_job,
+                        job,
                         next_data,
                         next_schedule,
                     )
+                    if not advanced:
+                        raise ScheduledJobDeliveryUnavailable(
+                            "Could not schedule the next pomodoro cycle."
+                        )
 
                     join_url: Optional[str] = None
                     voice_error: Optional[str] = None
@@ -472,7 +474,7 @@ class DailyTaskCog(commands.Cog):
                         or posted_message.id != int(message_id_raw)
                     ):
                         await PomodoroFunctions.bind_timer_message(
-                            job_id=str(created_job.id),
+                            job_id=str(job.id),
                             channel_id=job.channel_id,
                             guild_id=job.guild_id,
                             message_id=posted_message.id,

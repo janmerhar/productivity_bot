@@ -232,12 +232,25 @@ class DailyJob:
             if self.last_run is not None:
                 return False
 
-            scheduled_dt = datetime.datetime.fromisoformat(schedule["datetime"])
+            if isinstance(schedule, Mapping):
+                raw_datetime = schedule.get("datetime")
+            else:
+                raw_datetime = getattr(schedule, "datetime", None)
+            if not raw_datetime:
+                return False
+
+            scheduled_dt = datetime.datetime.fromisoformat(str(raw_datetime))
             scheduled_dt = self._runtime_naive_datetime(scheduled_dt)
             return scheduled_dt <= check_datetime
 
         if mode == "cron":
-            expression = schedule["expression"]
+            if isinstance(schedule, Mapping):
+                expression = schedule.get("expression")
+            else:
+                expression = getattr(schedule, "expression", None)
+            if not expression:
+                return False
+
             schedule_match_dt = cron_match_datetime(
                 check_datetime,
                 schedule_timezone_name(schedule),
