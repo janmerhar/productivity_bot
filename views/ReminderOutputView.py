@@ -8,6 +8,7 @@ from classes.DailyJob import DailyJob
 from classes.ReminderFunctions import ReminderFunctions
 from services.discord_helpers import format_reminder_mentions
 from services.error_reporting import ValidationError, handle_interaction_error
+from services.schedule_time import resolve_zoneinfo, schedule_timezone_name
 
 
 class ReminderDeleteConfirmModal(discord.ui.Modal):
@@ -193,10 +194,15 @@ class ReminderOutputView(discord.ui.View):
             return expression
 
     @staticmethod
-    def _cron_next_run(expression: str) -> Optional[str]:
+    def _cron_next_run(
+        expression: str,
+        timezone: Optional[str] = None,
+    ) -> Optional[str]:
         try:
             from croniter import croniter
-            it = croniter(expression, datetime.datetime.now())
+            tzinfo = resolve_zoneinfo(timezone)
+            now = datetime.datetime.now(tzinfo) if tzinfo else datetime.datetime.now()
+            it = croniter(expression, now)
             next_dt = it.get_next(datetime.datetime)
             return f"<t:{int(next_dt.timestamp())}:R>"
         except Exception:
@@ -248,7 +254,10 @@ class ReminderOutputView(discord.ui.View):
 
         if schedule_text:
             human = self._cron_human_label(schedule_text)
-            next_run = self._cron_next_run(schedule_text)
+            next_run = self._cron_next_run(
+                schedule_text,
+                schedule_timezone_name(schedule),
+            )
             return f"🔁 {human}\nNext: {next_run}" if next_run else f"🔁 {human}"
 
         return "unknown"

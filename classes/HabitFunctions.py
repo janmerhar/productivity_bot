@@ -12,6 +12,7 @@ from classes.OpenAIFunctions import OpenAIFunctions
 from config.db import mongo_db
 from config.env import settings
 from services.due_datetime import DueDateService
+from services.time_input import normalize_dotted_time_notation, parse_clock_time
 
 
 class HabitFunctions:
@@ -281,9 +282,17 @@ class HabitFunctions:
         reminder: Optional[str],
         timezone: Optional[str] = None,
     ) -> Optional[datetime.time]:
-        reminder_text = reminder.strip() if reminder else ""
+        reminder_text = (
+            normalize_dotted_time_notation(reminder, time_only=True).strip()
+            if reminder
+            else ""
+        )
         if not reminder_text:
             return None
+
+        parsed_time = parse_clock_time(reminder_text, allow_ambiguous_dotted=True)
+        if parsed_time is not None:
+            return parsed_time
 
         api_key = settings.openai_api_key
         if not api_key:

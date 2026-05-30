@@ -17,6 +17,12 @@ from services.cron_schedule import (
 )
 from services.error_reporting import UserVisibleError, ValidationError
 from services.schedule_time import schedule_timezone_name
+from services.time_input import (
+    is_ambiguous_standalone_dotted_value,
+    normalize_dotted_time_notation,
+    parse_clock_time,
+    parse_weekday_clock_time,
+)
 
 
 def _ensure_reminder_indexes() -> None:
@@ -309,7 +315,7 @@ class ReminderFunctions:
         timezone: Optional[str] = None,
         move_past_forward: bool = False,
     ) -> Optional[datetime.datetime]:
-        text = raw.strip()
+        text = normalize_dotted_time_notation(raw).strip()
         if not text:
             return None
 
@@ -322,6 +328,30 @@ class ReminderFunctions:
                 tzinfo = None
 
         now = datetime.datetime.now(tzinfo) if tzinfo else datetime.datetime.now()
+        clock_time = parse_clock_time(text)
+        if clock_time is not None:
+            dt = datetime.datetime.combine(now.date(), clock_time, tzinfo=tzinfo)
+            if move_past_forward and dt <= now:
+                dt += datetime.timedelta(days=1)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone().replace(tzinfo=None)
+            return dt
+
+        weekday_time = parse_weekday_clock_time(text)
+        if weekday_time is not None:
+            weekday, clock_time = weekday_time
+            days_ahead = (weekday - now.weekday()) % 7
+            dt = datetime.datetime.combine(
+                now.date() + datetime.timedelta(days=days_ahead),
+                clock_time,
+                tzinfo=tzinfo,
+            )
+            if dt <= now:
+                dt += datetime.timedelta(days=7)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone().replace(tzinfo=None)
+            return dt
+
         settings = {
             "PREFER_DATES_FROM": "future",
             "RETURN_AS_TIMEZONE_AWARE": bool(tzinfo),
@@ -438,14 +468,41 @@ class ReminderFunctions:
             "every day",
             "daily",
             "weekly",
+            "biweekly",
+            "fortnightly",
             "monthly",
+            "quarterly",
             "yearly",
             "annually",
+            "hourly",
+            "nightly",
             "weekdays",
             "weekends",
             "each ",
         )
-        return any(marker in text for marker in recurring_markers)
+        if any(marker in text for marker in recurring_markers):
+            return True
+
+        if re.search(
+            r"\b(?:mondays|tuesdays|wednesdays|thursdays|fridays|saturdays|sundays)\b",
+            text,
+        ):
+            return True
+
+        weekday = (
+            r"(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|"
+            r"thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)"
+        )
+        if re.search(rf"\b{weekday}\s*(?:-|to|through)\s*{weekday}\b", text):
+            return True
+
+        return bool(
+            re.search(
+                r"\b(?:once|twice|\d+\s+times?)\s+(?:a|an|per)\s+"
+                r"(?:hour|day|week|month|year)\b",
+                text,
+            )
+        )
 
     @staticmethod
     def _parse_expiration(
@@ -601,22 +658,33 @@ class ReminderFunctions:
         timezone: Optional[str],
     ) -> Tuple[ScheduleConfig, str]:
         raw_schedule = schedule.strip()
-
-        if is_valid_cron_expression(raw_schedule):
-            return (
-                CronSchedule(expression=raw_schedule, timezone=timezone),
-                f"`{raw_schedule}` (Cron: `{raw_schedule}`)",
+        if is_ambiguous_standalone_dotted_value(raw_schedule):
+            raise ValidationError(
+                f"`{raw_schedule}` could mean either a date or a time.",
+                hint=(
+                    "Use a colon for a time, such as `11:11`, or include the year "
+                    "for a dotted date, such as `11.11.2026`."
+                ),
+                ephemeral=ephemeral,
             )
 
-        if ReminderFunctions._looks_like_recurring_schedule(raw_schedule):
+        normalized_schedule = normalize_dotted_time_notation(raw_schedule)
+
+        if is_valid_cron_expression(normalized_schedule):
+            return (
+                CronSchedule(expression=normalized_schedule, timezone=timezone),
+                f"`{raw_schedule}` (Cron: `{normalized_schedule}`)",
+            )
+
+        if ReminderFunctions._looks_like_recurring_schedule(normalized_schedule):
             try:
                 cron_expression = resolve_cron_expression(
-                    raw_schedule,
+                    normalized_schedule,
                     timezone=timezone,
                 )
             except CronConversionError as exc:
                 ai_schedule = ReminderFunctions._ai_resolve_schedule(
-                    raw_schedule,
+                    normalized_schedule,
                     timezone,
                 )
                 if ai_schedule is not None:
@@ -647,12 +715,12 @@ class ReminderFunctions:
             )
 
         scheduled_dt = ReminderFunctions.parse_time_string(
-            raw_schedule,
+            normalized_schedule,
             timezone=timezone,
         )
         if scheduled_dt is None:
             ai_schedule = ReminderFunctions._ai_resolve_schedule(
-                raw_schedule,
+                normalized_schedule,
                 timezone,
             )
             if ai_schedule is not None:

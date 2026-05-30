@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from openai import APIError, OpenAI
 
 from config.env import settings
+from services.time_input import normalize_dotted_time_notation
 
 
 DEFAULT_OPENAI_MODEL = "gpt-5.4-mini"
@@ -73,7 +74,7 @@ class OpenAIFunctions:
         model: str = DEFAULT_OPENAI_MODEL,
         timezone: Optional[str] = None,
     ) -> Optional[datetime.time]:
-        text = reminder.strip()
+        text = normalize_dotted_time_notation(reminder, time_only=True).strip()
         if not text:
             return None
 
@@ -130,7 +131,7 @@ class OpenAIFunctions:
         model: str = DEFAULT_OPENAI_MODEL,
         timezone: Optional[str] = None,
     ) -> Optional[datetime.datetime]:
-        text = due.strip()
+        text = normalize_dotted_time_notation(due).strip()
         if not text:
             return None
 
@@ -148,6 +149,8 @@ class OpenAIFunctions:
             "Return JSON with a single key 'due' whose value is an ISO 8601 datetime "
             "without timezone (YYYY-MM-DDTHH:MM). "
             "If the input cannot be understood, set 'due' to null. "
+            "A bare dotted token such as '11.11' is ambiguous between a date and a time; "
+            "do not guess unless the surrounding input makes the intent clear. "
             "Prefer future dates; if a time would be in the past, choose the next occurrence."
         )
         timezone_line = (
@@ -351,7 +354,7 @@ class OpenAIFunctions:
         model: str = DEFAULT_OPENAI_MODEL,
         timezone: Optional[str] = None,
     ) -> Optional[Dict[str, Optional[str]]]:
-        cleaned = text.strip()
+        cleaned = normalize_dotted_time_notation(text).strip()
         if not cleaned:
             return None
 
@@ -372,6 +375,11 @@ class OpenAIFunctions:
             "and set 'datetime' to null. "
             "For one-time schedules, return a local ISO 8601 datetime without timezone "
             "(YYYY-MM-DDTHH:MM) in 'datetime' and set 'cron' to null. "
+            "Only return a recurring schedule when the input explicitly indicates repetition, "
+            "uses a plural weekday such as 'Mondays', or uses a weekday range such as 'Mon-Fri'. "
+            "Treat a bare singular weekday such as 'Monday at 9' as the next one-time occurrence. "
+            "A bare dotted token such as '11.11' is ambiguous between a date and a time; "
+            "do not guess unless the surrounding input makes the intent clear. "
             "If the input cannot be understood confidently, set all fields to null. "
             "Use 0-6 for day-of-week, where 0 is Sunday. "
             "Prefer future times."
@@ -440,7 +448,7 @@ class OpenAIFunctions:
         client: Optional[OpenAI] = None,
         timezone: Optional[str] = None,
     ) -> Optional[str]:
-        cleaned = text.strip()
+        cleaned = normalize_dotted_time_notation(text).strip()
         if not cleaned:
             return None
 
