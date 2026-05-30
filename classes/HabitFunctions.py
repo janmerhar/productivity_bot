@@ -200,9 +200,10 @@ class HabitFunctions:
     def insert_habit_task(
         habit: Dict[str, Any],
         reminder_time: datetime.time,
+        timezone: Optional[str] = None,
     ) -> None:
         expression = f"{reminder_time.minute} {reminder_time.hour} * * *"
-        schedule = CronSchedule(expression=expression)
+        schedule = CronSchedule(expression=expression, timezone=timezone)
         habit_id = str(habit.get("_id"))
         guild_id = habit.get("guild_id")
         manager = DailyJobManager()
@@ -626,6 +627,7 @@ class HabitFunctions:
     def sync_habit_tasks(
         habit: Dict[str, Any],
         reminder_time: Optional[datetime.time],
+        timezone: Optional[str] = None,
     ) -> None:
         manager = DailyJobManager()
         habit_id = str(habit.get("_id") or "")
@@ -635,7 +637,7 @@ class HabitFunctions:
             manager.delete_job(str(job.id), guild_id=job.guild_id)
 
         if reminder_time is not None:
-            HabitFunctions.insert_habit_task(habit, reminder_time)
+            HabitFunctions.insert_habit_task(habit, reminder_time, timezone)
 
     @staticmethod
     def add_completion(

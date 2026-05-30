@@ -264,9 +264,7 @@ class DailyJob:
         return False
 
     def run(self) -> Dict[str, Any]:
-        now = datetime.datetime.utcnow()
-        filter_query = {"_id": self.id}
-        mongo_db["tasks"].update_one(filter_query, {"$set": {"last_run": now}})
+        self.mark_run()
 
         if self.type == "message":
             payload: Dict[str, Any] = {}
@@ -315,6 +313,27 @@ class DailyJob:
             return payload
 
         return {}
+
+    def mark_run(self) -> None:
+        now = datetime.datetime.utcnow()
+        now = now.replace(microsecond=(now.microsecond // 1000) * 1000)
+        filter_query = {"_id": self.id}
+        mongo_db["tasks"].update_one(filter_query, {"$set": {"last_run": now}})
+        self.last_run = now
+
+    def reset_run(self) -> bool:
+        filter_query: Dict[str, Any] = {"_id": self.id}
+        if self.last_run is not None:
+            filter_query["last_run"] = self.last_run
+
+        result = mongo_db["tasks"].update_one(
+            filter_query,
+            {"$set": {"last_run": None}},
+        )
+        if result.matched_count > 0:
+            self.last_run = None
+            return True
+        return False
 
     @staticmethod
     def fetch_cron_jobs() -> List["DailyJob"]:

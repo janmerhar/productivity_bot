@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 from collections import defaultdict
 from typing import Optional
@@ -25,11 +26,12 @@ class AutomationCog(commands.Cog):
         self.bot = bot
         self._alert_cleanup_interval_seconds = self._resolve_cleanup_interval_seconds()
         self._next_cleanup_at: dict[str, float] = {}
-        self._runner.start()
 
     @commands.Cog.listener()
     async def on_ready(self):
         print("AutomationCog cog loaded")
+        if not self._runner.is_running():
+            self._runner.start()
 
     def cog_unload(self) -> None:
         if self._runner.is_running():
@@ -37,8 +39,15 @@ class AutomationCog(commands.Cog):
 
     @tasks.loop(minutes=1)
     async def _runner(self) -> None:
-        await self._run_stock_alerts()
-        await self._run_crypto_alerts()
+        try:
+            await self._run_stock_alerts()
+        except Exception:
+            logging.getLogger(__name__).exception("Failed to run stock alerts")
+
+        try:
+            await self._run_crypto_alerts()
+        except Exception:
+            logging.getLogger(__name__).exception("Failed to run crypto alerts")
 
     async def _run_stock_alerts(self) -> None:
         await self._cleanup_expired_alerts_if_due("stock")
@@ -220,11 +229,6 @@ class AutomationCog(commands.Cog):
             alert_id,
             current_price,
         )
-
-    @_runner.before_loop
-    async def _before_runner(self) -> None:
-        await self.bot.wait_until_ready()
-
 
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(AutomationCog(client))
