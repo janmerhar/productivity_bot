@@ -3,7 +3,7 @@
 import asyncio
 import datetime
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 from embeds.PomodoroEmbeds import PomodoroEmbeds
@@ -240,6 +240,34 @@ class PomodoroFunctions:
             data["break_duration"] = str(break_duration)
 
         return end_time, resolved_duration, data, schedule
+
+    @staticmethod
+    def advance_auto_cycle_job(
+        job: DailyJob,
+        data: Dict[str, Any],
+        schedule: OneTimeSchedule2,
+    ) -> bool:
+        filter_query: Dict[str, Any] = {"_id": job.id}
+        if job.last_run is not None:
+            filter_query["last_run"] = job.last_run
+
+        result = mongo_db["tasks"].update_one(
+            filter_query,
+            {
+                "$set": {
+                    "data": data,
+                    "schedule": asdict(schedule),
+                    "last_run": None,
+                }
+            },
+        )
+        if result.matched_count <= 0:
+            return False
+
+        job.data = data
+        job.schedule = schedule
+        job.last_run = None
+        return True
 
     @staticmethod
     def parse_schedule_datetime(

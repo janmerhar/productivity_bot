@@ -232,12 +232,25 @@ class DailyJob:
             if self.last_run is not None:
                 return False
 
-            scheduled_dt = datetime.datetime.fromisoformat(schedule["datetime"])
+            if isinstance(schedule, Mapping):
+                raw_datetime = schedule.get("datetime")
+            else:
+                raw_datetime = getattr(schedule, "datetime", None)
+            if not raw_datetime:
+                return False
+
+            scheduled_dt = datetime.datetime.fromisoformat(str(raw_datetime))
             scheduled_dt = self._runtime_naive_datetime(scheduled_dt)
             return scheduled_dt <= check_datetime
 
         if mode == "cron":
-            expression = schedule["expression"]
+            if isinstance(schedule, Mapping):
+                expression = schedule.get("expression")
+            else:
+                expression = getattr(schedule, "expression", None)
+            if not expression:
+                return False
+
             schedule_match_dt = cron_match_datetime(
                 check_datetime,
                 schedule_timezone_name(schedule),
@@ -264,9 +277,7 @@ class DailyJob:
         return False
 
     def run(self) -> Dict[str, Any]:
-        now = datetime.datetime.utcnow()
-        filter_query = {"_id": self.id}
-        mongo_db["tasks"].update_one(filter_query, {"$set": {"last_run": now}})
+        self.mark_run()
 
         if self.type == "message":
             payload: Dict[str, Any] = {}
@@ -315,6 +326,27 @@ class DailyJob:
             return payload
 
         return {}
+
+    def mark_run(self) -> None:
+        now = datetime.datetime.utcnow()
+        now = now.replace(microsecond=(now.microsecond // 1000) * 1000)
+        filter_query = {"_id": self.id}
+        mongo_db["tasks"].update_one(filter_query, {"$set": {"last_run": now}})
+        self.last_run = now
+
+    def reset_run(self) -> bool:
+        filter_query: Dict[str, Any] = {"_id": self.id}
+        if self.last_run is not None:
+            filter_query["last_run"] = self.last_run
+
+        result = mongo_db["tasks"].update_one(
+            filter_query,
+            {"$set": {"last_run": None}},
+        )
+        if result.matched_count > 0:
+            self.last_run = None
+            return True
+        return False
 
     @staticmethod
     def fetch_cron_jobs() -> List["DailyJob"]:

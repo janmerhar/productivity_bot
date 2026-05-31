@@ -295,6 +295,7 @@ class HabitCog(commands.Cog):
                     HabitFunctions.insert_habit_task,
                     document,
                     reminder_time,
+                    timezone,
                 )
             except Exception:
                 reminder_failed = True
@@ -348,6 +349,7 @@ class HabitCog(commands.Cog):
                 HabitFunctions.sync_habit_tasks,
                 document,
                 reminder_time,
+                timezone,
             )
         except Exception:
             reminder_failed = True

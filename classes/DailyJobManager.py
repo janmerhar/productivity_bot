@@ -123,6 +123,7 @@ class DailyJobManager:
         return updated
 
     def get_due_jobs(self) -> List[DailyJob]:
+        self.fetch_jobs()
         now = datetime.datetime.now()
         due_jobs: List[DailyJob] = []
 

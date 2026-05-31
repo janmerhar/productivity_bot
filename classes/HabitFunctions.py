@@ -12,6 +12,7 @@ from classes.OpenAIFunctions import OpenAIFunctions
 from config.db import mongo_db
 from config.env import settings
 from services.due_datetime import DueDateService
+from services.time_input import normalize_dotted_time_notation, parse_clock_time
 
 
 class HabitFunctions:
@@ -200,9 +201,10 @@ class HabitFunctions:
     def insert_habit_task(
         habit: Dict[str, Any],
         reminder_time: datetime.time,
+        timezone: Optional[str] = None,
     ) -> None:
         expression = f"{reminder_time.minute} {reminder_time.hour} * * *"
-        schedule = CronSchedule(expression=expression)
+        schedule = CronSchedule(expression=expression, timezone=timezone)
         habit_id = str(habit.get("_id"))
         guild_id = habit.get("guild_id")
         manager = DailyJobManager()
@@ -280,9 +282,17 @@ class HabitFunctions:
         reminder: Optional[str],
         timezone: Optional[str] = None,
     ) -> Optional[datetime.time]:
-        reminder_text = reminder.strip() if reminder else ""
+        reminder_text = (
+            normalize_dotted_time_notation(reminder, time_only=True).strip()
+            if reminder
+            else ""
+        )
         if not reminder_text:
             return None
+
+        parsed_time = parse_clock_time(reminder_text, allow_ambiguous_dotted=True)
+        if parsed_time is not None:
+            return parsed_time
 
         api_key = settings.openai_api_key
         if not api_key:
@@ -626,6 +636,7 @@ class HabitFunctions:
     def sync_habit_tasks(
         habit: Dict[str, Any],
         reminder_time: Optional[datetime.time],
+        timezone: Optional[str] = None,
     ) -> None:
         manager = DailyJobManager()
         habit_id = str(habit.get("_id") or "")
@@ -635,7 +646,7 @@ class HabitFunctions:
             manager.delete_job(str(job.id), guild_id=job.guild_id)
 
         if reminder_time is not None:
-            HabitFunctions.insert_habit_task(habit, reminder_time)
+            HabitFunctions.insert_habit_task(habit, reminder_time, timezone)
 
     @staticmethod
     def add_completion(

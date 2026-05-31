@@ -41,13 +41,16 @@ from services.visibility import (
 from views.ReminderOutputView import ReminderOutputView
 
 
+class ScheduledJobDeliveryUnavailable(Exception):
+    """Raised when a scheduled job should be retried after a delivery failure."""
+
+
 class DailyTaskCog(commands.Cog):
     if not settings.jobs_commands_disabled:
         jobs = app_commands.Group(name="jobs", description="Manage scheduled jobs")
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self._runner.start()
 
     @staticmethod
     def _resolve_response_visibility(
@@ -137,6 +140,8 @@ class DailyTaskCog(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         print("DailyTaskCog cog loaded")
+        if not self._runner.is_running():
+            self._runner.start()
 
     def cog_unload(self) -> None:
         if self._runner.is_running():
@@ -268,17 +273,82 @@ class DailyTaskCog(commands.Cog):
     @tasks.loop(minutes=1)
     async def _runner(self) -> None:
         manager = DailyJobManager()
-        manager.get_due_jobs()
-        runs = await asyncio.to_thread(manager.run_due_jobs)
-
-        if not runs:
+        try:
+            due_jobs = await asyncio.to_thread(manager.get_due_jobs)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Failed to load due scheduled jobs"
+            )
             return
 
-        for job, payload in runs:
+        if not due_jobs:
+            return
+
+        for job in due_jobs:
+            try:
+                payload = await asyncio.to_thread(job.run)
+                await self._run_job(job, payload)
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Failed to process scheduled job",
+                    extra={"job_id": str(job.id), "job_type": job.type},
+                )
+                await self._retry_one_time_job(job)
+
+        try:
+            await asyncio.to_thread(manager.fetch_jobs)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Failed to refresh scheduled jobs after runner pass"
+            )
+
+    @staticmethod
+    def _is_one_time_job(job: DailyJob) -> bool:
+        schedule = job.schedule
+        if isinstance(schedule, dict):
+            return schedule.get("mode") == "one-time"
+        return getattr(schedule, "mode", None) == "one-time"
+
+    async def _retry_one_time_job(self, job: DailyJob) -> None:
+        if not self._is_one_time_job(job) or job.last_run is None:
+            return
+
+        try:
+            reset = await asyncio.to_thread(job.reset_run)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Failed to restore one-time scheduled job for retry",
+                extra={"job_id": str(job.id), "job_type": job.type},
+            )
+            return
+
+        if reset:
+            logging.getLogger(__name__).warning(
+                "Restored one-time scheduled job for retry",
+                extra={"job_id": str(job.id), "job_type": job.type},
+            )
+
+    @staticmethod
+    def _has_sendable_payload(payload: Dict[str, Any]) -> bool:
+        if str(payload.get("content") or "").strip():
+            return True
+        if payload.get("embed") is not None:
+            return True
+        if payload.get("embeds"):
+            return True
+        if payload.get("view") is not None:
+            return True
+        return False
+
+    async def _run_job(self, job: DailyJob, payload: Dict[str, Any]) -> None:
+        # Existing branches use `continue` as an early exit from this single-job pass.
+        for _dispatch_once in (None,):
             if job.type == "pomodoro":
                 channel = await resolve_messageable_channel(self.bot, job.channel_id)
                 if channel is None:
-                    continue
+                    raise ScheduledJobDeliveryUnavailable(
+                        "Pomodoro destination is unavailable."
+                    )
                 data = job.data or {}
                 mode = str(data.get("mode", "focus")).strip().lower()
                 if mode not in ("focus", "break"):
@@ -327,14 +397,16 @@ class DailyTaskCog(commands.Cog):
                     if message_id_raw.isdigit():
                         next_data["message_id"] = message_id_raw
 
-                    created_job = await asyncio.to_thread(
-                        manager.insert_job,
-                        job.guild_id,
-                        job.channel_id,
-                        "pomodoro",
+                    advanced = await asyncio.to_thread(
+                        PomodoroFunctions.advance_auto_cycle_job,
+                        job,
                         next_data,
                         next_schedule,
                     )
+                    if not advanced:
+                        raise ScheduledJobDeliveryUnavailable(
+                            "Could not schedule the next pomodoro cycle."
+                        )
 
                     join_url: Optional[str] = None
                     voice_error: Optional[str] = None
@@ -402,7 +474,7 @@ class DailyTaskCog(commands.Cog):
                         or posted_message.id != int(message_id_raw)
                     ):
                         await PomodoroFunctions.bind_timer_message(
-                            job_id=str(created_job.id),
+                            job_id=str(job.id),
                             channel_id=job.channel_id,
                             guild_id=job.guild_id,
                             message_id=posted_message.id,
@@ -483,14 +555,19 @@ class DailyTaskCog(commands.Cog):
                         todo.get("user_id")
                     )
 
-                if dm_user_id is not None:
+                dm_delivery = delivery in {"dm_me", "dm_assignee"} or (
+                    delivery == "auto" and todo_scope == "personal"
+                )
+                if dm_delivery:
                     user_id = dm_user_id
                     if not user_id:
                         logging.getLogger(__name__).warning(
                             "Skipping todo DM reminder without recipient",
                             extra={"job_id": str(job.id), "task_id": task_id},
                         )
-                        continue
+                        raise ScheduledJobDeliveryUnavailable(
+                            "Todo DM reminder has no recipient."
+                        )
                     user = self.bot.get_user(user_id)
                     if user is None:
                         try:
@@ -504,7 +581,9 @@ class DailyTaskCog(commands.Cog):
                                 "Failed to resolve todo reminder DM recipient",
                                 extra={"user_id": user_id, "task_id": task_id},
                             )
-                            continue
+                            raise ScheduledJobDeliveryUnavailable(
+                                "Todo DM recipient is unavailable."
+                            )
                     todo_payload = TodoEmbeds.todo_reminder_payload(
                         todo,
                         todo_list=todo_list,
@@ -512,11 +591,14 @@ class DailyTaskCog(commands.Cog):
                     )
                     try:
                         await user.send(**todo_payload)
-                    except discord.HTTPException:
+                    except discord.HTTPException as exc:
                         logging.getLogger(__name__).exception(
                             "Failed to DM todo reminder",
                             extra={"user_id": user_id, "task_id": task_id},
                         )
+                        raise ScheduledJobDeliveryUnavailable(
+                            "Todo DM delivery failed."
+                        ) from exc
                     continue
 
                 channel_id = job.channel_id or self._coerce_int_id(
@@ -524,7 +606,9 @@ class DailyTaskCog(commands.Cog):
                 )
                 channel = await resolve_messageable_channel(self.bot, channel_id)
                 if channel is None:
-                    continue
+                    raise ScheduledJobDeliveryUnavailable(
+                        "Todo reminder destination is unavailable."
+                    )
 
                 mention_user_id = created_by_user_id
                 if (
@@ -554,20 +638,34 @@ class DailyTaskCog(commands.Cog):
                         continue
                     user = self.bot.get_user(user_id)
                     if user is None:
-                        user = await self.bot.fetch_user(user_id)
+                        try:
+                            user = await self.bot.fetch_user(user_id)
+                        except (
+                            discord.NotFound,
+                            discord.Forbidden,
+                            discord.HTTPException,
+                        ) as exc:
+                            raise ScheduledJobDeliveryUnavailable(
+                                "Habit DM recipient is unavailable."
+                            ) from exc
                     habit_payload = HabitEmbeds.habit_reminder_payload(habit)
                     try:
                         await user.send(**habit_payload)
-                    except discord.HTTPException:
+                    except discord.HTTPException as exc:
                         logging.getLogger(__name__).exception(
                             "Failed to DM habit reminder",
                             extra={"user_id": user_id, "habit_id": habit_id},
                         )
+                        raise ScheduledJobDeliveryUnavailable(
+                            "Habit DM delivery failed."
+                        ) from exc
                     continue
 
                 channel = await resolve_messageable_channel(self.bot, job.channel_id)
                 if channel is None:
-                    continue
+                    raise ScheduledJobDeliveryUnavailable(
+                        "Habit reminder destination is unavailable."
+                    )
 
                 habit_payload = HabitEmbeds.habit_reminder_payload(habit)
                 await channel.send(**habit_payload)
@@ -579,7 +677,9 @@ class DailyTaskCog(commands.Cog):
                     data=job.data,
                 )
                 if channel is None:
-                    continue
+                    raise ScheduledJobDeliveryUnavailable(
+                        "Reminder destination is unavailable."
+                    )
 
                 if job.type == "message":
                     reminder_guild = (
@@ -613,6 +713,12 @@ class DailyTaskCog(commands.Cog):
                     continue
 
                 if payload:
+                    if not self._has_sendable_payload(payload):
+                        logging.getLogger(__name__).error(
+                            "Skipping reminder with an empty payload",
+                            extra={"job_id": str(job.id), "job_type": job.type},
+                        )
+                        continue
                     await channel.send(**payload)
                     await self._send_reminder_ping_dms(
                         job,
@@ -624,13 +730,18 @@ class DailyTaskCog(commands.Cog):
 
             channel = await resolve_messageable_channel(self.bot, job.channel_id)
             if channel is None:
+                raise ScheduledJobDeliveryUnavailable(
+                    "Scheduled job destination is unavailable."
+                )
+
+            if not self._has_sendable_payload(payload):
+                logging.getLogger(__name__).error(
+                    "Skipping scheduled job with an empty payload",
+                    extra={"job_id": str(job.id), "job_type": job.type},
+                )
                 continue
 
             await channel.send(**payload)
-
-    @_runner.before_loop
-    async def _before_runner(self) -> None:
-        await self.bot.wait_until_ready()
 
     @staticmethod
     def _truncate(text: str, limit: int = 60) -> str:

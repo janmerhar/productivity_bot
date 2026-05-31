@@ -10,6 +10,7 @@ from classes.ReminderFunctions import ReminderFunctions
 from services.channel_visibility import can_view_channel
 from services.error_reporting import ValidationError, UserVisibleError, handle_interaction_error
 from services import reminder_list_sessions
+from services.schedule_time import resolve_zoneinfo, schedule_timezone_name
 from views.ReminderOutputView import ReminderOutputView
 from views.ReminderEditModal import ReminderCreateModal
 
@@ -599,10 +600,15 @@ class ReminderListView(discord.ui.View):
             return expression
 
     @staticmethod
-    def _cron_next_run(expression: str) -> Optional[str]:
+    def _cron_next_run(
+        expression: str,
+        timezone: Optional[str] = None,
+    ) -> Optional[str]:
         try:
             from croniter import croniter
-            it = croniter(expression, datetime.datetime.now())
+            tzinfo = resolve_zoneinfo(timezone)
+            now = datetime.datetime.now(tzinfo) if tzinfo else datetime.datetime.now()
+            it = croniter(expression, now)
             next_dt = it.get_next(datetime.datetime)
             return f"<t:{int(next_dt.timestamp())}:R>"
         except Exception:
@@ -626,7 +632,10 @@ class ReminderListView(discord.ui.View):
 
         if mode == "cron" and expression:
             human = ReminderListView._cron_human_label(expression)
-            next_run = ReminderListView._cron_next_run(expression)
+            next_run = ReminderListView._cron_next_run(
+                expression,
+                schedule_timezone_name(schedule),
+            )
             return f"🔁 {human}\nNext: {next_run}" if next_run else f"🔁 {human}"
 
         raw_value = ReminderFunctions.schedule_input_for_job(job)

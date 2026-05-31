@@ -6,6 +6,12 @@ import dateparser
 
 from classes.OpenAIFunctions import OpenAIFunctions
 from config.env import settings
+from services.time_input import (
+    is_ambiguous_standalone_dotted_value,
+    normalize_dotted_time_notation,
+    parse_clock_time,
+    parse_weekday_clock_time,
+)
 
 
 class DueDateService:
@@ -80,12 +86,7 @@ class DueDateService:
         timezone: Optional[str] = None,
         locale_code: Optional[str] = None,
     ) -> Optional[datetime.datetime]:
-        direct = DueDateService.coerce_due_datetime(due_text)
-        if direct is not None:
-            if direct.tzinfo is not None:
-                direct = direct.astimezone().replace(tzinfo=None)
-            return direct.replace(second=0, microsecond=0)
-
+        due_text = normalize_dotted_time_notation(due_text)
         timezone_value = (timezone or "").strip()
         tzinfo = None
         if timezone_value:
@@ -94,7 +95,43 @@ class DueDateService:
             except ZoneInfoNotFoundError:
                 tzinfo = None
 
+        direct = DueDateService.coerce_due_datetime(due_text)
+        if direct is not None:
+            if direct.tzinfo is None and tzinfo is not None:
+                direct = direct.replace(tzinfo=tzinfo)
+            if direct.tzinfo is not None:
+                direct = direct.astimezone().replace(tzinfo=None)
+            return direct.replace(second=0, microsecond=0)
+
         base_now = datetime.datetime.now(tzinfo) if tzinfo else datetime.datetime.now()
+        clock_time = parse_clock_time(due_text)
+        if clock_time is not None:
+            parsed = datetime.datetime.combine(
+                base_now.date(),
+                clock_time,
+                tzinfo=tzinfo,
+            )
+            if parsed <= base_now:
+                parsed += datetime.timedelta(days=1)
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone().replace(tzinfo=None)
+            return parsed
+
+        weekday_time = parse_weekday_clock_time(due_text)
+        if weekday_time is not None:
+            weekday, clock_time = weekday_time
+            days_ahead = (weekday - base_now.weekday()) % 7
+            parsed = datetime.datetime.combine(
+                base_now.date() + datetime.timedelta(days=days_ahead),
+                clock_time,
+                tzinfo=tzinfo,
+            )
+            if parsed <= base_now:
+                parsed += datetime.timedelta(days=7)
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone().replace(tzinfo=None)
+            return parsed
+
         settings: Dict[str, Any] = {
             "PREFER_DATES_FROM": "future",
             "RELATIVE_BASE": base_now,
@@ -152,7 +189,15 @@ class DueDateService:
         timezone: Optional[str] = None,
         locale_code: Optional[str] = None,
     ) -> Optional[datetime.datetime]:
-        due_text = due.strip() if due else ""
+        raw_due_text = str(due or "").strip()
+        if is_ambiguous_standalone_dotted_value(raw_due_text):
+            raise ValueError(
+                f"`{raw_due_text}` could mean either a date or a time. "
+                "Use a colon for a time, such as `11:11`, or include the year "
+                "for a dotted date, such as `11.11.2026`."
+            )
+
+        due_text = normalize_dotted_time_notation(raw_due_text).strip()
         if not due_text:
             return None
 
@@ -185,15 +230,9 @@ class DueDateService:
         timezone: Optional[str] = None,
         locale_code: Optional[str] = None,
     ) -> Optional[str]:
-        due_text = (due or "").strip()
+        due_text = normalize_dotted_time_notation(due or "").strip()
         if not due_text:
             return None
-
-        parsed_iso = DueDateService.coerce_due_datetime(due_text)
-        if parsed_iso is not None:
-            if parsed_iso.tzinfo is not None:
-                parsed_iso = parsed_iso.astimezone().replace(tzinfo=None)
-            return parsed_iso.isoformat()
 
         parsed = DueDateService.parse_due_datetime(
             due_text,
