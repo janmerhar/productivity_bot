@@ -61,6 +61,7 @@ from views.todo_list_description_dynamic_items import (
     register_todo_list_description_dynamic_items,
 )
 from views.todo_list_items_dynamic_items import register_todo_list_items_dynamic_items
+from views.todo_item_dynamic_items import register_todo_item_dynamic_items
 from views.toggl_dynamic_items import register_toggl_dynamic_items
 
 _runtime_sync_commands_on_start: bool | None = None
@@ -289,6 +290,7 @@ async def main():
     await register_todo_list_directory_dynamic_items(bot)
     await register_todo_list_description_dynamic_items(bot)
     await register_todo_list_items_dynamic_items(bot)
+    await register_todo_item_dynamic_items(bot)
     await register_toggl_dynamic_items(bot)
     await bot.start(settings.discord_token)
 
