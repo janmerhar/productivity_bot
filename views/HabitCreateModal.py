@@ -407,34 +407,37 @@ class HabitCreatedActionView(HabitActionView):
         disabled: bool = False,
         today_status: Optional[str] = None,
     ) -> None:
+        from views.habit_dynamic_items import (
+            HabitDeleteButton,
+            HabitDuplicateButton,
+            HabitEditButton,
+        )
+
         super()._rebuild_items(
             disabled=disabled,
             today_status=today_status,
         )
-        edit_button = discord.ui.Button(
-            emoji="✏️",
-            style=discord.ButtonStyle.secondary,
-            row=0,
-            disabled=disabled,
+        self.add_item(
+            HabitEditButton(
+                self.habit_id,
+                self.user_id,
+                disabled=disabled,
+            )
         )
-        edit_button.callback = self._open_edit_modal
-        self.add_item(edit_button)
-        duplicate_button = discord.ui.Button(
-            emoji="📄",
-            style=discord.ButtonStyle.primary,
-            row=0,
-            disabled=disabled,
+        self.add_item(
+            HabitDuplicateButton(
+                self.habit_id,
+                self.user_id,
+                disabled=disabled,
+            )
         )
-        duplicate_button.callback = self._open_duplicate_modal
-        self.add_item(duplicate_button)
-        delete_button = discord.ui.Button(
-            emoji="🗑️",
-            style=discord.ButtonStyle.danger,
-            row=0,
-            disabled=disabled,
+        self.add_item(
+            HabitDeleteButton(
+                self.habit_id,
+                self.user_id,
+                disabled=disabled,
+            )
         )
-        delete_button.callback = self._open_delete_modal
-        self.add_item(delete_button)
 
     async def _open_modal(
         self,
