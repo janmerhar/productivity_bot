@@ -136,29 +136,23 @@ class HabitEmbeds:
 
     @staticmethod
     def habit_reminder_payload(habit: Dict[str, Any]) -> dict:
+        from classes.HabitFunctions import HabitFunctions
         from views.HabitActionView import HabitActionView
 
         name = str(habit.get("name") or "Habit")
-        description = habit.get("description")
         user_id = habit.get("user_id")
         habit_id = str(habit.get("_id") or "")
 
-        embed = discord.Embed(
-            title="Habit Reminder",
-            color=discord.Colour.orange(),
+        payload = HabitEmbeds.habit_item_embed(
+            habit,
+            HabitFunctions.today_status(habit),
+            HabitFunctions.recent_progress(habit, days=5),
         )
-        lines = []
-        if description:
-            lines.append(str(description))
-        embed.add_field(
-            name=name,
-            value="\n".join(lines) if lines else "No details",
-            inline=False,
-        )
-
-        payload: Dict[str, Any] = {"embed": embed}
-        if user_id:
-            payload["content"] = f"<@{user_id}>"
         if habit_id and user_id:
-            payload["view"] = HabitActionView(habit_id, name, int(user_id))
+            payload["view"] = HabitActionView(
+                habit_id,
+                name,
+                int(user_id),
+                today_status=HabitFunctions.today_status(habit),
+            )
         return payload
