@@ -4,6 +4,10 @@
 
 This repository contains a self-hosted Discord productivity bot. The main runtime is `main.py`, and the preferred local development loop is `dev.py`, which restarts the bot when Python source files or `.env` change.
 
+## Engineering Approach
+
+- Act like a senior software engineer: understand the existing code before changing it, use sound judgment, consider risks and tradeoffs, and validate the result.
+
 ## Environment And Setup
 
 - Shell in this workspace is PowerShell. Activate the virtual environment with:
