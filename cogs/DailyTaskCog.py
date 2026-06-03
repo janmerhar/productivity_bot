@@ -520,19 +520,20 @@ class DailyTaskCog(commands.Cog):
                 if notify_text:
                     await channel.send(content=notify_text)
 
-                if not message_id_raw.isdigit():
-                    await channel.send(**pomodoro_payload)
-                    continue
+                if message_id_raw.isdigit():
+                    try:
+                        original_message = await channel.fetch_message(
+                            int(message_id_raw)
+                        )
+                        await original_message.edit(view=None)
+                    except (
+                        discord.NotFound,
+                        discord.Forbidden,
+                        discord.HTTPException,
+                    ):
+                        pass
 
-                try:
-                    original_message = await channel.fetch_message(int(message_id_raw))
-                    await original_message.edit(**pomodoro_payload)
-                except (
-                    discord.NotFound,
-                    discord.Forbidden,
-                    discord.HTTPException,
-                ):
-                    await channel.send(**pomodoro_payload)
+                await channel.send(**pomodoro_payload)
                 continue
             if job.type == "todo":
                 data = job.data or {}
