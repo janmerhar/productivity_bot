@@ -89,7 +89,7 @@ async def _ensure_stopped_owner(
 
 async def _disable_source_message(
     source_message: Optional[discord.Message],
-    view: discord.ui.View,
+    view: Optional[discord.ui.View],
 ) -> None:
     if source_message is None:
         return
@@ -973,22 +973,18 @@ class PomodoroStartStopButton(
             break_duration=result.break_duration,
         )
         payload["content"] = None
-        replacement_view = PomodoroStoppedView(
+        stopped_view = PomodoroStoppedView(
             interaction.user.id,
             focus_duration=result.focus_duration,
             break_duration=result.break_duration,
         )
         if interaction.message is not None:
-            try:
-                await interaction.message.edit(**payload, view=replacement_view)
-                return
-            except discord.HTTPException:
-                pass
+            await _disable_source_message(interaction.message, view=None)
 
         await interaction.followup.send(
             ephemeral=response_ephemeral,
             **payload,
-            view=replacement_view,
+            view=stopped_view,
         )
 
 
