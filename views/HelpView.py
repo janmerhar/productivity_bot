@@ -61,34 +61,6 @@ _EMBED_FOR_CATEGORY: dict[str, Callable[[], discord.Embed]] = {
 }
 
 
-class _CategorySelect(discord.ui.Select):
-    def __init__(self, current_value: str) -> None:
-        options = [
-            discord.SelectOption(
-                label=opt.label,
-                value=opt.value,
-                description=opt.description,
-                emoji=opt.emoji,
-                default=opt.value == current_value,
-            )
-            for opt in _CATEGORY_OPTIONS
-        ]
-        super().__init__(
-            placeholder="Browse a category...",
-            min_values=1,
-            max_values=1,
-            options=options,
-        )
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        view: HelpView = self.view  # type: ignore[assignment]
-        selected = self.values[0]
-        builder = _EMBED_FOR_CATEGORY.get(selected, SettingsEmbeds.help_welcome_embed)
-        view._current_category = selected
-        view._rebuild()
-        await interaction.response.edit_message(embed=builder(), view=view)
-
-
 class HelpView(discord.ui.View):
     def __init__(self, *, category: str = "quick_start") -> None:
         super().__init__(timeout=None)
@@ -96,5 +68,7 @@ class HelpView(discord.ui.View):
         self._rebuild()
 
     def _rebuild(self) -> None:
+        from views.help_dynamic_items import HelpCategorySelect
+
         self.clear_items()
-        self.add_item(_CategorySelect(self._current_category))
+        self.add_item(HelpCategorySelect(self._current_category))

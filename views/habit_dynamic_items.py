@@ -15,6 +15,9 @@ async def register_habit_dynamic_items(bot: commands.Bot) -> None:
     bot.add_dynamic_items(
         HabitCompleteButton,
         HabitSkipButton,
+        HabitEditButton,
+        HabitDuplicateButton,
+        HabitDeleteButton,
     )
 
 
@@ -164,6 +167,59 @@ async def _record_completion(
     )
 
 
+async def _run_created_habit_action(
+    interaction: discord.Interaction,
+    *,
+    habit_id: str,
+    user_id: int,
+    action: str,
+) -> None:
+    response_ephemeral = inherit_ephemeral_from_interaction(
+        interaction,
+        default=True,
+    )
+    view, habit = await _build_habit_view(
+        interaction,
+        habit_id=habit_id,
+        user_id=user_id,
+        view_kind=_CREATED_VIEW_KIND,
+        response_ephemeral=response_ephemeral,
+    )
+    if habit is None:
+        await interaction.response.send_message(
+            "That habit is no longer available.",
+            ephemeral=response_ephemeral,
+        )
+        return
+
+    callback = getattr(view, f"_open_{action}_modal", None)
+    if callback is None:
+        await interaction.response.send_message(
+            "Habit actions are not available right now.",
+            ephemeral=response_ephemeral,
+        )
+        return
+    await callback(interaction)
+
+
+def _created_habit_button(
+    *,
+    action: str,
+    habit_id: str,
+    user_id: int,
+    emoji: str,
+    style: discord.ButtonStyle,
+    disabled: bool,
+) -> discord.ui.Button:
+    return discord.ui.Button(
+        emoji=emoji,
+        style=style,
+        row=0,
+        custom_id=f"habit:{action}:{habit_id}:{user_id}",
+        disabled=disabled,
+    )
+
+
 class HabitCompleteButton(
     discord.ui.DynamicItem[discord.ui.Button],
     template=(
@@ -277,4 +333,130 @@ class HabitSkipButton(
             mode="skip",
             view_kind=self.view_kind,
             response_ephemeral=response_ephemeral,
+        )
+
+
+class HabitEditButton(
+    discord.ui.DynamicItem[discord.ui.Button],
+    template=r"habit:edit:(?P<habit_id>[^:]+):(?P<user_id>\d+)",
+):
+    def __init__(self, habit_id: str, user_id: int, *, disabled: bool = False) -> None:
+        super().__init__(
+            _created_habit_button(
+                action="edit",
+                habit_id=habit_id,
+                user_id=user_id,
+                emoji="\N{LOWER RIGHT PENCIL}",
+                style=discord.ButtonStyle.secondary,
+                disabled=disabled,
+            )
+        )
+        self.habit_id = habit_id
+        self.user_id = user_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Item,
+        match,
+        /,
+    ) -> "HabitEditButton":
+        del interaction
+        return cls(
+            match.group("habit_id"),
+            int(match.group("user_id")),
+            disabled=getattr(item, "disabled", False),
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await _run_created_habit_action(
+            interaction,
+            habit_id=self.habit_id,
+            user_id=self.user_id,
+            action="edit",
+        )
+
+
+class HabitDuplicateButton(
+    discord.ui.DynamicItem[discord.ui.Button],
+    template=r"habit:duplicate:(?P<habit_id>[^:]+):(?P<user_id>\d+)",
+):
+    def __init__(self, habit_id: str, user_id: int, *, disabled: bool = False) -> None:
+        super().__init__(
+            _created_habit_button(
+                action="duplicate",
+                habit_id=habit_id,
+                user_id=user_id,
+                emoji="\N{PAGE FACING UP}",
+                style=discord.ButtonStyle.primary,
+                disabled=disabled,
+            )
+        )
+        self.habit_id = habit_id
+        self.user_id = user_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Item,
+        match,
+        /,
+    ) -> "HabitDuplicateButton":
+        del interaction
+        return cls(
+            match.group("habit_id"),
+            int(match.group("user_id")),
+            disabled=getattr(item, "disabled", False),
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await _run_created_habit_action(
+            interaction,
+            habit_id=self.habit_id,
+            user_id=self.user_id,
+            action="duplicate",
+        )
+
+
+class HabitDeleteButton(
+    discord.ui.DynamicItem[discord.ui.Button],
+    template=r"habit:delete:(?P<habit_id>[^:]+):(?P<user_id>\d+)",
+):
+    def __init__(self, habit_id: str, user_id: int, *, disabled: bool = False) -> None:
+        super().__init__(
+            _created_habit_button(
+                action="delete",
+                habit_id=habit_id,
+                user_id=user_id,
+                emoji="\N{WASTEBASKET}",
+                style=discord.ButtonStyle.danger,
+                disabled=disabled,
+            )
+        )
+        self.habit_id = habit_id
+        self.user_id = user_id
+
+    @classmethod
+    async def from_custom_id(
+        cls,
+        interaction: discord.Interaction,
+        item: discord.ui.Item,
+        match,
+        /,
+    ) -> "HabitDeleteButton":
+        del interaction
+        return cls(
+            match.group("habit_id"),
+            int(match.group("user_id")),
+            disabled=getattr(item, "disabled", False),
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await _run_created_habit_action(
+            interaction,
+            habit_id=self.habit_id,
+            user_id=self.user_id,
+            action="delete",
         )

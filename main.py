@@ -47,6 +47,7 @@ from config.logger import setup_logging
 from services.error_reporting import handle_app_command_error
 from views.habit_list_dynamic_items import register_habit_list_dynamic_items
 from views.habit_dynamic_items import register_habit_dynamic_items
+from views.help_dynamic_items import register_help_dynamic_items
 from views.pomodoro_dynamic_items import register_pomodoro_dynamic_items
 from views.reminder_dynamic_items import register_reminder_dynamic_items
 from views.stock_list_dynamic_items import register_stock_list_dynamic_items
@@ -61,6 +62,7 @@ from views.todo_list_description_dynamic_items import (
     register_todo_list_description_dynamic_items,
 )
 from views.todo_list_items_dynamic_items import register_todo_list_items_dynamic_items
+from views.todo_item_dynamic_items import register_todo_item_dynamic_items
 from views.toggl_dynamic_items import register_toggl_dynamic_items
 
 _runtime_sync_commands_on_start: bool | None = None
@@ -279,6 +281,7 @@ async def main():
     await load()
     await register_habit_list_dynamic_items(bot)
     await register_habit_dynamic_items(bot)
+    await register_help_dynamic_items(bot)
     await register_pomodoro_dynamic_items(bot)
     await register_reminder_dynamic_items(bot)
     await register_stock_list_dynamic_items(bot)
@@ -289,6 +292,7 @@ async def main():
     await register_todo_list_directory_dynamic_items(bot)
     await register_todo_list_description_dynamic_items(bot)
     await register_todo_list_items_dynamic_items(bot)
+    await register_todo_item_dynamic_items(bot)
     await register_toggl_dynamic_items(bot)
     await bot.start(settings.discord_token)
 

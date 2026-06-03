@@ -78,6 +78,23 @@ class HabitCog(commands.Cog):
             today_status=HabitFunctions.today_status(document),
         )
 
+    def build_habit_show_payload(
+        self,
+        document: dict,
+        *,
+        ephemeral: bool,
+    ) -> dict:
+        payload = HabitEmbeds.habit_item_embed(
+            document,
+            HabitFunctions.today_status(document),
+            HabitFunctions.recent_progress(document, days=5),
+        )
+        payload["view"] = self._build_created_habit_view(
+            document,
+            ephemeral=ephemeral,
+        )
+        return payload
+
     async def _resolve_habit_reference(
         self,
         interaction: discord.Interaction,
@@ -540,12 +557,7 @@ class HabitCog(commands.Cog):
             scope_value=scope_value,
             ephemeral=ephemeral,
         )
-        payload = HabitEmbeds.habit_item_embed(
-            habit_document,
-            HabitFunctions.today_status(habit_document),
-            HabitFunctions.recent_progress(habit_document, days=5),
-        )
-        payload["view"] = self._build_created_habit_view(
+        payload = self.build_habit_show_payload(
             habit_document,
             ephemeral=ephemeral,
         )

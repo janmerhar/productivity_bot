@@ -72,6 +72,23 @@ class DailyTaskCog(commands.Cog):
         except (TypeError, ValueError):
             return None
 
+    def _habit_show_payload(self, habit: Dict[str, Any]) -> Dict[str, Any]:
+        habit_cog = self.bot.get_cog("HabitCog")
+        if habit_cog is not None and hasattr(habit_cog, "build_habit_show_payload"):
+            return habit_cog.build_habit_show_payload(habit, ephemeral=False)
+        return HabitEmbeds.habit_reminder_payload(habit)
+
+    async def _send_habit_reminder(
+        self,
+        destination: Any,
+        habit: Dict[str, Any],
+    ) -> None:
+        habit_payload = self._habit_show_payload(habit)
+        posted_message = await destination.send(**habit_payload)
+        view = habit_payload.get("view")
+        if view is not None and hasattr(view, "message"):
+            view.message = posted_message
+
     async def _send_reminder_ping_dms(
         self,
         job: DailyJob,
@@ -503,19 +520,20 @@ class DailyTaskCog(commands.Cog):
                 if notify_text:
                     await channel.send(content=notify_text)
 
-                if not message_id_raw.isdigit():
-                    await channel.send(**pomodoro_payload)
-                    continue
+                if message_id_raw.isdigit():
+                    try:
+                        original_message = await channel.fetch_message(
+                            int(message_id_raw)
+                        )
+                        await original_message.edit(view=None)
+                    except (
+                        discord.NotFound,
+                        discord.Forbidden,
+                        discord.HTTPException,
+                    ):
+                        pass
 
-                try:
-                    original_message = await channel.fetch_message(int(message_id_raw))
-                    await original_message.edit(**pomodoro_payload)
-                except (
-                    discord.NotFound,
-                    discord.Forbidden,
-                    discord.HTTPException,
-                ):
-                    await channel.send(**pomodoro_payload)
+                await channel.send(**pomodoro_payload)
                 continue
             if job.type == "todo":
                 data = job.data or {}
@@ -648,9 +666,8 @@ class DailyTaskCog(commands.Cog):
                             raise ScheduledJobDeliveryUnavailable(
                                 "Habit DM recipient is unavailable."
                             ) from exc
-                    habit_payload = HabitEmbeds.habit_reminder_payload(habit)
                     try:
-                        await user.send(**habit_payload)
+                        await self._send_habit_reminder(user, habit)
                     except discord.HTTPException as exc:
                         logging.getLogger(__name__).exception(
                             "Failed to DM habit reminder",
@@ -667,8 +684,7 @@ class DailyTaskCog(commands.Cog):
                         "Habit reminder destination is unavailable."
                     )
 
-                habit_payload = HabitEmbeds.habit_reminder_payload(habit)
-                await channel.send(**habit_payload)
+                await self._send_habit_reminder(channel, habit)
                 continue
             if ReminderFunctions.is_reminder_job(job):
                 channel = await resolve_reminder_destination(

@@ -30,6 +30,37 @@ class TogglTimerHistoryView(discord.ui.View):
         self.total_pages = 1
         self._build()
 
+    @classmethod
+    async def from_dynamic_reference(
+        cls,
+        *,
+        guild_id: Optional[int],
+        user_id: int,
+        page: int,
+        sort: str,
+        response_ephemeral: bool,
+    ) -> Optional["TogglTimerHistoryView"]:
+        api_key = await asyncio.to_thread(
+            UserSettingsFunctions.get_toggl_api_key,
+            user_id,
+        )
+        if not api_key:
+            return None
+        workspace_id = await asyncio.to_thread(
+            UserSettingsFunctions.get_toggl_workspace_id,
+            user_id,
+        )
+        toggl = TogglFunctions(api_key, workspace_id=workspace_id)
+        timers = await asyncio.to_thread(toggl.getLastNTimeEntryHistory, 100)
+        return cls(
+            guild_id=guild_id,
+            user_id=user_id,
+            timers=timers or [],
+            page=page,
+            sort=sort,
+            response_ephemeral=response_ephemeral,
+        )
+
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.user_id:
             return True
@@ -57,74 +88,55 @@ class TogglTimerHistoryView(discord.ui.View):
         return sorted_timers[start_index : start_index + self.page_size]
 
     def _build(self) -> None:
+        from views.toggl_dynamic_items import TogglTimerHistoryButton
+
         self.clear_items()
         page_timers = self._page_slice()
+        guild_id = int(self.guild_id or 0)
 
         for index in range(self.page_size):
-            item_number = index + 1
             has_timer = index < len(page_timers)
-
-            info_button = discord.ui.Button(
-                label=str(item_number),
-                emoji="ℹ️",
-                style=discord.ButtonStyle.secondary,
-                row=0,
-                disabled=not has_timer,
+            self.add_item(
+                TogglTimerHistoryButton(
+                    "info",
+                    guild_id=guild_id,
+                    user_id=self.user_id,
+                    page=self.page,
+                    sort=self.sort,
+                    slot=index,
+                    disabled=not has_timer,
+                )
             )
 
-            async def _info_callback(
-                interaction: discord.Interaction,
-                timer_index: int = index,
-            ) -> None:
-                await self._show_timer(interaction, timer_index)
-
-            info_button.callback = _info_callback
-            self.add_item(info_button)
-
-        prev_button = discord.ui.Button(
-            style=discord.ButtonStyle.secondary,
-            emoji="◀️",
-            row=1,
-            disabled=self.page <= 1,
+        self.add_item(
+            TogglTimerHistoryButton(
+                "prev",
+                guild_id=guild_id,
+                user_id=self.user_id,
+                page=self.page,
+                sort=self.sort,
+                disabled=self.page <= 1,
+            )
         )
-        next_button = discord.ui.Button(
-            style=discord.ButtonStyle.secondary,
-            emoji="▶️",
-            row=1,
-            disabled=self.page >= self.total_pages,
+        self.add_item(
+            TogglTimerHistoryButton(
+                "next",
+                guild_id=guild_id,
+                user_id=self.user_id,
+                page=self.page,
+                sort=self.sort,
+                disabled=self.page >= self.total_pages,
+            )
         )
-        sort_button = discord.ui.Button(
-            style=discord.ButtonStyle.secondary,
-            emoji="↕️",
-            row=1,
+        self.add_item(
+            TogglTimerHistoryButton(
+                "sort",
+                guild_id=guild_id,
+                user_id=self.user_id,
+                page=self.page,
+                sort=self.sort,
+            )
         )
-
-        async def _prev_callback(interaction: discord.Interaction) -> None:
-            if self.page <= 1:
-                await interaction.response.defer(ephemeral=self.response_ephemeral)
-                return
-            self.page -= 1
-            await self._refresh_message(interaction)
-
-        async def _next_callback(interaction: discord.Interaction) -> None:
-            if self.page >= self.total_pages:
-                await interaction.response.defer(ephemeral=self.response_ephemeral)
-                return
-            self.page += 1
-            await self._refresh_message(interaction)
-
-        async def _sort_callback(interaction: discord.Interaction) -> None:
-            self.sort = "ascending" if self.sort == "descending" else "descending"
-            self.page = 1
-            await self._refresh_message(interaction)
-
-        prev_button.callback = _prev_callback
-        next_button.callback = _next_callback
-        sort_button.callback = _sort_callback
-
-        self.add_item(prev_button)
-        self.add_item(next_button)
-        self.add_item(sort_button)
 
     def _get_toggl(self) -> Optional[TogglFunctions]:
         api_key = UserSettingsFunctions.get_toggl_api_key(self.user_id)
@@ -163,6 +175,9 @@ class TogglTimerHistoryView(discord.ui.View):
             sort=self.sort,
         )
         payload.pop("_toggl_timer_history_view", None)
+        if interaction.response.is_done():
+            await interaction.edit_original_response(view=self, **payload)
+            return
         await interaction.response.edit_message(view=self, **payload)
 
     async def _show_timer(
@@ -213,6 +228,13 @@ class TogglTimerHistoryView(discord.ui.View):
             is_active=False,
             response_ephemeral=self.response_ephemeral,
         )
+        if interaction.response.is_done():
+            await interaction.followup.send(
+                embeds=[embed],
+                view=timer_view,
+                ephemeral=self.response_ephemeral,
+            )
+            return
         await interaction.response.send_message(
             embeds=[embed],
             view=timer_view,

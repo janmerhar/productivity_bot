@@ -2757,16 +2757,28 @@ class TodoItemActionsView(discord.ui.View):
         self._order_action_buttons()
 
     def _order_action_buttons(self) -> None:
+        from views.todo_item_dynamic_items import TodoItemActionButton
+
         ordered_buttons = (
-            self.complete_todo,
-            self.edit_todo,
-            self.assign_to_user,
-            self.duplicate_todo,
-            self.delete_todo,
+            ("progress", self.complete_todo),
+            ("edit", self.edit_todo),
+            ("assign", self.assign_to_user),
+            ("duplicate", self.duplicate_todo),
+            ("delete", self.delete_todo),
         )
         self.clear_items()
-        for button in ordered_buttons:
-            self.add_item(button)
+        for action, button in ordered_buttons:
+            if not self.item_id:
+                self.add_item(button)
+                continue
+            self.add_item(
+                TodoItemActionButton(
+                    action,
+                    self.item_id,
+                    self.response_ephemeral,
+                    button=button,
+                )
+            )
 
     @staticmethod
     def _next_progress_status(current_status: str) -> Optional[str]:
