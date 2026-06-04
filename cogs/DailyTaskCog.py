@@ -513,9 +513,8 @@ class DailyTaskCog(commands.Cog):
                 )
 
                 notify_text = pomodoro_payload.pop("content", None)
-                end_time = PomodoroFunctions.parse_schedule_datetime(job.schedule)
                 if guild is not None:
-                    await PomodoroVoiceManager.stop_for_guild(guild.id, end_time)
+                    await PomodoroVoiceManager.stop_for_guild(guild.id, force=True)
 
                 if notify_text:
                     await channel.send(content=notify_text)
