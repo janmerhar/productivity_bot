@@ -56,6 +56,7 @@ _TODO_REMINDER_CHOICES = [
     app_commands.Choice(name="Off", value="off"),
 ]
 _LIST_STATUS_FILTER_CHOICES = [
+    app_commands.Choice(name="Active", value="active"),
     app_commands.Choice(name="All", value="all"),
     app_commands.Choice(name="To Do", value="todo"),
     app_commands.Choice(name="In Progress", value="in_progress"),
@@ -616,7 +617,7 @@ class TodoCog(commands.Cog):
             visibility,
         )
         sort_value = sort.value if sort else "ascending"
-        status_value = status.value if status else "all"
+        status_value = status.value if status else "active"
         assignee_filter_user_id: Optional[int] = None
         assignee_filter_unassigned = False
         assignee_value = (assignee or "").strip()

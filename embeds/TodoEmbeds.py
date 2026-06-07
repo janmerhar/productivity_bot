@@ -934,6 +934,11 @@ class TodoListOptionsModal(discord.ui.Modal):
             custom_id="todo_list_options_status",
             options=[
                 discord.RadioGroupOption(
+                    label="Active",
+                    value="active",
+                    default=parent_view.status_filter == "active",
+                ),
+                discord.RadioGroupOption(
                     label="All",
                     value="all",
                     default=parent_view.status_filter == "all",
@@ -1036,13 +1041,13 @@ class TodoListOptionsModal(discord.ui.Modal):
         await interaction.response.defer(ephemeral=self.response_ephemeral)
 
         sort_value = str(self.sort_group.value or "ascending")
-        status_value = str(self.status_group.value or "all")
+        status_value = str(self.status_group.value or "active")
         search_query = self.parent_view.normalize_search_query(self.search_input.value)
 
         if sort_value not in {"ascending", "descending"}:
             sort_value = "ascending"
-        if status_value not in {"all", "todo", "in_progress", "done"}:
-            status_value = "all"
+        if status_value not in {"active", "all", "todo", "in_progress", "done"}:
+            status_value = "active"
 
         assignee_filter_ids: List[int] = []
         assignee_filter_unassigned = False
@@ -1246,7 +1251,7 @@ class TodoListItemsView(discord.ui.View):
         todo_list: Dict[str, Any],
         items: List[Dict[str, Any]],
         sort: str,
-        status_filter: str = "all",
+        status_filter: str = "active",
         assignee_filter_id: Optional[int] = None,
         assignee_filter_ids: Optional[List[int]] = None,
         assignee_filter_unassigned: bool = False,
@@ -1270,11 +1275,12 @@ class TodoListItemsView(discord.ui.View):
             if status_filter
             in {
                 "all",
+                "active",
                 "todo",
                 "in_progress",
                 "done",
             }
-            else "all"
+            else "active"
         )
         self.assignee_filter_unassigned = bool(assignee_filter_unassigned)
         resolved_assignee_ids = [
@@ -1337,7 +1343,7 @@ class TodoListItemsView(discord.ui.View):
             todo_list=todo_list,
             items=[],
             sort=str(session.get("sort") or "ascending").strip(),
-            status_filter=str(session.get("status_filter") or "all").strip(),
+            status_filter=str(session.get("status_filter") or "active").strip(),
             assignee_filter_ids=list(session.get("assignee_filter_ids") or []),
             assignee_filter_unassigned=bool(
                 session.get("assignee_filter_unassigned", False)
@@ -1454,7 +1460,7 @@ class TodoListItemsView(discord.ui.View):
     def _has_active_list_options(self) -> bool:
         return (
             self.sort != "ascending"
-            or self.status_filter != "all"
+            or self.status_filter != "active"
             or bool(self.search_query)
             or self.assignee_filter_unassigned
             or bool(self.assignee_filter_ids)
@@ -1707,7 +1713,13 @@ class TodoListItemsView(discord.ui.View):
                     )
                 )
             ]
-        if self.status_filter != "all":
+        if self.status_filter == "active":
+            filtered_items = [
+                item
+                for item in filtered_items
+                if TodoFunctions.item_status(item) != "done"
+            ]
+        elif self.status_filter != "all":
             filtered_items = [
                 item
                 for item in filtered_items
@@ -3082,14 +3094,10 @@ class TodoItemActionsView(discord.ui.View):
             return
 
         try:
-            duplicated_item, _ = await asyncio.to_thread(
-                TodoFunctions.add_item_to_list,
-                current_list,
-                interaction.user.id,
-                TodoFunctions.item_text(current_item),
-                None,
-                "todo",
-                None,
+            duplicated_item = await asyncio.to_thread(
+                TodoFunctions.duplicate_item,
+                self.item_id,
+                interaction.guild_id,
             )
         except ValueError as exc:
             await handle_interaction_error(
@@ -3245,6 +3253,8 @@ class TodoEmbeds:
 
     @staticmethod
     def _status_filter_label(status_filter: str) -> str:
+        if status_filter == "active":
+            return "Active"
         if status_filter == "all":
             return "All"
         return TodoFunctions.status_label(status_filter)

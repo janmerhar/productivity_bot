@@ -40,7 +40,7 @@ def _state_document(state: Dict[str, Any]) -> Dict[str, Any]:
         "todo_channel_id": state.get("todo_channel_id"),
         "todo_user_id": state.get("todo_user_id"),
         "sort": str(state.get("sort") or "ascending").strip(),
-        "status_filter": str(state.get("status_filter") or "all").strip(),
+        "status_filter": str(state.get("status_filter") or "active").strip(),
         "assignee_filter_ids": [
             int(value) for value in list(state.get("assignee_filter_ids") or [])
         ][:25],

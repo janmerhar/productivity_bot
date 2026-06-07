@@ -1,11 +1,12 @@
+import copy
 import datetime
 import re
-from typing import Optional, Tuple, Dict, Any, List, Union
+from typing import Optional, Tuple, Dict, Any, List, Union, Mapping
 
 from bson.objectid import ObjectId
 from pymongo import ReturnDocument
 
-from classes.DailyJob import OneTimeSchedule2
+from classes.DailyJob import CronSchedule, OneTimeSchedule2, ScheduleConfig
 from config.db import mongo_db
 from services.due_datetime import DueDateService
 
@@ -941,6 +942,82 @@ class TodoFunctions:
             schedule=schedule,
         )
         return "created"
+
+    @staticmethod
+    def _copy_job_schedule(schedule: Any) -> Optional[ScheduleConfig]:
+        if schedule is None:
+            return None
+        if isinstance(schedule, Mapping):
+            mode = str(schedule.get("mode") or "").strip().lower()
+            if mode == "cron":
+                return CronSchedule(
+                    expression=str(schedule.get("expression") or "").strip(),
+                    timezone=schedule.get("timezone"),
+                )
+            if mode == "one-time":
+                return OneTimeSchedule2(
+                    datetime=str(schedule.get("datetime") or "").strip()
+                )
+        if isinstance(schedule, CronSchedule):
+            return copy.deepcopy(schedule)
+        if isinstance(schedule, OneTimeSchedule2):
+            return copy.deepcopy(schedule)
+        return None
+
+    @staticmethod
+    def duplicate_item(
+        item_id: Any,
+        guild_id: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        from classes.DailyJobManager import DailyJobManager
+
+        object_id = TodoFunctions._coerce_object_id(item_id)
+        if object_id is None:
+            return None
+
+        original = mongo_db["todos"].find_one({"_id": object_id})
+        if original is None:
+            return None
+
+        todo_list = TodoFunctions.fetch_todo_list_by_id(original.get("list_id"))
+        if guild_id is not None:
+            if todo_list is None:
+                if original.get("guild_id") != guild_id:
+                    return None
+            else:
+                scope = TodoFunctions._normalize_scope(str(todo_list.get("scope") or ""))
+                if scope != "channel" or todo_list.get("guild_id") != guild_id:
+                    return None
+
+        document = copy.deepcopy(original)
+        document.pop("_id", None)
+        result = mongo_db["todos"].insert_one(document)
+        document["_id"] = result.inserted_id
+
+        manager = DailyJobManager()
+        for job in manager.list_jobs(guild_id=guild_id):
+            if job.type != "todo":
+                continue
+            if job.last_run is not None:
+                continue
+            job_data = job.data or {}
+            if str(job_data.get("task_id") or "") != str(object_id):
+                continue
+
+            copied_data = copy.deepcopy(job_data)
+            copied_data["task_id"] = str(result.inserted_id)
+            copied_schedule = TodoFunctions._copy_job_schedule(job.schedule)
+            if copied_schedule is None:
+                continue
+            manager.insert_job(
+                guild_id=job.guild_id,
+                channel_id=job.channel_id,
+                type=job.type,
+                data=copied_data,
+                schedule=copied_schedule,
+            )
+
+        return TodoFunctions._item_with_list_context(document, todo_list)
 
     @staticmethod
     def insert_todo(

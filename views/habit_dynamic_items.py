@@ -238,7 +238,7 @@ class HabitCompleteButton(
         self.view_kind = _normalize_view_kind(view_kind)
         super().__init__(
             discord.ui.Button(
-                emoji="✅",
+                emoji="\N{WHITE HEAVY CHECK MARK}",
                 style=discord.ButtonStyle.success,
                 custom_id=f"habit:complete:{habit_id}:{user_id}:{self.view_kind}",
                 disabled=disabled,
@@ -296,7 +296,7 @@ class HabitSkipButton(
         self.view_kind = _normalize_view_kind(view_kind)
         super().__init__(
             discord.ui.Button(
-                emoji="⏭️",
+                emoji="\N{BLACK RIGHT-POINTING DOUBLE TRIANGLE WITH VERTICAL BAR}\N{VARIATION SELECTOR-16}",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"habit:skip:{habit_id}:{user_id}:{self.view_kind}",
                 disabled=disabled,
@@ -346,7 +346,7 @@ class HabitEditButton(
                 action="edit",
                 habit_id=habit_id,
                 user_id=user_id,
-                emoji="\N{LOWER RIGHT PENCIL}",
+                emoji="\N{PENCIL}\N{VARIATION SELECTOR-16}",
                 style=discord.ButtonStyle.secondary,
                 disabled=disabled,
             )
@@ -430,7 +430,7 @@ class HabitDeleteButton(
                 action="delete",
                 habit_id=habit_id,
                 user_id=user_id,
-                emoji="\N{WASTEBASKET}",
+                emoji="\N{WASTEBASKET}\N{VARIATION SELECTOR-16}",
                 style=discord.ButtonStyle.danger,
                 disabled=disabled,
             )
