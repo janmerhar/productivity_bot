@@ -786,15 +786,16 @@ class ReminderListView(discord.ui.View):
     async def _open_reminder_details(
         self,
         interaction: discord.Interaction,
-        job: Optional[DailyJob],
+        job: Optional[DailyJob | str],
     ) -> None:
         if job is None:
             await interaction.response.defer(ephemeral=True)
             return
+        job_id = job if isinstance(job, str) else str(job.id)
 
         current_job = await asyncio.to_thread(
             ReminderFunctions.get_reminder,
-            str(job.id),
+            job_id,
             self.guild_id,
         )
         if current_job is None:
@@ -916,6 +917,7 @@ class ReminderListView(discord.ui.View):
                 ReminderListItemButton(
                     self.session_id,
                     display_index,
+                    job_id=str(job.id) if job is not None else "",
                     disabled=job is None,
                 )
             )
