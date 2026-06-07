@@ -433,13 +433,17 @@ class TodoListDirectoryView(discord.ui.View):
         self,
         interaction: discord.Interaction,
         slot_index: int,
+        *,
+        list_id: str = "",
     ) -> None:
         self.message = interaction.message
         entry = self._page_entry(slot_index)
-        if entry is None:
+        selected_value = str(list_id or "").strip()
+        if not selected_value and entry is not None:
+            selected_value = str(entry.get("_id") or "").strip()
+        if not selected_value:
             await interaction.response.defer(ephemeral=self.response_ephemeral)
             return
-        selected_value = str(entry.get("_id") or "").strip()
 
         try:
             todo_list = await asyncio.to_thread(
@@ -498,11 +502,13 @@ class TodoListDirectoryView(discord.ui.View):
         )
 
         for slot_index in range(self.page_size):
+            entry = self._page_entry(slot_index)
             self.add_item(
                 TodoDirectoryOpenButton(
                     self.session_id,
                     slot_index,
-                    disabled=self._page_entry(slot_index) is None,
+                    list_id=str((entry or {}).get("_id") or "") if entry else "",
+                    disabled=entry is None,
                 )
             )
 
