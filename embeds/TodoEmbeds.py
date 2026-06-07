@@ -3082,14 +3082,10 @@ class TodoItemActionsView(discord.ui.View):
             return
 
         try:
-            duplicated_item, _ = await asyncio.to_thread(
-                TodoFunctions.add_item_to_list,
-                current_list,
-                interaction.user.id,
-                TodoFunctions.item_text(current_item),
-                None,
-                "todo",
-                None,
+            duplicated_item = await asyncio.to_thread(
+                TodoFunctions.duplicate_item,
+                self.item_id,
+                interaction.guild_id,
             )
         except ValueError as exc:
             await handle_interaction_error(
