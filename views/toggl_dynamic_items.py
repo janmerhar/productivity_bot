@@ -460,7 +460,7 @@ class TogglTimerHistoryButton(
     template=(
         r"togglhistory:(?P<action>info|prev|next|sort):(?P<guild_id>\d+):"
         r"(?P<user_id>\d+):(?P<page>\d+):(?P<sort>[ad])"
-        r"(?::(?P<slot>[0-4]))?"
+        r"(?::(?P<slot>[0-4]))?(?::(?P<timer_id>\d+))?"
     ),
 ):
     def __init__(
@@ -472,6 +472,7 @@ class TogglTimerHistoryButton(
         page: int,
         sort: str,
         slot: Optional[int] = None,
+        timer_id: str = "",
         disabled: bool = False,
     ) -> None:
         if action == "info":
@@ -495,7 +496,10 @@ class TogglTimerHistoryButton(
         else:
             raise ValueError(f"Unsupported Toggl history action: {action}")
 
+        cleaned_timer_id = str(timer_id or "").strip()
         suffix = f":{slot}" if slot is not None else ""
+        if cleaned_timer_id:
+            suffix = f"{suffix}:{cleaned_timer_id}"
         super().__init__(
             discord.ui.Button(
                 label=label,
@@ -515,6 +519,7 @@ class TogglTimerHistoryButton(
         self.page = max(1, int(page or 1))
         self.sort = "ascending" if sort == "ascending" else "descending"
         self.slot = slot
+        self.timer_id = cleaned_timer_id
 
     @classmethod
     async def from_custom_id(
@@ -533,6 +538,7 @@ class TogglTimerHistoryButton(
             page=int(match.group("page")),
             sort=_history_sort_label(match.group("sort")),
             slot=int(slot) if slot is not None else None,
+            timer_id=match.groupdict().get("timer_id") or "",
             disabled=getattr(item, "disabled", False),
         )
 
@@ -562,7 +568,11 @@ class TogglTimerHistoryButton(
             return
 
         if self.action == "info":
-            await view._show_timer(interaction, int(self.slot or 0))
+            await view._show_timer(
+                interaction,
+                int(self.slot or 0),
+                timer_id=self.timer_id,
+            )
             return
         if self.action == "prev":
             view.page = max(1, view.page - 1)
