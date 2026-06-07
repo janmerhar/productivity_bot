@@ -42,16 +42,27 @@ async def _ensure_view(
 
 class StockListSelectButton(
     discord.ui.DynamicItem[discord.ui.Button],
-    template=r"stocklist:select:(?P<session_id>[a-f0-9]+):(?P<slot>\d+)",
+    template=(
+        r"stocklist:select:(?P<session_id>[a-f0-9]+):(?P<slot>\d+)"
+        r"(?::(?P<entry_type>[sa]):(?P<entry_id>[a-fA-F0-9]+))?"
+    ),
 ):
     def __init__(
         self,
         session_id: str,
         slot: int,
         *,
+        entry_type: str = "",
+        entry_id: str = "",
         disabled: bool = False,
         selected: bool = False,
     ) -> None:
+        cleaned_entry_type = str(entry_type or "").strip()
+        cleaned_entry_id = str(entry_id or "").strip()
+        custom_id = f"stocklist:select:{session_id}:{slot}"
+        if cleaned_entry_type in {"s", "a"} and cleaned_entry_id:
+            custom_id = f"{custom_id}:{cleaned_entry_type}:{cleaned_entry_id}"
+
         super().__init__(
             discord.ui.Button(
                 label=str(slot + 1),
@@ -61,12 +72,14 @@ class StockListSelectButton(
                     else discord.ButtonStyle.secondary
                 ),
                 row=0,
-                custom_id=f"stocklist:select:{session_id}:{slot}",
+                custom_id=custom_id,
                 disabled=disabled,
             )
         )
         self.session_id = session_id
         self.slot = slot
+        self.entry_type = cleaned_entry_type
+        self.entry_id = cleaned_entry_id
 
     @classmethod
     async def from_custom_id(
@@ -81,6 +94,8 @@ class StockListSelectButton(
         return cls(
             match.group("session_id"),
             int(match.group("slot")),
+            entry_type=match.groupdict().get("entry_type") or "",
+            entry_id=match.groupdict().get("entry_id") or "",
             disabled=getattr(item, "disabled", False),
             selected=style == discord.ButtonStyle.primary,
         )
@@ -89,7 +104,17 @@ class StockListSelectButton(
         view = await _ensure_view(interaction, session_id=self.session_id)
         if view is None:
             return
-        view._select_index(self.slot)
+        if self.entry_type and self.entry_id:
+            selected = view.select_entry_by_reference(self.entry_type, self.entry_id)
+            if not selected:
+                await view._reload_entries()
+                selected = view.select_entry_by_reference(self.entry_type, self.entry_id)
+            if not selected:
+                await interaction.response.defer(ephemeral=view.response_ephemeral)
+                await view.refresh_message(interaction)
+                return
+        else:
+            view._select_index(self.slot)
         await view.refresh_message(interaction)
 
 

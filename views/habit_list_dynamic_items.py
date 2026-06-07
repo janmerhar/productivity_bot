@@ -34,26 +34,36 @@ async def _ensure_view(
 
 class HabitListShowButton(
     discord.ui.DynamicItem[discord.ui.Button],
-    template=r"habitlist:show:(?P<session_id>[a-f0-9]+):(?P<slot>\d+)",
+    template=(
+        r"habitlist:show:(?P<session_id>[a-f0-9]+):(?P<slot>\d+)"
+        r"(?::(?P<habit_id>[a-fA-F0-9]+))?"
+    ),
 ):
     def __init__(
         self,
         session_id: str,
         slot: int,
         *,
+        habit_id: str = "",
         disabled: bool = False,
     ) -> None:
+        cleaned_habit_id = str(habit_id or "").strip()
+        custom_id = f"habitlist:show:{session_id}:{slot}"
+        if cleaned_habit_id:
+            custom_id = f"{custom_id}:{cleaned_habit_id}"
+
         super().__init__(
             discord.ui.Button(
                 label=str(slot + 1),
                 style=discord.ButtonStyle.secondary,
                 row=0,
-                custom_id=f"habitlist:show:{session_id}:{slot}",
+                custom_id=custom_id,
                 disabled=disabled,
             )
         )
         self.session_id = session_id
         self.slot = slot
+        self.habit_id = cleaned_habit_id
 
     @classmethod
     async def from_custom_id(
@@ -67,12 +77,16 @@ class HabitListShowButton(
         return cls(
             match.group("session_id"),
             int(match.group("slot")),
+            habit_id=match.groupdict().get("habit_id") or "",
             disabled=getattr(item, "disabled", False),
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         view = await _ensure_view(interaction, session_id=self.session_id)
         if view is None:
+            return
+        if self.habit_id:
+            await view.open_habit_details(interaction, {"_id": self.habit_id})
             return
         await view.open_habit_details(interaction, view._page_item(self.slot))
 

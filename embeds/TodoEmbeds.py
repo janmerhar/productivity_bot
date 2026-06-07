@@ -2099,6 +2099,7 @@ class TodoListItemsView(discord.ui.View):
                 TodoListItemInfoButton(
                     self.session_id,
                     slot_index,
+                    item_id=str((item or {}).get("_id") or "") if has_item else "",
                     disabled=not has_item,
                 )
             )

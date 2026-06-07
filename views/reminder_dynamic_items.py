@@ -633,26 +633,36 @@ class ReminderDeleteButton(
 
 class ReminderListItemButton(
     discord.ui.DynamicItem[discord.ui.Button],
-    template=r"reminder:list:item:(?P<session_id>[0-9a-f]{16}):(?P<slot>[1-5])",
+    template=(
+        r"reminder:list:item:(?P<session_id>[0-9a-f]{16}):(?P<slot>[1-5])"
+        r"(?::(?P<job_id>[a-fA-F0-9]+))?"
+    ),
 ):
     def __init__(
         self,
         session_id: str,
         slot: int,
         *,
+        job_id: str = "",
         disabled: bool = False,
     ) -> None:
+        cleaned_job_id = str(job_id or "").strip()
+        custom_id = f"reminder:list:item:{session_id}:{slot}"
+        if cleaned_job_id:
+            custom_id = f"{custom_id}:{cleaned_job_id}"
+
         super().__init__(
             discord.ui.Button(
                 label=str(slot),
                 style=discord.ButtonStyle.secondary,
                 row=0,
-                custom_id=f"reminder:list:item:{session_id}:{slot}",
+                custom_id=custom_id,
                 disabled=disabled,
             )
         )
         self.session_id = session_id
         self.slot = slot
+        self.job_id = cleaned_job_id
 
     @classmethod
     async def from_custom_id(
@@ -666,6 +676,7 @@ class ReminderListItemButton(
         return cls(
             match.group("session_id"),
             int(match.group("slot")),
+            job_id=match.groupdict().get("job_id") or "",
             disabled=getattr(item, "disabled", False),
         )
 
@@ -675,6 +686,10 @@ class ReminderListItemButton(
             session_id=self.session_id,
         )
         if view is None:
+            return
+
+        if self.job_id:
+            await view._open_reminder_details(interaction, self.job_id)
             return
 
         await view._open_reminder_details(

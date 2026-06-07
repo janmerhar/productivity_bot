@@ -451,6 +451,24 @@ class StockListItemsView(discord.ui.View):
             return
         self._selected_entry_type, self._selected_entry_id = self._entry_key(selected)
 
+    def select_entry_by_reference(self, entry_type: str, entry_id: str) -> bool:
+        normalized_entry_type = (
+            "schedule" if str(entry_type or "").strip() == "s" else "alert"
+        )
+        cleaned_entry_id = str(entry_id or "").strip()
+        if not cleaned_entry_id:
+            return False
+
+        for index, entry in enumerate(self.entries):
+            current_type, current_id = self._entry_key(entry)
+            if current_type == normalized_entry_type and current_id == cleaned_entry_id:
+                self.selected_index = index
+                self.page = (index // self.PAGE_SIZE) + 1
+                self._selected_entry_type = current_type
+                self._selected_entry_id = current_id
+                return True
+        return False
+
     def _build(self) -> None:
         self.clear_items()
         if self.session_id is None:
@@ -469,11 +487,15 @@ class StockListItemsView(discord.ui.View):
         page_start = (self.page - 1) * self.PAGE_SIZE
         for idx in range(self.PAGE_SIZE):
             has_item = idx < len(page_entries)
+            entry = page_entries[idx] if has_item else {}
+            entry_type, entry_id = self._entry_key(entry) if has_item else ("", "")
             selected = has_item and page_start + idx == self.selected_index
             self.add_item(
                 StockListSelectButton(
                     self.session_id,
                     idx,
+                    entry_type="s" if entry_type == "schedule" else "a",
+                    entry_id=entry_id,
                     disabled=not has_item,
                     selected=selected,
                 )

@@ -96,6 +96,7 @@ class TogglTimerHistoryView(discord.ui.View):
 
         for index in range(self.page_size):
             has_timer = index < len(page_timers)
+            timer = page_timers[index] if has_timer else {}
             self.add_item(
                 TogglTimerHistoryButton(
                     "info",
@@ -104,6 +105,7 @@ class TogglTimerHistoryView(discord.ui.View):
                     page=self.page,
                     sort=self.sort,
                     slot=index,
+                    timer_id=str((timer or {}).get("id") or ""),
                     disabled=not has_timer,
                 )
             )
@@ -184,16 +186,27 @@ class TogglTimerHistoryView(discord.ui.View):
         self,
         interaction: discord.Interaction,
         timer_index: int,
+        *,
+        timer_id: str = "",
     ) -> None:
         from embeds.TogglEmbeds import TogglEmbeds
         from views.TogglTimerView import TogglTimerView
 
         page_timers = self._page_slice()
-        if timer_index >= len(page_timers):
+        cleaned_timer_id = str(timer_id or "").strip()
+        timer_data = None
+        if cleaned_timer_id:
+            for timer in self.all_timers:
+                if str((timer or {}).get("id") or "") == cleaned_timer_id:
+                    timer_data = timer
+                    break
+
+        if timer_data is None and timer_index < len(page_timers):
+            timer_data = page_timers[timer_index]
+
+        if timer_data is None:
             await interaction.response.defer(ephemeral=self.response_ephemeral)
             return
-
-        timer_data = page_timers[timer_index]
 
         try:
             toggl = self._get_toggl()

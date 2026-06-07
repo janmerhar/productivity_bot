@@ -714,11 +714,13 @@ class HabitListView(discord.ui.View):
         )
 
         for slot_index in range(self.page_size):
+            habit = self._page_item(slot_index)
             self.add_item(
                 HabitListShowButton(
                     self.session_id,
                     slot_index,
-                    disabled=self._page_item(slot_index) is None,
+                    habit_id=str((habit or {}).get("_id") or "") if habit else "",
+                    disabled=habit is None,
                 )
             )
 
