@@ -41,26 +41,36 @@ async def _ensure_view(
 
 class TodoListItemInfoButton(
     discord.ui.DynamicItem[discord.ui.Button],
-    template=r"todoitems:info:(?P<session_id>[a-f0-9]+):(?P<slot>\d+)",
+    template=(
+        r"todoitems:info:(?P<session_id>[a-f0-9]+):(?P<slot>\d+)"
+        r"(?::(?P<item_id>[a-fA-F0-9]+))?"
+    ),
 ):
     def __init__(
         self,
         session_id: str,
         slot: int,
         *,
+        item_id: str = "",
         disabled: bool = False,
     ) -> None:
+        cleaned_item_id = str(item_id or "").strip()
+        custom_id = f"todoitems:info:{session_id}:{slot}"
+        if cleaned_item_id:
+            custom_id = f"{custom_id}:{cleaned_item_id}"
+
         super().__init__(
             discord.ui.Button(
                 label=str(slot + 1),
                 style=discord.ButtonStyle.secondary,
                 row=0,
-                custom_id=f"todoitems:info:{session_id}:{slot}",
+                custom_id=custom_id,
                 disabled=disabled,
             )
         )
         self.session_id = session_id
         self.slot = slot
+        self.item_id = cleaned_item_id
 
     @classmethod
     async def from_custom_id(
@@ -74,12 +84,16 @@ class TodoListItemInfoButton(
         return cls(
             match.group("session_id"),
             int(match.group("slot")),
+            item_id=match.groupdict().get("item_id") or "",
             disabled=getattr(item, "disabled", False),
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         view = await _ensure_view(interaction, session_id=self.session_id)
         if view is None:
+            return
+        if self.item_id:
+            await view._open_item_details(interaction, {"_id": self.item_id})
             return
         await view._open_item_details(interaction, view._page_item(self.slot))
 
